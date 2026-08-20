@@ -1723,179 +1723,89 @@ body {
   font-weight: 600;
 }
 
-/* ─── 比分走势时间轴（折线 + 简化回合色块） ───────────────────────────────── */
+/* ─── 回合结果标注图（上排 T 黄 / 下排 CT 蓝） ────────────────────────────── */
 
-.timeline {
-  position: relative;
-  padding: 8px 4px 26px;
-  user-select: none;
+.round-map {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(34px, 1fr));
+  gap: 3px;
+  align-items: stretch;
 }
 
-.timeline .trend {
-  display: block;
-  width: 100%;
-  height: 96px;
-}
-
-.timeline .trend-zero {
-  stroke: var(--line-2);
-  stroke-width: 0.6;
-  stroke-dasharray: 1.5 1.5;
-}
-
-.timeline .trend-line {
-  fill: none;
-  stroke: var(--accent-strong);
-  stroke-width: 1.4;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-
-.timeline .trend-dot {
-  fill: var(--text-0);
-  stroke: var(--bg-0);
-  stroke-width: 0.5;
-  cursor: pointer;
-  transition: fill 0.12s;
-}
-
-.timeline .trend-dot:hover,
-.timeline .trend-dot.on {
-  fill: var(--accent-strong);
-}
-
-/* 回合胜败色块（细条，克制） */
-.timeline .track {
-  position: relative;
-  height: 10px;
-  margin-top: 8px;
-  border-radius: 5px;
-  background: var(--track-bg);
-  overflow: hidden;
-}
-
-.timeline .seg {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  cursor: pointer;
-  transition: filter 0.12s;
-}
-
-.timeline .seg.win-t {
-  background: rgba(201, 168, 106, 0.55);
-}
-
-.timeline .seg.win-ct {
-  background: rgba(123, 163, 201, 0.55);
-}
-
-.timeline .seg:hover {
-  filter: brightness(1.4);
-}
-
-.timeline .seg.active {
-  outline: 2px solid var(--accent-strong);
-  outline-offset: -1px;
-  z-index: 2;
-}
-
-.timeline .rlabels {
-  position: relative;
-  height: 16px;
-  margin-top: 2px;
-}
-
-.timeline .rlabel {
-  position: absolute;
-  top: 0;
-  transform: translateX(-50%);
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  font-weight: 500;
-  color: var(--text-2);
-  pointer-events: none;
-}
-
-.timeline .rlabel.on {
-  color: var(--accent-strong);
-  font-weight: 700;
-}
-
-/* ─── 回合结果格（CS:GO Tab 风格） ─────────────────────────────────────────── */
-
-.round-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.round-cell {
+.rm-col {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 54px;
-  padding: 5px 8px;
-  background: var(--field-bg);
-  border: 1px solid var(--line-1);
+  gap: 3px;
+  padding: 4px 0;
   border-radius: 8px;
   cursor: pointer;
-  transition: border-color 0.12s, background 0.12s, transform 0.12s;
+  transition: background 0.12s;
 }
 
-.round-cell:hover {
+.rm-col:hover {
   background: var(--hover-bg);
-  transform: translateY(-1px);
 }
 
-.round-cell.win-t {
-  border-color: rgba(201, 168, 106, 0.45);
-}
-
-.round-cell.win-ct {
-  border-color: rgba(123, 163, 201, 0.45);
-}
-
-.round-cell.active {
-  border-color: var(--accent-strong);
+.rm-col.active {
+  background: var(--accent-dim);
   outline: 1.5px solid var(--accent-strong);
-  outline-offset: 0;
+  outline-offset: -1px;
 }
 
-.rc-r {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
+.rm-side {
+  display: grid;
+  place-items: center;
+  min-height: 26px;
+  width: 100%;
+}
+
+.rm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
   font-weight: 600;
-  color: var(--text-2);
-  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
-.round-cell.win-t .rc-r {
+.rm-chip.t {
+  background: rgba(201, 168, 106, 0.22);
+  border: 1px solid rgba(201, 168, 106, 0.5);
   color: var(--t);
 }
 
-.round-cell.win-ct .rc-r {
+.rm-chip.ct {
+  background: rgba(123, 163, 201, 0.22);
+  border: 1px solid rgba(123, 163, 201, 0.5);
   color: var(--ct);
 }
 
-.rc-main {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 2px;
-}
-
-.rc-icon {
-  font-size: 12px;
+.rm-icon {
+  font-size: 11px;
   line-height: 1;
 }
 
-.rc-alive {
+.rm-alive {
   font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--text-1);
   font-variant-numeric: tabular-nums;
+}
+
+.rm-r {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.rm-r.t {
+  color: var(--t);
+}
+
+.rm-r.ct {
+  color: var(--ct);
 }
 
 /* ─── 转写行 ──────────────────────────────────────────────────────────────── */

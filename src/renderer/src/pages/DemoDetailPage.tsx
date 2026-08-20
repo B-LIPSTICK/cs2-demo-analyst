@@ -16,7 +16,6 @@ import {
   fmtTime,
   useToast
 } from '@/components/ui'
-import { Timeline } from '@/components/Timeline'
 import { useTKey } from '@/i18n'
 import type { DemoDetail, KillEvent, PlayerInfo, RoundInfo, TeamSide } from '@shared/types'
 
@@ -160,11 +159,11 @@ export function DemoDetailPage({
             </div>
           </div>
 
-          {/* 比分条（按队伍名，T/CT 为当前阵营） */}
+          {/* 比分条 */}
           <div className="flex" style={{ marginTop: 18, gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
             <div className="flex gap-8" style={{ alignItems: 'center', minWidth: 0 }}>
-              <span className="tag t">
-                {meta.teamT && meta.teamT !== 'T' ? meta.teamT : 'T 队'}
+              <span className="tag">
+                {meta.teamT && meta.teamT !== 'T' ? meta.teamT : 'T'}
               </span>
               <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 34, lineHeight: 1, color: 'var(--t)' }}>
                 {meta.scoreT}
@@ -175,8 +174,8 @@ export function DemoDetailPage({
               <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 34, lineHeight: 1, color: 'var(--ct)' }}>
                 {meta.scoreCT}
               </span>
-              <span className="tag ct">
-                {meta.teamCT && meta.teamCT !== 'CT' ? meta.teamCT : 'CT 队'}
+              <span className="tag">
+                {meta.teamCT && meta.teamCT !== 'CT' ? meta.teamCT : 'CT'}
               </span>
             </div>
             <div className="grow" />
@@ -194,22 +193,10 @@ export function DemoDetailPage({
               ))}
             </div>
           </div>
-          <div className="muted" style={{ fontSize: 10.5, marginTop: 8 }}>
-            {t('detail.sideNote')}
-          </div>
 
-          {/* 回合结果（CS:GO Tab 风格：结束方式 + 剩余存活） */}
-          <div style={{ marginTop: 14 }}>
-            <RoundResultGrid
-              rounds={rounds}
-              selectedRound={selectedRound === 'all' ? undefined : selectedRound}
-              onSelectRound={(r) => setSelectedRound((cur) => (cur === r ? 'all' : r))}
-            />
-          </div>
-
-          {/* 比分走势时间轴 */}
-          <div style={{ marginTop: 20 }}>
-            <Timeline
+          {/* 回合结果标注（上排 T 赢 / 下排 CT 赢） */}
+          <div style={{ marginTop: 16 }}>
+            <RoundMap
               rounds={rounds}
               selectedRound={selectedRound === 'all' ? undefined : selectedRound}
               onSelectRound={(r) => setSelectedRound((cur) => (cur === r ? 'all' : r))}
@@ -366,8 +353,8 @@ export function DemoDetailPage({
   )
 }
 
-/** 回合结果面板：仿 CS:GO Tab 记分板——每回合结束方式（爆炸/拆除/击杀/超时）+ 剩余存活 */
-function RoundResultGrid({
+/** 回合结果标注图：横轴每回合一列，上排=T 赢（黄），下排=CT 赢（蓝），标记 = 结束方式图标 + 剩余存活 */
+function RoundMap({
   rounds,
   selectedRound,
   onSelectRound
@@ -377,9 +364,8 @@ function RoundResultGrid({
   onSelectRound: (roundNum: number) => void
 }) {
   return (
-    <div className="round-grid">
+    <div className="round-map">
       {rounds.map((r) => {
-        // 该回合双方死亡数 → 剩余存活（按 5v5 估算；team 未知的击杀不统计）
         const dT = r.kills.filter((k) => k.victimTeam === 'T').length
         const dCT = r.kills.filter((k) => k.victimTeam === 'CT').length
         const aliveT = Math.max(0, 5 - dT)
@@ -388,7 +374,7 @@ function RoundResultGrid({
           r.endType === 'bomb_exploded'
             ? '💥'
             : r.endType === 'bomb_defused'
-              ? '🛡️'
+              ? '🔧'
               : r.endType === 'elimination'
                 ? '☠'
                 : r.endType === 'timeout'
@@ -407,16 +393,28 @@ function RoundResultGrid({
         return (
           <div
             key={r.roundNum}
-            className={`round-cell ${r.winner === 'T' ? 'win-t' : r.winner === 'CT' ? 'win-ct' : ''} ${
-              selectedRound === r.roundNum ? 'active' : ''
-            }`}
+            className={`rm-col ${selectedRound === r.roundNum ? 'active' : ''}`}
             onClick={() => onSelectRound(r.roundNum)}
             title={`R${r.roundNum} · ${r.winner === 'T' ? 'T' : r.winner === 'CT' ? 'CT' : '-'} 胜 · ${endLabel} · 存活 T${aliveT} CT${aliveCT}`}
           >
-            <div className="rc-r">R{r.roundNum}</div>
-            <div className="rc-main">
-              <span className="rc-icon">{icon}</span>
-              <span className="rc-alive">{aliveT}v{aliveCT}</span>
+            <div className="rm-side t">
+              {r.winner === 'T' && (
+                <span className="rm-chip t">
+                  <span className="rm-icon">{icon}</span>
+                  <span className="rm-alive">{aliveT}v{aliveCT}</span>
+                </span>
+              )}
+            </div>
+            <div className="rm-side ct">
+              {r.winner === 'CT' && (
+                <span className="rm-chip ct">
+                  <span className="rm-icon">{icon}</span>
+                  <span className="rm-alive">{aliveT}v{aliveCT}</span>
+                </span>
+              )}
+            </div>
+            <div className={`rm-r ${r.winner === 'T' ? 't' : r.winner === 'CT' ? 'ct' : ''}`}>
+              {r.roundNum}
             </div>
           </div>
         )

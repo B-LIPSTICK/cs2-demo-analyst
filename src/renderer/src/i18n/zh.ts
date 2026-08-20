@@ -124,7 +124,6 @@ export const zh = {
   'detail.surrender': '投降',
   'detail.unknownEnd': '结束',
   'detail.selectRound': '点击回合标记可查看该回合',
-  'detail.sideNote': '比分按队伍显示；T/CT 为当前阵营，上下半场自动换边',
   'detail.playerDetail': '查看选手详情',
   'detail.playerWeapons': '武器击杀统计',
   'detail.playerKills': '击杀明细',

@@ -121,7 +121,6 @@ export const en: Record<keyof ZhDict, string> = {
   'detail.surrender': 'Surrender',
   'detail.unknownEnd': 'End',
   'detail.selectRound': 'Click a round marker to inspect',
-  'detail.sideNote': 'Score is per team; T/CT are current sides and swap at halftime',
   'detail.playerDetail': 'View player details',
   'detail.playerWeapons': 'Kills by weapon',
   'detail.playerKills': 'Kill detail',
