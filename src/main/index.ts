@@ -129,6 +129,16 @@ function registerIpc(): void {
     const { getState } = await import('./overlay')
     return getState()
   })
+  ipcMain.handle('overlay:setFullPanel', async (_e, enabled: boolean, demoId?: string) => {
+    const { setFullPanel } = await import('./overlay')
+    let detail = null
+    if (enabled && demoId) detail = await library.detail(demoId)
+    setFullPanel(enabled, demoId, detail)
+  })
+  ipcMain.handle('overlay:command', async (_e, cmd: string, arg?: number) => {
+    const { command } = await import('./overlay')
+    command(cmd, arg)
+  })
 
   // 引擎/模型管理
   ipcMain.handle('engines:status', async () => {
@@ -221,6 +231,29 @@ if (!gotLock) {
         console.log(`[overlay] demo sim started: ${detail?.voice.length ?? 0} voice segments`)
       })()
     }
+    // 开发模式: --fullpanel-demo=<demoId|文件名片段> 等待解析完成后启动全屏面板
+    const fullDemoArg = process.argv.find((a) => a.startsWith('--fullpanel-demo='))
+    if (fullDemoArg) {
+      const key = fullDemoArg.slice('--fullpanel-demo='.length)
+      ;(async () => {
+        let meta: Awaited<ReturnType<typeof library.list>>[number] | null = null
+        for (let i = 0; i < 120; i++) {
+          const demos = await library.list()
+          meta = demos.find((d) => d.id === key || d.fileName.includes(key)) ?? null
+          if (meta && meta.status === 'ready') break
+          await new Promise((r) => setTimeout(r, 1000))
+        }
+        if (!meta || meta.status !== 'ready') {
+          console.error(`[fullpanel] demo not ready: ${key}`)
+          app.exit(1)
+          return
+        }
+        const detail = await library.detail(meta.id)
+        const { setFullPanel } = await import('./overlay')
+        setFullPanel(true, meta.id, detail)
+        console.log(`[fullpanel] started: ${detail?.voice.length ?? 0} voice segments`)
+      })()
+    }
     // 开发模式: --transcribe=<demoId|文件名片段> 等待解析完成后执行转写并退出
     const transcribeArg = process.argv.find((a) => a.startsWith('--transcribe='))
     if (transcribeArg) {
@@ -278,8 +311,14 @@ if (!gotLock) {
       const shotPath = process.argv[shotIdx + 1]
       const delayArg = process.argv.find((a) => a.startsWith('--shot-delay='))
       const delay = delayArg ? Number(delayArg.slice('--shot-delay='.length)) || 1600 : 1600
-      const isOverlayShot = Boolean(process.argv.find((a) => a.startsWith('--overlay-demo=')))
+      const isOverlayShot = Boolean(
+        process.argv.find((a) => a.startsWith('--overlay-demo=')) ||
+        process.argv.find((a) => a.startsWith('--fullpanel-demo='))
+      )
       const target = () => {
+        if (process.argv.find((a) => a.startsWith('--fullpanel-demo='))) {
+          return import('./overlay').then((m) => m.getFullWindow())
+        }
         if (isOverlayShot) {
           return import('./overlay').then((m) => m.getOverlayWindow())
         }
@@ -288,7 +327,11 @@ if (!gotLock) {
       const onLoaded = async () => {
         setTimeout(async () => {
           try {
-            const win = await target()
+            let win: BrowserWindow | null = null
+            for (let i = 0; i < 8 && !win; i++) {
+              win = await target()
+              if (!win) await new Promise((r) => setTimeout(r, 500))
+            }
             if (!win) throw new Error('target window not found')
             const image = await win.webContents.capturePage()
             const { promises: fs } = await import('node:fs')

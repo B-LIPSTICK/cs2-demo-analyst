@@ -1,5 +1,6 @@
 /**
- * 悬浮层逻辑：接收主进程 overlay:state 事件，渲染说话者 HUD + 转写字幕。
+ * 悬浮层逻辑：接收主进程 overlay:state 事件，渲染左下角 CS2 原生语音 HUD
+ * （说话者：头像 + 名字 + 声波；无字幕——字幕是分析功能，不进游戏内）。
  * 轻量原生 DOM，不引 React。
  */
 import './overlay.css'
@@ -12,12 +13,11 @@ interface OverlayState {
   round?: number
   scoreT?: number
   scoreCT?: number
-  speakers: { name: string; team: string }[]
+  speakers: { name: string; team: string; avatar?: string }[]
   lines: { text: string; playerName: string; team: string; tick: number }[]
 }
 
 const speakersEl = document.getElementById('speakers')!
-const linesEl = document.getElementById('lines')!
 const statusEl = document.getElementById('status')!
 
 function teamCls(team: string): string {
@@ -40,46 +40,27 @@ function render(state: OverlayState): void {
       el.className = `speaker ${teamCls(s.team)}`
       el.dataset.name = s.name
       el.innerHTML = `
-        <span class="tag"></span>
-        <span class="nm ${teamCls(s.team)}"></span>
-        <span class="vu"><i></i><i></i><i></i><i></i><i></i></span>
+        <span class="av"></span>
+        <span class="nm"></span>
+        <span class="vu"><i></i><i></i><i></i><i></i></span>
       `
       speakersEl.appendChild(el)
     }
     el.classList.add('on')
-    el.querySelector('.nm')!.textContent = s.name
+    const avEl = el.querySelector('.av') as HTMLElement
+    if (s.avatar) {
+      avEl.innerHTML = ''
+      const img = document.createElement('img')
+      img.src = s.avatar
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;display:block'
+      avEl.appendChild(img)
+    } else {
+      avEl.textContent = s.name[0]?.toUpperCase() ?? '?'
+    }
+    ;(el.querySelector('.nm') as HTMLElement).textContent = s.name
   }
   while (speakersEl.children.length > 6) {
     speakersEl.removeChild(speakersEl.firstChild!)
-  }
-
-  // ── 字幕 ──
-  const lines = state.lines.slice(-3)
-  const wantL = new Set(lines.map((l) => `${l.tick}-${l.playerName}`))
-  for (const el of Array.from(linesEl.children) as HTMLElement[]) {
-    const key = el.dataset.key ?? ''
-    if (wantL.has(key)) continue
-    el.classList.remove('show')
-    setTimeout(() => el.remove(), 300)
-  }
-  for (const l of lines) {
-    const key = `${l.tick}-${l.playerName}`
-    let el = Array.from(linesEl.children).find(
-      (c) => (c as HTMLElement).dataset.key === key
-    ) as HTMLElement | undefined
-    if (!el) {
-      el = document.createElement('div')
-      el.className = 'ovline'
-      el.dataset.key = key
-      el.innerHTML = `<span class="who ${teamCls(l.team)}"></span><span class="txt"></span>`
-      linesEl.appendChild(el)
-      requestAnimationFrame(() => el!.classList.add('show'))
-    }
-    ;(el.querySelector('.who') as HTMLElement).textContent = l.playerName
-    ;(el.querySelector('.txt') as HTMLElement).textContent = l.text
-  }
-  while (linesEl.children.length > 3) {
-    linesEl.removeChild(linesEl.firstChild!)
   }
 
   // ── 状态条 ──

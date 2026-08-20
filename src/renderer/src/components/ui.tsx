@@ -284,19 +284,25 @@ export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) =
 export function Avatar({
   name,
   team,
-  size = 20
+  size = 20,
+  avatar
 }: {
   name: string
   team: 'T' | 'CT' | 'SPEC' | 'NONE'
   size?: number
+  avatar?: string
 }) {
   const cls = team === 'T' ? 't' : team === 'CT' ? 'ct' : team
   return (
     <span
       className={`av ${cls}`}
-      style={{ width: size, height: size, fontSize: Math.max(8, size * 0.46) }}
+      style={{ width: size, height: size, fontSize: Math.max(8, size * 0.46), overflow: 'hidden' }}
     >
-      {(name[0] ?? '?').toUpperCase()}
+      {avatar ? (
+        <img src={avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+      ) : (
+        (name[0] ?? '?').toUpperCase()
+      )}
     </span>
   )
 }

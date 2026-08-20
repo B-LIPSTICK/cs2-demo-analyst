@@ -124,6 +124,7 @@ interface PlayerSlot {
   assists: number
   headshots: number
   mvp: number
+  avatar?: string
 }
 
 interface RoundAcc {
@@ -396,6 +397,24 @@ export async function parseDemo(
           }
         }
       }
+      // Steam 头像（SERVER_AVATAR_OVERRIDES 表：key=steamid, value=PNG）
+      try {
+        const avatarTable = parser
+          .getDemo()
+          .stringTableContainer.getByName(StringTableType.SERVER_AVATAR_OVERRIDES.name)
+        if (avatarTable) {
+          for (const entry of avatarTable.getEntries()) {
+            const raw = entry.value as Uint8Array | string | null | undefined
+            if (!raw) continue
+            const b64 = typeof raw === 'string' ? raw : Buffer.from(raw).toString('base64')
+            const uri = b64.startsWith('data:image') ? b64 : `data:image/png;base64,${b64}`
+            const slot = [...playersByUserid.values()].find((p) => p.steamId === String(entry.key))
+            if (slot) slot.avatar = uri
+          }
+        }
+      } catch {
+        /* 头像可选 */
+      }
     }
   })
 
@@ -537,7 +556,8 @@ export async function parseDemo(
     headshots: s.headshots,
     score: s.kills * 3 + s.assists,
     mvp: mvpBySteamId.get(s.steamId ?? '') ?? s.mvp,
-    hsp: s.kills ? Math.round((s.headshots / s.kills) * 100) : 0
+    hsp: s.kills ? Math.round((s.headshots / s.kills) * 100) : 0,
+    avatar: s.avatar
   }))
 
   return {

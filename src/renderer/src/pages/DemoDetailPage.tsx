@@ -93,6 +93,17 @@ export function DemoDetailPage({
             <div className="flex gap-8" style={{ alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <Btn
                 size="sm"
+                variant="primary"
+                onClick={async () => {
+                  await window.api.overlay.setFullPanel(true, id)
+                  toast.push('FULL PANEL ON')
+                }}
+              >
+                <IcLive size={12} />
+                全屏面板
+              </Btn>
+              <Btn
+                size="sm"
                 variant="ghost"
                 onClick={async () => {
                   await window.api.overlay.setEnabled(true, id)

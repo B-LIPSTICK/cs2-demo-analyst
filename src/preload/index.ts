@@ -47,7 +47,10 @@ const api: ApiWithEvents = {
       ipcRenderer.invoke('overlay:setEnabled', enabled, demoId),
     setPosition: (pos: string) => ipcRenderer.invoke('overlay:setPosition', pos),
     setClickThrough: (on: boolean) => ipcRenderer.invoke('overlay:setClickThrough', on),
-    getState: () => ipcRenderer.invoke('overlay:getState')
+    getState: () => ipcRenderer.invoke('overlay:getState'),
+    setFullPanel: (enabled: boolean, demoId?: string) =>
+      ipcRenderer.invoke('overlay:setFullPanel', enabled, demoId),
+    command: (cmd: string, arg?: number) => ipcRenderer.invoke('overlay:command', cmd, arg)
   },
   engines: {
     status: () => ipcRenderer.invoke('engines:status'),

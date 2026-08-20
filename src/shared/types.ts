@@ -46,6 +46,8 @@ export interface PlayerInfo {
   score: number
   mvp: number
   hsp: number
+  /** Steam 头像 data URI（demo 内嵌，可能缺失） */
+  avatar?: string
 }
 
 export interface KillEvent {
@@ -258,6 +260,8 @@ export interface Api {
     setPosition: (pos: OverlayPosition) => Promise<void>
     setClickThrough: (on: boolean) => Promise<void>
     getState: () => Promise<OverlayState | null>
+    setFullPanel: (enabled: boolean, demoId?: string) => Promise<void>
+    command: (cmd: string, arg?: number) => Promise<void>
   }
   engines: {
     status: () => Promise<Record<string, boolean>>
@@ -307,6 +311,7 @@ export interface ApiWithEvents extends Api {
 export interface OverlaySpeaker {
   name: string
   team: TeamSide
+  avatar?: string
 }
 
 export interface OverlayLine {
@@ -326,6 +331,17 @@ export interface OverlayState {
   scoreCT?: number
   speakers: OverlaySpeaker[]
   lines: OverlayLine[]
+  /** 全屏面板数据 */
+  full?: boolean
+  events?: {
+    type: 'kill' | 'voice' | 'bomb'
+    tick: number
+    text: string
+    sub?: string
+    team?: TeamSide
+  }[]
+  players?: { name: string; team: TeamSide; kills: number; deaths: number; hs: number }[]
+  rounds?: { num: number; startTick: number; endTick: number; winner: 'T' | 'CT' | 'none' }[]
 }
 
 export interface JobProgress {

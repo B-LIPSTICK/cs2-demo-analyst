@@ -64,7 +64,7 @@ declare module '@deademx/cs2' {
   export interface DemoLike {
     stringTableContainer: {
       getByName(name: string): {
-        getEntries(): { value: unknown }[]
+        getEntries(): { key?: string | number; value: unknown }[]
       } | null
       getTables(): { name: string; getEntriesCount(): number }[]
     }

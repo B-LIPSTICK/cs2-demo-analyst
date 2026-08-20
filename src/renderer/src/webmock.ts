@@ -298,7 +298,71 @@ export function createWebApi(): ApiWithEvents {
       },
       setPosition: async () => {},
       setClickThrough: async () => {},
-      getState: async () => null
+      getState: async () => null,
+      setFullPanel: async (enabled, demoId) => {
+        if (!enabled) {
+          emit({ type: 'overlay:state', state: { mode: 'idle', tick: 0, tickRate: 64, speakers: [], lines: [] } })
+          return
+        }
+        const detail = demoId ? buildDetail(state.demos.find((d) => d.id === demoId)!) : null
+        if (!detail) return
+        // 全屏面板演示：定时推进 tick 并广播状态
+        let tick = detail.firstTick
+        const rate = 64
+        emit({
+          type: 'overlay:state',
+          state: {
+            mode: 'demo',
+            tick,
+            tickRate: rate,
+            map: detail.meta.mapName,
+            scoreT: detail.meta.scoreT,
+            scoreCT: detail.meta.scoreCT,
+            round: 1,
+            speakers: [],
+            lines: [],
+            full: true,
+            events: [],
+            players: detail.meta.players?.slice(0, 10).map((p) => ({ name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, hs: p.hsp })),
+            rounds: detail.rounds.map((r) => ({ num: r.roundNum, startTick: r.startTick, endTick: r.endTick, winner: r.winner }))
+          }
+        })
+        const timer = setInterval(() => {
+          tick += 64
+          if (tick > detail.lastTick) {
+            clearInterval(timer)
+            return
+          }
+          const round = detail.rounds.find((r) => tick >= r.startTick && tick < r.endTick)
+          const speakers = detail.voice.filter((v) => v.tick <= tick && v.endTick >= tick).map((v) => ({ name: v.playerName, team: v.team }))
+          const lines = detail.voice
+            .filter((v) => tick - v.tick < 30 * rate)
+            .slice(-3)
+            .map((v) => ({ text: v.text, playerName: v.playerName, team: v.team, tick: v.tick }))
+          const events = detail.voice
+            .filter((v) => v.tick <= tick && tick - v.tick < 45 * rate)
+            .map((v) => ({ type: 'voice' as const, tick: v.tick, text: v.text, sub: v.playerName, team: v.team }))
+          emit({
+            type: 'overlay:state',
+            state: {
+              mode: 'demo',
+              tick,
+              tickRate: rate,
+              map: detail.meta.mapName,
+              scoreT: detail.meta.scoreT,
+              scoreCT: detail.meta.scoreCT,
+              round: round?.roundNum,
+              speakers: [...new Map(speakers.map((s) => [s.name, s])).values()],
+              lines,
+              full: true,
+              events: events.slice(-24),
+              players: detail.meta.players?.slice(0, 10).map((p) => ({ name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, hs: p.hsp })),
+              rounds: detail.rounds.map((r) => ({ num: r.roundNum, startTick: r.startTick, endTick: r.endTick, winner: r.winner }))
+            }
+          })
+        }, 1000 / 30)
+      },
+      command: async () => {}
     },
     engines: {
       status: async () => ({ csgove: false, whisper: true, 'model-base': true, 'model-small': true, 'model-medium': false }),

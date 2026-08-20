@@ -28,10 +28,16 @@ interface OverlayState {
   scoreCT?: number
   speakers: OverlaySpeaker[]
   lines: OverlayLine[]
+  full?: boolean
+  events?: { type: 'kill' | 'voice' | 'bomb'; tick: number; text: string; sub?: string; team?: TeamSide }[]
+  players?: { name: string; team: TeamSide; kills: number; deaths: number; hs: number }[]
+  rounds?: { num: number; startTick: number; endTick: number; winner: 'T' | 'CT' | 'none' }[]
 }
 
 let win: BrowserWindow | null = null
+let fullWin: BrowserWindow | null = null
 let simTimer: NodeJS.Timeout | null = null
+let simPaused = false
 let simTick = 0
 let simDetail: DemoDetail | null = null
 let simSpeed = 1 // 倍速（演示模式）
@@ -39,9 +45,12 @@ let position: OverlayPosition = 'bottom-left'
 let clickThrough = false
 let lastSpeakers: OverlaySpeaker[] = []
 let lineHistory: OverlayLine[] = []
+let eventHistory: NonNullable<OverlayState['events']> = []
 
 const WIN_W = 560
 const WIN_H = 260
+
+const PRELOAD = join(__dirname, '..', '..', 'preload', 'index.js')
 
 function createWindow(): void {
   if (win && !win.isDestroyed()) return
@@ -58,7 +67,7 @@ function createWindow(): void {
     hasShadow: false,
     focusable: false,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: PRELOAD,
       contextIsolation: true,
       sandbox: false
     }
@@ -106,7 +115,6 @@ function applyClickThrough(on: boolean): void {
 }
 
 function sendState(): void {
-  if (!win || win.isDestroyed()) return
   const state: OverlayState = simDetail
     ? {
         mode: simTimer ? 'demo' : 'idle',
@@ -116,11 +124,30 @@ function sendState(): void {
         round: roundOf(simTick),
         scoreT: simDetail.meta.scoreT,
         scoreCT: simDetail.meta.scoreCT,
-        speakers: lastSpeakers,
-        lines: lineHistory.slice(-3)
+        speakers: lastSpeakers.map((s) => ({
+          ...s,
+          avatar: (simDetail?.meta.players ?? []).find((p) => p.name === s.name)?.avatar
+        })),
+        lines: lineHistory.slice(-3),
+        full: true,
+        events: eventHistory.slice(-24),
+        players: (simDetail.meta.players ?? []).slice(0, 10).map((p) => ({
+          name: p.name,
+          team: p.team,
+          kills: p.kills,
+          deaths: p.deaths,
+          hs: p.hsp
+        })),
+        rounds: simDetail.rounds.map((r) => ({
+          num: r.roundNum,
+          startTick: r.startTick,
+          endTick: r.endTick,
+          winner: r.winner
+        }))
       }
     : { mode: 'idle', tick: 0, tickRate: 64, speakers: [], lines: [] }
-  win.webContents.send('overlay:state', { state })
+  if (win && !win.isDestroyed()) win.webContents.send('overlay:state', { state })
+  if (fullWin && !fullWin.isDestroyed()) fullWin.webContents.send('overlay:state', { state })
 }
 
 function roundOf(tick: number): number | undefined {
@@ -133,7 +160,7 @@ function roundOf(tick: number): number | undefined {
 
 /** 演示模式：按倍速推进 tick，从转写数据计算说话者与字幕 */
 function tickSim(): void {
-  if (!simDetail) return
+  if (!simDetail || simPaused) return
   simTick += 64 * simSpeed
   if (process.env['DEBUG_OVERLAY'] === '1' && simTick % 6400 < 64) {
     console.log(`[overlay] tick=${simTick} speakers=${lastSpeakers.length} lines=${lineHistory.length}`)
@@ -176,6 +203,35 @@ function tickSim(): void {
     }
   }
   lineHistory = lineHistory.filter((l) => simTick - l.tick < 30 * rate)
+
+  // 事件流：往前 45s 内的击杀/炸弹 + 当前语音
+  if (simTick % 64 === 0) {
+    const winTicks = 45 * rate
+    const ev: NonNullable<OverlayState['events']> = []
+    for (const r of simDetail.rounds) {
+      for (const k of r.kills) {
+        if (k.tick >= simTick - winTicks && k.tick <= simTick) {
+          ev.push({
+            type: 'kill',
+            tick: k.tick,
+            text: `${k.attackerName ?? '?'} → ${k.victimName ?? '?'}`,
+            sub: `${k.weapon}${k.headshot ? ' ☠' : ''}`,
+            team: k.attackerTeam
+          })
+        }
+        if (r.bombPlantedTick && r.bombPlantedTick >= simTick - winTicks && r.bombPlantedTick <= simTick) {
+          ev.push({ type: 'bomb', tick: r.bombPlantedTick, text: 'Bomb planted' })
+        }
+      }
+    }
+    for (const v of simDetail.voice) {
+      if (v.tick >= simTick - winTicks && v.tick <= simTick) {
+        ev.push({ type: 'voice', tick: v.tick, text: v.text, sub: v.playerName, team: v.team })
+      }
+    }
+    ev.sort((a, b) => a.tick - b.tick)
+    eventHistory = [...eventHistory, ...ev.filter((e) => e.tick > (eventHistory.at(-1)?.tick ?? -1))].slice(-40)
+  }
   sendState()
 }
 
@@ -213,6 +269,95 @@ export function setClickThrough(on: boolean): void {
   applyClickThrough(on)
 }
 
+// ─── 全屏面板（游戏内观战控制台） ───────────────────────────────────────────
+
+function createFullWindow(): void {
+  if (fullWin && !fullWin.isDestroyed()) return
+  const wa = screen.getPrimaryDisplay().bounds
+  fullWin = new BrowserWindow({
+    x: wa.x,
+    y: wa.y,
+    width: wa.width,
+    height: wa.height,
+    show: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    hasShadow: false,
+    fullscreenable: false,
+    webPreferences: {
+      preload: PRELOAD,
+      contextIsolation: true,
+      sandbox: false
+    }
+  })
+  fullWin.setAlwaysOnTop(true, 'screen-saver')
+  if (process.env['ELECTRON_RENDERER_URL']) {
+    fullWin.loadURL(`${process.env['ELECTRON_RENDERER_URL'].replace(/\/$/, '')}/overlay-full.html`)
+  } else {
+    fullWin.loadFile(join(__dirname, '..', '..', 'renderer', 'overlay-full.html'))
+  }
+  fullWin.on('closed', () => {
+    fullWin = null
+  })
+  fullWin.webContents.on('did-finish-load', () => sendState())
+}
+
+export function setFullPanel(enabled: boolean, demoId?: string, detail?: DemoDetail | null): void {
+  if (enabled) {
+    if (!simDetail && demoId && detail) {
+      simDetail = detail
+      simTick = detail.firstTick
+      lastSpeakers = []
+      lineHistory = []
+      eventHistory = []
+    }
+    createFullWindow()
+    fullWin?.show()
+    if (simTimer) clearInterval(simTimer)
+    simPaused = false
+    simTimer = setInterval(tickSim, 1000 / 60)
+    sendState()
+  } else {
+    if (fullWin && !fullWin.isDestroyed()) fullWin.destroy()
+    fullWin = null
+  }
+}
+
+/** 全屏面板控制指令 */
+export function command(cmd: string, arg?: number): void {
+  switch (cmd) {
+    case 'jump':
+      simTick = Math.max(0, arg ?? 0)
+      lineHistory = []
+      eventHistory = []
+      sendState()
+      break
+    case 'pause':
+      simPaused = true
+      if (simTimer) clearInterval(simTimer)
+      simTimer = null
+      sendState()
+      break
+    case 'resume':
+      simPaused = false
+      if (!simTimer) simTimer = setInterval(tickSim, 1000 / 60)
+      sendState()
+      break
+    case 'speed':
+      simSpeed = arg ?? 1
+      break
+    case 'close':
+      setFullPanel(false)
+      break
+    default:
+      break
+  }
+}
+
 export function isEnabled(): boolean {
   return Boolean(win && !win.isDestroyed())
 }
@@ -220,6 +365,10 @@ export function isEnabled(): boolean {
 /** 供截图模式等开发工具访问窗口 */
 export function getOverlayWindow(): BrowserWindow | null {
   return win && !win.isDestroyed() ? win : null
+}
+
+export function getFullWindow(): BrowserWindow | null {
+  return fullWin && !fullWin.isDestroyed() ? fullWin : null
 }
 
 export function getState(): OverlayState {
