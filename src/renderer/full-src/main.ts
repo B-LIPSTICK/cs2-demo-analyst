@@ -1,6 +1,6 @@
 /**
- * 语音显示大屏：渲染「谁在说话 + 转写字幕」，顶部小比分/回合。
- * 其余观战信息（时间轴/选手/控制）游戏内原生已有，这里不做。
+ * 语音显示大屏：只渲染「谁在说话 + 转写字幕」。
+ * 不显示地图/比分/回合（观战信息游戏内原生已有）。
  */
 import './full.css'
 
@@ -20,11 +20,6 @@ const $ = (id: string) => document.getElementById(id)!
 const teamCls = (t?: string) => (t === 'T' ? 't' : t === 'CT' ? 'ct' : '')
 
 function render(s: VPState): void {
-  $('map').textContent = s.map ?? '—'
-  $('scT').textContent = String(s.scoreT ?? 0)
-  $('scCT').textContent = String(s.scoreCT ?? 0)
-  $('round').textContent = s.round ? `R${s.round}` : ''
-
   // 说话者
   const spEl = $('speakers')
   const want = new Set(s.speakers.map((x) => x.name))

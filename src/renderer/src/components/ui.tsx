@@ -24,7 +24,8 @@ function Base({ size = 14, children, ...rest }: IcProps & { children: ReactNode 
       fill="none"
       stroke="currentColor"
       strokeWidth={1.6}
-      strokeLinecap="square"
+      strokeLinecap="round"
+      strokeLinejoin="round"
       {...rest}
     >
       {children}

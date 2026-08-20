@@ -1,6 +1,6 @@
 /**
- * 悬浮层逻辑：接收主进程 overlay:state 事件，渲染左下角 CS2 原生语音 HUD
- * （说话者：头像 + 名字 + 声波；无字幕——字幕是分析功能，不进游戏内）。
+ * 悬浮层逻辑：接收主进程 overlay:state 事件，只渲染左下角语音 HUD
+ * （说话者：头像 + 名字 + 声波）。不显示地图/比分/回合等观战信息。
  * 轻量原生 DOM，不引 React。
  */
 import './overlay.css'
@@ -18,14 +18,13 @@ interface OverlayState {
 }
 
 const speakersEl = document.getElementById('speakers')!
-const statusEl = document.getElementById('status')!
 
 function teamCls(team: string): string {
   return team === 'T' ? 't' : team === 'CT' ? 'ct' : ''
 }
 
 function render(state: OverlayState): void {
-  // ── 说话者 ──
+  // 仅渲染说话者（语音 HUD）
   const want = new Set(state.speakers.map((s) => s.name))
   const existing = new Map<string, HTMLElement>()
   for (const el of Array.from(speakersEl.children) as HTMLElement[]) {
@@ -62,25 +61,6 @@ function render(state: OverlayState): void {
   while (speakersEl.children.length > 6) {
     speakersEl.removeChild(speakersEl.firstChild!)
   }
-
-  // ── 状态条 ──
-  if (state.mode === 'idle' || (!state.map && !state.round)) {
-    statusEl.classList.remove('show')
-    return
-  }
-  statusEl.classList.add('show')
-  statusEl.innerHTML = `
-    <span class="dot-live"></span>
-    <span class="map">${state.map ?? '—'}</span>
-    <span class="sc"><span class="t">${state.scoreT ?? 0}</span>:<span class="ct">${state.scoreCT ?? 0}</span></span>
-    <span class="tm">R${state.round ?? '—'} · ${fmtTick(state.tick, state.tickRate)}</span>
-  `
-}
-
-function fmtTick(tick: number, rate: number): string {
-  const s = Math.floor(tick / rate)
-  const m = Math.floor(s / 60)
-  return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 }
 
 window.api.onEvent('overlay:state', (e) => {

@@ -150,7 +150,7 @@ export function LivePage() {
               {t('live.play')}
             </Btn>
             <span className="gap" />
-            <span className="muted" style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+            <span className="muted" style={{ fontSize: 11.5 }}>
               {t('live.timescale')}
             </span>
             <div className="seg">
@@ -168,7 +168,7 @@ export function LivePage() {
               ))}
             </div>
             <span className="gap" />
-            <span className="muted" style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+            <span className="muted" style={{ fontSize: 11.5 }}>
               {t('live.jumpRound')}
             </span>
             <input
@@ -230,14 +230,14 @@ export function LivePage() {
               marginTop: 10,
               height: 120,
               overflowY: 'auto',
-              background: 'var(--bg-0)',
+              background: 'rgba(255,255,255,0.03)',
               border: '1px solid var(--line-0)',
-              padding: '8px 10px',
-              fontFamily: 'var(--font-display)',
+              borderRadius: 'var(--r-md)',
+              padding: '8px 12px',
+              fontFamily: 'var(--font-mono)',
               fontSize: 11,
               color: 'var(--text-1)',
-              lineHeight: 1.7,
-              clipPath: 'polygon(0 6px,6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%)'
+              lineHeight: 1.7
             }}
           >
             <div style={{ color: 'var(--text-2)' }}>— {t('live.sim')} console —</div>
@@ -259,7 +259,7 @@ export function LivePage() {
             ] as const
           ).map(([k, v]) => (
             <div key={k}>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 9, letterSpacing: '0.2em', color: 'var(--text-2)', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-2)' }}>
                 {k}
               </div>
               <div className="mono" style={{ fontSize: 20, fontWeight: 700, marginTop: 4 }}>

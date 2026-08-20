@@ -1,8 +1,8 @@
 # CS2 Demo Analyst
 
-> 挂接 CS2 的 Demo 分析师 —— 拖入 .dem 即刻分析 · 游戏语音一键转写 · 观战 HUD 风格界面
+> 挂接 CS2 的 Demo 分析师 —— 拖入 .dem 即刻分析 · 游戏语音一键转写 · 苹果风毛玻璃界面
 
-![UI](docs/screenshots/ux-step3-detail.png)
+![UI](docs/screenshots/apple-detail.png)
 
 CS2 Demo Analyst 帮助你像看职业比赛一样复盘自己的录像：**地图/比分/回合/击杀/选手数据自动解析**，**游戏内语音转成可搜索的文字**，还能在播放 demo 时**一键跳转到任意回合、击杀或语音时刻**。
 
@@ -18,19 +18,19 @@ CS2 Demo Analyst 帮助你像看职业比赛一样复盘自己的录像：**地�
 | 📝 语音转写 | 每位玩家语音 → 带时间戳文字，与回合对齐；文字聊天同屏；一键导出 |
 | 🎯 一键跳转 | 点击转写行 / 击杀 / 回合 → 向正在播放的 CS2 注入 `demo_gototick` 等指令 |
 | 🖥️ 实况注入 | 检测 cs2.exe，VConsole2（`-tools`）读写控制台；GSI 读取当前回合/比分/炸弹 |
-| 🎮 游戏内悬浮层 | 透明置顶 HUD：说话者头像 + 声波动画 + 转写字幕 + 实时比分 |
+| 🎮 游戏内悬浮层 | 透明置顶 HUD：说话者头像 + 声波动画 + 转写字幕（仅语音，无观战信息干扰） |
 | 🌐 Web 版 | 浏览器打开即用，纯本地解析，不上传任何数据 |
-| 🎨 观战 HUD 风格 | 斜切角面板、阵营金/蓝语言、击杀流、回合时间轴，中英双语 |
+| 🎨 苹果风界面 | macOS 风格毛玻璃面板、iOS 蓝强调色、红绿灯窗口按钮、SF 系系统字体，中英双语 |
 
 ## 📸 界面
 
-| Web 首页引导 | 示例资料库 | Demo 详情 |
+| 资料库 | Demo 详情 | 语音转写 |
 | --- | --- | --- |
-| ![首页](docs/screenshots/ux-step1-home.png) | ![资料库](docs/screenshots/ux-step2-sample.png) | ![详情](docs/screenshots/ux-step3-detail.png) |
+| ![资料库](docs/screenshots/apple-library.png) | ![详情](docs/screenshots/apple-detail.png) | ![转写](docs/screenshots/apple-transcript.png) |
 
-| 语音转写 | 实况注入 | 游戏内悬浮层 |
+| 实况注入 | 游戏内悬浮层 | 语音大屏 |
 | --- | --- | --- |
-| ![转写](docs/screenshots/ux-step4-transcript.png) | ![实况](docs/screenshots/shot-live-mock.png) | ![悬浮层](docs/screenshots/shot-overlay.png) |
+| ![实况](docs/screenshots/apple-live.png) | ![悬浮层](docs/screenshots/apple-overlay.png) | ![大屏](docs/screenshots/apple-fullpanel.png) |
 
 ## 🚀 快速开始
 

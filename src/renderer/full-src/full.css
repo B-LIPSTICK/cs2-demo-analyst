@@ -1,9 +1,9 @@
-/* 语音显示大屏：CS2 原生语音 HUD 风格（头像+名字+声波+聊天字幕）
-   无边框、无圆角、无彩色大条；极淡底 + 文字直出 */
+/* 语音显示大屏：苹果风毛玻璃
+   说话者胶囊 + 转写字幕；无地图/比分/回合 */
 :root {
-  --ct: #9cc1e5;
-  --t: #e0c080;
-  --text0: #f2efe9;
+  --ct: #6ba8e5;
+  --t: #e5b567;
+  --text0: #f5f5f7;
 }
 
 * {
@@ -18,78 +18,57 @@ body {
   height: 100vh;
   background: transparent;
   overflow: hidden;
-  font-family: 'Rajdhani', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   user-select: none;
 }
 
 .vp-root {
+  position: relative;
   width: 100vw;
   height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 6px;
-  padding: 24px 36px 36px;
+  gap: 14px;
+  padding: 28px 40px 42px;
   pointer-events: none;
 }
 
-/* 顶部小状态（几乎隐形） */
-.vp-top {
-  position: absolute;
-  top: 14px;
-  left: 20px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 3px 8px;
-  background: rgba(8, 8, 8, 0.42);
-  font-size: 12.5px;
-  letter-spacing: 0.1em;
-  pointer-events: auto;
-}
-
-.vp-map {
-  font-weight: 700;
-  text-transform: uppercase;
-  color: var(--text0);
-}
-
-.vp-score {
-  font-weight: 700;
-}
-
-.vp-score .t {
-  color: var(--t);
-}
-
-.vp-score .ct {
-  color: var(--ct);
-}
-
-.vp-round {
-  color: rgba(242, 239, 233, 0.55);
-}
-
+/* 悬浮关闭按钮（唯一控制项） */
 .vp-close {
-  width: 20px;
-  height: 20px;
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
   cursor: pointer;
-  color: rgba(242, 239, 233, 0.6);
-  font-size: 12px;
+  color: rgba(245, 245, 247, 0.72);
+  font-size: 14px;
+  background: rgba(24, 24, 28, 0.5);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+  transition: background 0.15s, color 0.15s, transform 0.15s;
 }
 
 .vp-close:hover {
-  color: #cf6a5f;
+  background: rgba(255, 69, 58, 0.85);
+  color: #fff;
+  transform: scale(1.05);
 }
 
-/* 说话者：左下角（CS2 原生位置） */
+/* 说话者：左下角毛玻璃胶囊 */
 .vp-speakers {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 3px;
+  gap: 8px;
   align-self: flex-start;
   margin-right: auto;
   max-width: 46%;
@@ -98,12 +77,18 @@ body {
 .vp-spk {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 3px 12px 3px 3px;
-  background: rgba(8, 8, 8, 0.42);
+  gap: 10px;
+  padding: 7px 18px 7px 8px;
+  background: rgba(24, 24, 28, 0.55);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   opacity: 0;
-  transform: translateX(-6px);
-  transition: opacity 0.15s, transform 0.15s;
+  transform: translateX(-8px) scale(0.97);
+  transition: opacity 0.18s cubic-bezier(0.25, 0.1, 0.25, 1),
+    transform 0.18s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 .vp-spk.on {
@@ -112,33 +97,34 @@ body {
 }
 
 .vp-spk .av {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text0);
-  background: #3a3f46;
-  border: 1px solid rgba(242, 239, 233, 0.35);
+  background: #3a3a40;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
   flex: none;
+  overflow: hidden;
 }
 
 .vp-spk.t .av {
-  border-color: rgba(224, 192, 128, 0.55);
+  border-color: rgba(229, 181, 103, 0.65);
 }
 
 .vp-spk.ct .av {
-  border-color: rgba(156, 193, 229, 0.55);
+  border-color: rgba(107, 168, 229, 0.65);
 }
 
 .vp-spk .nm {
   font-size: 16px;
   font-weight: 600;
   color: var(--text0);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 .vp-spk.t .nm {
@@ -152,13 +138,15 @@ body {
 .vp-spk .vu {
   display: flex;
   align-items: flex-end;
-  gap: 2px;
-  height: 13px;
+  gap: 2.5px;
+  height: 14px;
+  margin-left: 2px;
 }
 
 .vp-spk .vu i {
-  width: 2px;
-  background: rgba(242, 239, 233, 0.9);
+  width: 2.5px;
+  background: rgba(245, 245, 247, 0.92);
+  border-radius: 2px;
   animation: vu 0.7s ease-in-out infinite;
 }
 
@@ -166,13 +154,13 @@ body {
 .vp-spk .vu i:nth-child(3) { height: 60%; animation-delay: 0.2s; }
 .vp-spk .vu i:nth-child(4) { height: 100%; animation-delay: 0.3s; }
 
-/* 转写字幕：屏幕下方居中（可选显示，分析用） */
+/* 转写字幕：屏幕下方居中 */
 .vp-captions {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  max-width: 860px;
+  gap: 8px;
+  max-width: 900px;
   width: 100%;
   align-self: center;
 }
@@ -180,16 +168,22 @@ body {
 .vp-cap {
   display: flex;
   align-items: baseline;
-  gap: 12px;
-  padding: 4px 14px;
-  background: rgba(8, 8, 8, 0.42);
-  font-size: 22px;
+  gap: 14px;
+  padding: 8px 20px;
+  background: rgba(24, 24, 28, 0.55);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: 21px;
   line-height: 1.45;
   color: var(--text0);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
   opacity: 0;
-  transform: translateY(6px);
-  transition: opacity 0.25s, transform 0.25s;
+  transform: translateY(8px);
+  transition: opacity 0.25s cubic-bezier(0.25, 0.1, 0.25, 1),
+    transform 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 .vp-cap.show {
@@ -197,18 +191,18 @@ body {
   transform: none;
 }
 
+.vp-cap .who {
+  font-weight: 600;
+  font-size: 18px;
+  white-space: nowrap;
+}
+
 .vp-cap .who.t {
   color: var(--t);
-  font-weight: 700;
-  font-size: 19px;
-  white-space: nowrap;
 }
 
 .vp-cap .who.ct {
   color: var(--ct);
-  font-weight: 700;
-  font-size: 19px;
-  white-space: nowrap;
 }
 
 @keyframes vu {

@@ -1,10 +1,9 @@
-/* 游戏内悬浮层：复刻 CS2 原生左下角语音 HUD
-   头像 + 名字 + 声波，极淡底、无边框、无圆角、无彩色大条 */
+/* 游戏内悬浮层：仅语音 HUD（苹果风毛玻璃胶囊）
+   头像 + 名字 + 声波；不显示地图/比分/回合 */
 :root {
-  --ct: #9cc1e5;
-  --t: #e0c080;
-  --text0: #f2efe9;
-  --wave: rgba(242, 239, 233, 0.9);
+  --ct: #6ba8e5;
+  --t: #e5b567;
+  --text0: #f5f5f7;
 }
 
 * {
@@ -19,7 +18,8 @@ body {
   height: 100vh;
   background: transparent;
   overflow: hidden;
-  font-family: 'Rajdhani', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   user-select: none;
 }
 
@@ -30,28 +30,34 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 4px;
-  padding: 12px;
+  align-items: flex-start;
+  padding: 14px;
   pointer-events: none;
 }
 
-/* ─── 说话者（CS2 原生：头像+名字+声波，无边框） ─────────── */
+/* ─── 说话者：毛玻璃胶囊 ─────────────────────────────────────── */
 .ov-speakers {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: 6px;
 }
 
 .speaker {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 10px 2px 2px;
-  background: rgba(8, 8, 8, 0.42);
+  gap: 9px;
+  padding: 6px 14px 6px 7px;
+  background: rgba(24, 24, 28, 0.55);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   opacity: 0;
-  transform: translateX(-6px);
-  transition: opacity 0.15s, transform 0.15s;
+  transform: translateX(-8px) scale(0.97);
+  transition: opacity 0.18s cubic-bezier(0.25, 0.1, 0.25, 1),
+    transform 0.18s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 .speaker.on {
@@ -60,35 +66,35 @@ body {
 }
 
 .speaker .av {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-family: 'Rajdhani', sans-serif;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text0);
-  background: #3a3f46;
-  border: 1px solid rgba(242, 239, 233, 0.35);
+  background: #3a3a40;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
   flex: none;
+  overflow: hidden;
 }
 
 .speaker.t .av {
-  border-color: rgba(224, 192, 128, 0.55);
+  border-color: rgba(229, 181, 103, 0.65);
 }
 
 .speaker.ct .av {
-  border-color: rgba(156, 193, 229, 0.55);
+  border-color: rgba(107, 168, 229, 0.65);
 }
 
 .speaker .nm {
   font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   color: var(--text0);
   white-space: nowrap;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 .speaker.t .nm {
@@ -99,18 +105,19 @@ body {
   color: var(--ct);
 }
 
-/* 声波（白色信号条，CS2 风格） */
+/* 声波（白色信号条，柔和圆角） */
 .vu {
   display: flex;
   align-items: flex-end;
-  gap: 2px;
-  height: 12px;
+  gap: 2.5px;
+  height: 13px;
+  margin-left: 2px;
 }
 
 .vu i {
-  width: 2px;
-  background: var(--wave);
-  border-radius: 0;
+  width: 2.5px;
+  background: rgba(245, 245, 247, 0.92);
+  border-radius: 2px;
   animation: vu 0.7s ease-in-out infinite;
 }
 
@@ -122,98 +129,4 @@ body {
 @keyframes vu {
   0%, 100% { transform: scaleY(0.3); }
   50% { transform: scaleY(1); }
-}
-
-/* ─── 转写字幕（聊天式：名字冒号文本，无边框） ───────────── */
-.ov-lines {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-width: 620px;
-}
-
-.ovline {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 2px 10px;
-  background: rgba(8, 8, 8, 0.42);
-  font-size: 14px;
-  line-height: 1.45;
-  color: var(--text0);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 0.2s, transform 0.2s;
-}
-
-.ovline.show {
-  opacity: 1;
-  transform: none;
-}
-
-.ovline .who {
-  font-weight: 700;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.ovline .who.t {
-  color: var(--t);
-}
-
-.ovline .who.ct {
-  color: var(--ct);
-}
-
-/* ─── 顶部小状态（比分/回合，几乎隐形） ─────────────────── */
-.ov-status {
-  position: absolute;
-  top: 8px;
-  left: 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 3px 8px;
-  background: rgba(8, 8, 8, 0.42);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  color: var(--text0);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.ov-status.show {
-  opacity: 1;
-}
-
-.ov-status .map {
-  text-transform: uppercase;
-}
-
-.ov-status .sc .t {
-  color: var(--t);
-}
-
-.ov-status .sc .ct {
-  color: var(--ct);
-}
-
-.ov-status .tm {
-  color: rgba(242, 239, 233, 0.55);
-}
-
-.ov-status .dot-live {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--text0);
-  animation: pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
 }

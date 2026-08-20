@@ -36,6 +36,14 @@
 - 打包: electron-builder 下载 electron 失败 → electronDist 指向本地 node_modules（离线可用）; 依赖瘦身（React/ffmpeg/字体 → devDependencies）+ electronLanguages [en-US, zh-CN]; zip 200MB → 159MB; PS5.1 Add-Type 失败 → Compress-Archive。
 - 修复: SettingsPage 两处乱码（'涓浗'→中文、'鉁?'→移除按钮文案）。
 
+## 本轮二（苹果风重设计 + 黑屏 bug + 悬浮层纯语音）✅
+- **黑屏 bug 根因**: 主进程 `settings:changed` 事件发裸 settings 对象，renderer 按 `e.settings` 读取 → undefined → App setSettings(undefined) → `return null` 全黑。修复: 事件载荷改为 `{ settings }`; App 侧防御 `e.settings ?? s`; 新增 ErrorBoundary + 加载壳（任何渲染异常不再黑屏）。
+- **UI v4 苹果风**: hud.css 全量重写——SF 系系统字体栈（弃 @fontsource Rajdhani）、近黑玻璃底+蓝色氛围光、毛玻璃面板（backdrop-filter blur+saturate）、iOS 蓝 #0a84ff 强调、14px+ 大圆角、macOS 红绿灯窗口按钮（左置）、iOS 分段控件/开关、系统绿红黄状态色、柔影。TitleBar/NavRail/ui 图标/实况页内联样式同步清理（去 uppercase/斜切角/琥珀金）。
+- **悬浮层纯语音**: overlay 与大屏面板去掉地图/比分/回合状态条（DE_INFERNO 等不再显示），只保留说话者 HUD + 转写字幕；样式改毛玻璃胶囊。
+- **回归测试基建**: 主进程新增 `--eval-js=<code>` 开发钩子（截图前在渲染进程执行 JS）→ 可自动化模拟改设置/切语言。踩坑: 批量截图时带空格的参数被 PowerShell 当单参数（--route=live --vcon-mock 失效）; 残留 electron 进程占单实例锁导致新实例秒退（截图前需清理）。
+- 验收: typecheck/build/web:build ✅; 9 张截图全页面视觉验收 ✅（apple-*.png）; 黑屏回归 ×2（切英文/改端口设置，UI 正常英文渲染非黑屏）✅; overlay/fullpanel 无地图比分 ✅; 打包 exe 冒烟 ✅; zip 158.3MB。
+- README 截图/文案更新为 v4 主题。
+
 ## 下一步
-- 发布: 推送 4+ 提交到 origin（需代理在线）→ GitHub Pages 部署（web-dist, base './' 已配）→ README 截图刷新。
+- 发布: 推送提交到 origin（需代理在线）→ GitHub Pages 部署（web-dist, base './' 已配）。
 - 后续: Web 版本地桥（Phase B）; 实机 CS2 验证 VConsole 握手/GSI 推送; NSIS 安装器（可选）; 包体继续压缩（<120MB 目标）。

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Component, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { I18nProvider, type Lang } from './i18n'
 import { ToastProvider } from './components/ui'
 import { TitleBar } from './components/TitleBar'
@@ -12,6 +12,36 @@ import type { LiveStatus, Settings } from '@shared/types'
 interface Route {
   page: Page
   demoId?: string
+}
+
+/** 渲染错误兜底：任何组件抛错都显示可见信息，而不是黑屏 */
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+  componentDidCatch(error: Error, info: unknown) {
+    console.error('[ui] render error', error, info)
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="app-crash">
+          <div className="app-crash-box">
+            <div className="app-crash-title">UI 渲染异常</div>
+            <div className="app-crash-msg">{String(this.state.error?.message ?? this.state.error)}</div>
+            <button className="btn primary" onClick={() => this.setState({ error: null })}>
+              重试
+            </button>
+            <button className="btn ghost" onClick={() => window.api.app.revealInFolder('')}>
+              打开数据目录
+            </button>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
 }
 
 /** 开发辅助：从 location.hash 读取初始路由（#library/demoId 等） */
@@ -33,7 +63,6 @@ export default function App() {
     vconsoleConnected: false,
     gsiActive: false
   })
-  const [maximized, setMaximized] = useState(false)
   const [version, setVersion] = useState('0.1.0')
 
   // 初始数据
@@ -41,18 +70,19 @@ export default function App() {
     window.api.settings.get().then(setSettings)
     window.api.app.version().then(setVersion)
     window.api.live.getStatus().then(setLive)
-    window.api.window.isMaximized().then(setMaximized)
+    window.api.window.isMaximized()
   }, [])
 
   // 事件订阅
   useEffect(() => {
-    const offSettings = window.api.onEvent('settings:changed', (e) => setSettings(e.settings))
+    // 防御：载荷异常时保持原设置（曾经因主进程发裸对象导致 e.settings=undefined → 黑屏）
+    const offSettings = window.api.onEvent('settings:changed', (e) => {
+      setSettings((s) => e.settings ?? s)
+    })
     const offLive = window.api.onEvent('live:status', (e) => setLive(e.status))
-    const offMax = window.api.onEvent('window:maximized', (e) => setMaximized(e.maximized))
     return () => {
       offSettings()
       offLive()
-      offMax()
     }
   }, [])
 
@@ -73,33 +103,42 @@ export default function App() {
     window.api.settings.set({ language: lang }).catch(() => {})
   }, [])
 
-  if (!settings) return null // 等待设置加载
+  // 设置未就绪时显示加载壳（而不是 return null 导致黑屏）
+  if (!settings) {
+    return (
+      <div className="app-loading">
+        <span className="app-loading-dot" />
+        <span>CS2 Demo Analyst</span>
+      </div>
+    )
+  }
 
   return (
-    <I18nProvider lang={settings.language} onLangChange={onLangChange}>
-      <ToastProvider>
-        <div className="app">
-          <TitleBar status={live} version={version} />
-          <div className="app-body">
-            <NavRail page={route.page} onNavigate={(p) => navigate(p)} version={version} />
-            <main className="page-scroll">
-              {route.page === 'library' && (
-                <LibraryPage
-                  demoId={route.demoId}
-                  onOpenDemo={(id) => navigate('library', id)}
-                  onGoTranscript={(id) => navigate('transcript', id)}
-                />
-              )}
-              {route.page === 'transcript' && (
-                <TranscriptPage initialDemoId={route.demoId} onOpenDemo={(id) => navigate('transcript', id)} />
-              )}
-              {route.page === 'live' && <LivePage />}
-              {route.page === 'settings' && <SettingsPage settings={settings} />}
-            </main>
+    <ErrorBoundary>
+      <I18nProvider lang={settings.language} onLangChange={onLangChange}>
+        <ToastProvider>
+          <div className="app">
+            <TitleBar status={live} version={version} />
+            <div className="app-body">
+              <NavRail page={route.page} onNavigate={(p) => navigate(p)} version={version} />
+              <main className="page-scroll">
+                {route.page === 'library' && (
+                  <LibraryPage
+                    demoId={route.demoId}
+                    onOpenDemo={(id) => navigate('library', id)}
+                    onGoTranscript={(id) => navigate('transcript', id)}
+                  />
+                )}
+                {route.page === 'transcript' && (
+                  <TranscriptPage initialDemoId={route.demoId} onOpenDemo={(id) => navigate('transcript', id)} />
+                )}
+                {route.page === 'live' && <LivePage />}
+                {route.page === 'settings' && <SettingsPage settings={settings} />}
+              </main>
+            </div>
           </div>
-          {maximized && null}
-        </div>
-      </ToastProvider>
-    </I18nProvider>
+        </ToastProvider>
+      </I18nProvider>
+    </ErrorBoundary>
   )
 }

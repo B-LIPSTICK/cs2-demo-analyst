@@ -77,7 +77,7 @@ export function DemoDetailPage({
                   <IcBack size={12} />
                   {t('common.back')}
                 </Btn>
-                <span className="map" style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 26, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                <span className="map" style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-0.01em' }}>
                   {meta.mapName}
                 </span>
                 {meta.hasVoice === true && (
@@ -173,7 +173,7 @@ export function DemoDetailPage({
                 [t('detail.chat'), String(chat.length)]
               ].map(([k, v]) => (
                 <div key={k} style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 9, letterSpacing: '0.18em', color: 'var(--text-2)', textTransform: 'uppercase' }}>{k}</div>
+                  <div style={{ fontSize: 10.5, fontWeight: 500, color: 'var(--text-2)' }}>{k}</div>
                   <div className="mono" style={{ fontSize: 15, fontWeight: 600, marginTop: 2 }}>{v}</div>
                 </div>
               ))}

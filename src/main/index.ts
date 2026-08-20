@@ -82,7 +82,9 @@ function registerIpc(): void {
     if (patch.libraryRoots) {
       await library.setRoots(patch.libraryRoots)
     }
-    mainWindow?.webContents.send('settings:changed', settings)
+    // 事件载荷必须带 { settings } 包装（renderer 按 e.settings 读取；
+    // 之前发裸对象导致 e.settings=undefined → App setSettings(undefined) → 页面全黑）
+    mainWindow?.webContents.send('settings:changed', { settings })
     return settings
   })
 
@@ -335,6 +337,17 @@ if (!gotLock) {
         return Promise.resolve(mainWindow)
       }
       const onLoaded = async () => {
+        // 测试钩子：截图前在渲染进程执行 JS（模拟改设置/切语言等交互，验证 UI 不黑屏）
+        const evalArg = process.argv.find((a) => a.startsWith('--eval-js='))
+        if (evalArg) {
+          try {
+            const code = evalArg.slice('--eval-js='.length)
+            const r = await mainWindow?.webContents.executeJavaScript(code, true)
+            console.log(`[eval-js] result=${JSON.stringify(r) ?? 'undefined'}`)
+          } catch (e) {
+            console.error('[eval-js] failed', e)
+          }
+        }
         setTimeout(async () => {
           try {
             let win: BrowserWindow | null = null
