@@ -331,7 +331,7 @@ export function SettingsPage({ settings }: { settings: Settings }) {
         <div className="set-row">
           <div className="info">
             <div className="t">{t.t('settings.overlayEnabled')}</div>
-            <div className="d">demo sim · CS2 live (Phase 3)</div>
+            <div className="d">{t.t('settings.overlayHint')}</div>
           </div>
           <Toggle
             on={draft.overlay.enabled}
@@ -344,6 +344,7 @@ export function SettingsPage({ settings }: { settings: Settings }) {
         <div className="set-row">
           <div className="info">
             <div className="t">{t.t('settings.overlayClickThrough')}</div>
+            <div className="d">{t.t('settings.overlayClickHint')}</div>
           </div>
           <Toggle
             on={draft.overlay.clickThrough}

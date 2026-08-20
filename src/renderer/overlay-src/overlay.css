@@ -1,5 +1,5 @@
-/* 游戏内悬浮层：仅语音 HUD（苹果风毛玻璃胶囊）
-   头像 + 名字 + 声波；不显示地图/比分/回合 */
+/* 游戏内语音悬浮：毛玻璃胶囊
+   说话者 HUD + 控制条（上一段/下一段/关闭）；无地图/比分/回合 */
 :root {
   --ct: #6ba8e5;
   --t: #e5b567;
@@ -35,7 +35,15 @@ body {
   pointer-events: none;
 }
 
-/* ─── 说话者：毛玻璃胶囊 ─────────────────────────────────────── */
+/* ─── 悬浮整体容器 ─────────────────────────────────────────── */
+.ov-hud {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+/* ─── 说话者：毛玻璃胶囊 ───────────────────────────────────── */
 .ov-speakers {
   display: flex;
   flex-direction: column;
@@ -129,4 +137,75 @@ body {
 @keyframes vu {
   0%, 100% { transform: scaleY(0.3); }
   50% { transform: scaleY(1); }
+}
+
+/* ─── 控制条：平时半透明，鼠标悬停时显现 ─────────────────────── */
+.ov-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(24, 24, 28, 0.55);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0.85;
+  transition: opacity 0.2s;
+}
+
+.ov-hud:hover .ov-controls {
+  opacity: 1;
+}
+
+.ov-btn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text0);
+  cursor: pointer;
+  transition: background 0.14s;
+}
+
+.ov-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.ov-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ov-sep {
+  width: 1px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.16);
+  margin: 0 3px;
+}
+
+/* ─── 空态提示 ─────────────────────────────────────────────── */
+.ov-hint {
+  display: none;
+  max-width: 380px;
+  margin-top: 8px;
+  padding: 8px 14px;
+  background: rgba(24, 24, 28, 0.6);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(245, 245, 247, 0.85);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.ov-hint.show {
+  display: block;
 }

@@ -77,3 +77,5 @@ window.api.onEvent('overlay:state', (e) => {
   render(e.state as unknown as VPState)
 })
 $('closeBtn').onclick = () => window.api.overlay.command('close')
+$('prevBtn').onclick = () => window.api.overlay.command('prevVoice')
+$('nextBtn').onclick = () => window.api.overlay.command('nextVoice')

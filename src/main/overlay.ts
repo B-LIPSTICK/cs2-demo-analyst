@@ -377,7 +377,7 @@ export function command(cmd: string, arg?: number): void {
       break
     case 'resume':
       simPaused = false
-      if (!simTimer) simTimer = setInterval(tickSim, 1000 / 60)
+      if (!simTimer) simTimer = setInterval(tickSim, 1000 / 20)
       sendState()
       break
     case 'speed':
@@ -386,6 +386,49 @@ export function command(cmd: string, arg?: number): void {
     case 'close':
       setFullPanel(false)
       break
+    case 'closeOverlay':
+      setEnabled(false)
+      break
+    case 'nextVoice':
+    case 'prevVoice': {
+      // 跳到下一段/上一段语音：直接构造该段的说话者与字幕并渲染
+      if (!simDetail) break
+      const rate = simDetail.meta.tickRate ?? 64
+      const list = simDetail.voice
+      if (list.length === 0) break
+      let target = -1
+      if (cmd === 'nextVoice') {
+        for (const v of list) {
+          if (v.tick > simTick + rate) {
+            target = v.tick
+            break
+          }
+        }
+        if (target < 0) target = list[0].tick // 到底后循环到第一段
+      } else {
+        for (const v of [...list].reverse()) {
+          if (v.tick < simTick - rate) {
+            target = v.tick
+            break
+          }
+        }
+        if (target < 0) target = list[list.length - 1].tick
+      }
+      simTick = target
+      // 直接渲染该时刻的说话者与最近字幕（无需等下一帧 tick）
+      const segs = list.filter((v) => v.tick <= target && v.endTick >= target)
+      lastSpeakers = segs.map((v) => ({ name: v.playerName, team: v.team }))
+      lineHistory = segs.map((v) => ({
+        text: v.text,
+        playerName: v.playerName,
+        team: v.team,
+        tick: v.tick
+      }))
+      eventHistory = []
+      lastSimAt = 0
+      sendState()
+      break
+    }
     default:
       break
   }

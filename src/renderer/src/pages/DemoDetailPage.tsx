@@ -7,7 +7,6 @@ import {
   IcChat,
   IcFolder,
   IcJump,
-  IcLive,
   IcMic,
   IcTranscript,
   Panel,
@@ -106,25 +105,25 @@ export function DemoDetailPage({
               </Btn>
               <Btn
                 size="sm"
-                variant="primary"
+                variant="accent"
                 onClick={async () => {
-                  await window.api.overlay.setFullPanel(true, id)
-                  toast.push('FULL PANEL ON')
+                  await window.api.overlay.setEnabled(true, id)
+                  toast.push(t('detail.hudOn'))
                 }}
               >
-                <IcLive size={12} />
-                全屏面板
+                <IcMic size={12} />
+                {t('detail.voiceHud')}
               </Btn>
               <Btn
                 size="sm"
-                variant="ghost"
+                variant="primary"
                 onClick={async () => {
-                  await window.api.overlay.setEnabled(true, id)
-                  toast.push('OVERLAY ON · demo sim')
+                  await window.api.overlay.setFullPanel(true, id)
+                  toast.push(t('detail.panelOn'))
                 }}
               >
-                <IcLive size={12} />
-                OVERLAY
+                <IcTranscript size={12} />
+                {t('detail.voicePanel')}
               </Btn>
               <Btn
                 size="sm"

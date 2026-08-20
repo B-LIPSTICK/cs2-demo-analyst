@@ -11,7 +11,23 @@
   <body>
     <div class="vp-root">
       <!-- 仅语音：说话者 + 转写字幕；不显示地图/比分/回合 -->
-      <div class="vp-close" id="closeBtn" title="Close">✕</div>
+      <div class="vp-controls">
+        <button class="vp-btn" id="prevBtn" title="上一段语音">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 5v14M18 6l-8 6 8 6z" />
+          </svg>
+        </button>
+        <button class="vp-btn" id="nextBtn" title="下一段语音">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 6l8 6-8 6zM18 5v14" />
+          </svg>
+        </button>
+        <button class="vp-btn" id="closeBtn" title="关闭">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+      </div>
 
       <!-- 说话者（当前谁在说话） -->
       <div class="vp-speakers" id="speakers"></div>

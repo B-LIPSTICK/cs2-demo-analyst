@@ -1,6 +1,7 @@
 /**
- * 悬浮层逻辑：接收主进程 overlay:state 事件，只渲染左下角语音 HUD
- * （说话者：头像 + 名字 + 声波）。不显示地图/比分/回合等观战信息。
+ * 悬浮层逻辑：接收主进程 overlay:state 事件，渲染左下角语音悬浮
+ * （说话者 HUD + 控制条：上一段语音 / 下一段语音 / 关闭）。
+ * 只显示语音内容，不显示地图/比分/回合。
  * 轻量原生 DOM，不引 React。
  */
 import './overlay.css'
@@ -18,13 +19,15 @@ interface OverlayState {
 }
 
 const speakersEl = document.getElementById('speakers')!
+const hintEl = document.getElementById('hint')!
+const hudEl = document.getElementById('hud')!
 
 function teamCls(team: string): string {
   return team === 'T' ? 't' : team === 'CT' ? 'ct' : ''
 }
 
 function render(state: OverlayState): void {
-  // 仅渲染说话者（语音 HUD）
+  // 说话者（语音 HUD）
   const want = new Set(state.speakers.map((s) => s.name))
   const existing = new Map<string, HTMLElement>()
   for (const el of Array.from(speakersEl.children) as HTMLElement[]) {
@@ -61,11 +64,28 @@ function render(state: OverlayState): void {
   while (speakersEl.children.length > 6) {
     speakersEl.removeChild(speakersEl.firstChild!)
   }
+
+  // 空态提示：无语音数据时引导用户
+  if (state.mode === 'idle') {
+    hintEl.textContent =
+      '语音悬浮：在某个 Demo 详情页点击「语音悬浮」按钮开始显示谁在说话'
+    hintEl.classList.add('show')
+    hudEl.classList.add('idle')
+  } else {
+    hintEl.classList.remove('show')
+    hudEl.classList.remove('idle')
+  }
 }
 
 window.api.onEvent('overlay:state', (e) => {
-  render(e.state as OverlayState)
+  const s = e.state as OverlayState
+  render(s)
 })
+
+// 控制条按钮
+document.getElementById('prevBtn')!.onclick = () => window.api.overlay.command('prevVoice')
+document.getElementById('nextBtn')!.onclick = () => window.api.overlay.command('nextVoice')
+document.getElementById('closeBtn')!.onclick = () => window.api.overlay.command('closeOverlay')
 
 // 初始空态
 render({ mode: 'idle', tick: 0, tickRate: 64, speakers: [], lines: [] })

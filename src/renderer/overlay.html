@@ -10,8 +10,30 @@
   </head>
   <body class="ov-body">
     <div class="ov-root">
-      <!-- 左下角：仅语音 HUD（头像 + 名字 + 声波），无地图/比分/回合 -->
-      <div id="speakers" class="ov-speakers"></div>
+      <!-- 左下角语音悬浮：说话者 HUD + 控制条（上一段/下一段/关闭） -->
+      <div id="hud" class="ov-hud">
+        <div id="speakers" class="ov-speakers"></div>
+        <div id="controls" class="ov-controls">
+          <button class="ov-btn" id="prevBtn" title="上一段语音">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 5v14M18 6l-8 6 8 6z" />
+            </svg>
+          </button>
+          <button class="ov-btn" id="nextBtn" title="下一段语音">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 6l8 6-8 6zM18 5v14" />
+            </svg>
+          </button>
+          <span class="ov-sep"></span>
+          <button class="ov-btn" id="closeBtn" title="关闭语音悬浮">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <!-- 空态提示：没有语音数据时引导用户 -->
+      <div id="hint" class="ov-hint"></div>
     </div>
     <script type="module" src="/overlay-src/main.ts"></script>
   </body>

@@ -35,30 +35,50 @@ body {
   pointer-events: none;
 }
 
-/* 悬浮关闭按钮（唯一控制项） */
-.vp-close {
+/* 右上角控制组：上一段/下一段/关闭 */
+.vp-controls {
   position: absolute;
-  top: 18px;
-  right: 22px;
-  width: 34px;
-  height: 34px;
+  top: 16px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  background: rgba(24, 24, 28, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+  opacity: 0.85;
+  transition: opacity 0.2s;
+}
+
+.vp-controls:hover {
+  opacity: 1;
+}
+
+.vp-btn {
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   cursor: pointer;
-  color: rgba(245, 245, 247, 0.72);
+  color: rgba(245, 245, 247, 0.82);
   font-size: 14px;
-  background: rgba(24, 24, 28, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  border: none;
   border-radius: 50%;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  pointer-events: auto;
-  transition: background 0.15s, color 0.15s, transform 0.15s;
+  transition: background 0.14s, color 0.14s;
 }
 
-.vp-close:hover {
-  background: rgba(255, 69, 58, 0.85);
+.vp-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
   color: #fff;
-  transform: scale(1.05);
+}
+
+.vp-btn svg {
+  width: 15px;
+  height: 15px;
 }
 
 /* 说话者：左下角毛玻璃胶囊 */
