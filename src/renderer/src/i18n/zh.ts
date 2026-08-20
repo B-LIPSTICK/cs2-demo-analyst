@@ -164,8 +164,9 @@ export const zh = {
   'transcript.local': '本地',
   'transcript.cloud': '云端',
   'transcript.done': '完成',
-  'transcript.stage.extract': '提取语音',
-  'transcript.stage.asr': '转写',
+  'transcript.stage.extract': '提取语音中…',
+  'transcript.stage.asr': '转写中',
+  'transcript.localSlowHint': '当前是本地转写（较慢，约 10-40 分钟）；在设置页配置云端 API Key 后转写秒级完成',
 
   // AI 分析
   'ai.title': 'AI 分析',

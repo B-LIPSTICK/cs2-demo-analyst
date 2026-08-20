@@ -35,7 +35,12 @@ export function TranscriptPage({
   const [query, setQuery] = useState('')
   const [liveSegs, setLiveSegs] = useState<VoiceSegment[]>([])
   const [transcribing, setTranscribing] = useState(false)
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const [progress, setProgress] = useState<{ stage: string; done: number; total: number; message?: string } | null>(null)
+  const [hasCloudKey, setHasCloudKey] = useState(false)
+
+  useEffect(() => {
+    window.api.settings.get().then((s) => setHasCloudKey(Boolean(s.asr?.cloudApiKey))).catch(() => {})
+  }, [])
 
   useEffect(() => {
     window.api.library.list().then(setDemos)
@@ -63,7 +68,8 @@ export function TranscriptPage({
       if (e.demoId === demoId) setLiveSegs((s) => [...s, e.segment])
     })
     const offProg = window.api.onEvent('asr:progress', (e) => {
-      if (e.demoId === demoId) setProgress({ done: e.done, total: e.total })
+      if (e.demoId === demoId)
+        setProgress({ stage: e.stage, done: e.done, total: e.total, message: e.message })
     })
     return () => {
       offSeg()
@@ -74,7 +80,7 @@ export function TranscriptPage({
   const runTranscribe = async () => {
     if (!demoId) return
     setTranscribing(true)
-    setProgress({ done: 0, total: 1 })
+    setProgress({ stage: 'voice-extract', done: 0, total: 1 })
     try {
       await window.api.asr.transcribe(demoId)
       toast.push(t('library.transcribeDone'))
@@ -183,6 +189,11 @@ export function TranscriptPage({
             <IcMic size={13} />
             {transcribing ? t('library.transcribing') : t('library.transcribe')}
           </Btn>
+          {!hasCloudKey && (
+            <span className="muted" style={{ fontSize: 11, maxWidth: 260, lineHeight: 1.5 }}>
+              {t('transcript.localSlowHint')}
+            </span>
+          )}
           <Btn
             variant="ghost"
             onClick={async () => {
@@ -205,23 +216,32 @@ export function TranscriptPage({
         <Empty ghost="TRANSCRIPT" hint={t('transcript.noSegmentsHint')} />
       ) : (
         <>
-          {/* 进度条 */}
+          {/* 进度条 + 阶段说明 */}
           {progress && (
-            <div className="flex gap-8" style={{ alignItems: 'center', marginBottom: 12 }}>
-              <div className="grow" style={{ height: 3, background: 'var(--bg-3)', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ marginBottom: 12 }}>
+              <div className="flex" style={{ alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-1)' }}>
+                  {progress.stage === 'voice-extract'
+                    ? t('transcript.stage.extract')
+                    : progress.stage === 'asr-local'
+                      ? `${t('transcript.stage.asr')} · ${progress.message ?? ''}`
+                      : t('transcript.stage.asr')}
+                </span>
+                <span className="mono muted" style={{ fontSize: 11 }}>
+                  {progress.stage === 'voice-extract' ? '…' : `${progress.done}/${progress.total}`}
+                </span>
+              </div>
+              <div className="grow" style={{ height: 4, background: 'var(--bg-3)', position: 'relative', overflow: 'hidden', borderRadius: 2 }}>
                 <div
                   style={{
                     position: 'absolute',
                     inset: 0,
                     width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%`,
-                    background: 'linear-gradient(90deg, var(--green), var(--ct))',
+                    background: 'linear-gradient(90deg, var(--accent), var(--ct))',
                     transition: 'width .3s var(--ease-out)'
                   }}
                 />
               </div>
-              <span className="mono muted" style={{ fontSize: 11 }}>
-                {progress.done}/{progress.total}
-              </span>
             </div>
           )}
 

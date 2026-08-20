@@ -375,7 +375,7 @@ export type MainEvent =
   | { type: 'live:status'; status: LiveStatus }
   | { type: 'live:console'; channel: string; text: string }
   | { type: 'gsi:state'; state: GsiGameState }
-  | { type: 'asr:progress'; demoId: string; stage: string; done: number; total: number }
+  | { type: 'asr:progress'; demoId: string; stage: string; done: number; total: number; message?: string }
   | { type: 'asr:segment'; demoId: string; segment: VoiceSegment }
   | { type: 'ai:delta'; demoId: string; chunk: string }
   | { type: 'ai:done'; demoId: string; answer: string }

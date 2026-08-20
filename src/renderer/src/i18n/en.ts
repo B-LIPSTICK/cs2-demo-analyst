@@ -160,8 +160,9 @@ export const en: Record<keyof ZhDict, string> = {
   'transcript.local': 'LOCAL',
   'transcript.cloud': 'CLOUD',
   'transcript.done': 'DONE',
-  'transcript.stage.extract': 'Extracting voice',
+  'transcript.stage.extract': 'Extracting voice…',
   'transcript.stage.asr': 'Transcribing',
+  'transcript.localSlowHint': 'Local transcription is slow (10-40 min). Add a cloud API key in Settings for near-instant results',
 
   // AI analysis
   'ai.title': 'AI Analysis',

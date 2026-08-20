@@ -591,8 +591,8 @@ export function createLibraryService(
           players: opts?.players
         },
         {
-          progress: (stage, done, total) =>
-            emit('asr:progress', { demoId: id, stage, done, total }),
+          progress: (stage, done, total, message) =>
+            emit('asr:progress', { demoId: id, stage, done, total, message }),
           segment: (segment) => emit('asr:segment', { demoId: id, segment })
         },
         transcribeSignal?.signal

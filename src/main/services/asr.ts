@@ -18,7 +18,7 @@ import {
 } from './engines'
 
 export interface AsrEvents {
-  progress: (stage: string, done: number, total: number) => void
+  progress: (stage: string, done: number, total: number, message?: string) => void
   segment: (segment: VoiceSegment) => void
 }
 
@@ -102,7 +102,7 @@ export async function detectSpeech(wavPath: string): Promise<SpeechChunk[]> {
 export async function buildCompactWav(
   wavPath: string,
   chunks: SpeechChunk[]
-): Promise<{ path: string; offsets: number[] }> {
+): Promise<{ path: string; offsets: number[] } | null> {
   const buf = await fs.readFile(wavPath)
   const rate = buf.readUInt32LE(24)
   const channels = buf.readUInt16LE(22)
@@ -121,6 +121,8 @@ export async function buildCompactWav(
       offsets.push(c.start)
     }
   }
+  // 空语音（VAD 没切出有效片段）→ 不拼接，让调用方转写原文件
+  if (parts.length === 0 || totalBytes < 4096) return null
 
   const out = Buffer.alloc(44 + totalBytes)
   buf.copy(out, 0, 0, 44)
@@ -172,28 +174,21 @@ function run(
   opts: { cwd?: string; onLine?: (line: string) => void; signal?: AbortSignal }
 ): Promise<{ code: number | null; output: string }> {
   return new Promise((resolve, reject) => {
+    // 关键：stdio 用 ignore（不用管道捕获输出）。
+    // 受限环境（沙箱/无管道）下 spawn 的管道 stdio 会 EPERM 或挂起导致子进程卡死；
+    // csgove 用退出码判断、whisper-cli 用 -oj 输出 json 文件，都不依赖 stdout 捕获。
     const child = spawn(cmd, args, {
       windowsHide: true,
       cwd: opts.cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: 'ignore',
       signal: opts.signal
     })
     let output = ''
-    child.stdout.on('data', (d: Buffer) => {
-      output += d.toString()
-      opts.onLine?.(d.toString())
-    })
-    child.stderr.on('data', (d: Buffer) => {
-      output += d.toString()
-    })
     child.on('error', (err) => {
-      if ((err as NodeJS.ErrnoException).code === 'ABORT_ERR') {
-        resolve({ code: null, output })
-      } else {
-        reject(err)
-      }
+      console.error('[asr] spawn failed', cmd, args, err)
+      reject(err)
     })
-    child.on('close', (code) => resolve({ code, output }))
+    child.on('exit', (code) => resolve({ code, output }))
   })
 }
 
@@ -476,15 +471,23 @@ export async function transcribeDemo(
       if (chunks.length > 1 || chunks[0].start > 1 || speechRatio < 0.9) {
         compact = await buildCompactWav(item.path, chunks)
       }
+      // VAD 没切出有效语音 → 直接转写原文件（避免 0 字节紧凑文件导致 whisper 卡死）
+      const targetWav = compact?.path ?? item.path
+      events.progress(
+        options.engine === 'cloud' ? 'asr-cloud' : 'asr-local',
+        i,
+        items.length,
+        `${item.playerName} · ${compact ? '已裁剪' : '整轨'}`
+      )
       if (options.engine === 'cloud') {
-        const raw = await transcribeCloud(compact?.path ?? item.path, {
+        const raw = await transcribeCloud(targetWav, {
           baseUrl: options.cloudBaseUrl,
           apiKey: options.cloudApiKey,
           model: options.cloudModel
         }, signal)
         effective = compact ? mapCompactSegments(raw, chunks, compact.offsets) : raw
       } else {
-        const raw = await transcribeLocal(compact?.path ?? item.path, options.localModel, signal)
+        const raw = await transcribeLocal(targetWav, options.localModel, signal)
         effective = compact ? mapCompactSegments(raw, chunks, compact.offsets) : raw
       }
       if (compact) {
