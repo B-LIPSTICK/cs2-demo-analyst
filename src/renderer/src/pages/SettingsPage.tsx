@@ -254,14 +254,6 @@ export function SettingsPage({ settings }: { settings: Settings }) {
                 value={draft.asr.cloudApiKey}
                 onChange={(e) => setAsr({ cloudApiKey: e.target.value })}
               />
-              <a
-                href="https://console.groq.com/keys"
-                target="_blank"
-                rel="noreferrer"
-                style={{ color: 'var(--green)', fontSize: 12, textDecoration: 'none' }}
-              >
-                {t.t('settings.getKey')} ↗
-              </a>
             </div>
             <div className="set-row">
               <div className="info">
@@ -304,14 +296,6 @@ export function SettingsPage({ settings }: { settings: Settings }) {
             value={draft.ai.apiKey}
             onChange={(e) => setAi({ apiKey: e.target.value })}
           />
-          <a
-            href="https://console.groq.com/keys"
-            target="_blank"
-            rel="noreferrer"
-            style={{ color: 'var(--green)', fontSize: 12, textDecoration: 'none' }}
-          >
-            {t.t('settings.getKey')} ↗
-          </a>
         </div>
         <div className="set-row">
           <div className="info">
