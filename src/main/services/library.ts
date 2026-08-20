@@ -25,6 +25,8 @@ export interface LibraryService {
   setRoots(roots: string[]): Promise<void>
   rescan(): Promise<void>
   remove(id: string): Promise<void>
+  parse(id: string): Promise<void>
+  parseAll(): Promise<void>
   detectVoice(id: string): Promise<{ hasVoice: boolean; voiceSec: number }>
   extractVoice(id: string): Promise<number>
   transcribe(id: string, opts?: { players?: string[] }): Promise<void>
@@ -284,7 +286,6 @@ export function createLibraryService(
           status: 'pending'
         }
         store.index[id] = meta
-        store.queue.push(meta)
       }
 
       // ── .zip 容器：把其中 .dem 提取到缓存，直接入库解析 ──
@@ -323,7 +324,6 @@ export function createLibraryService(
               addedAt: Date.now(),
               status: 'pending'
             }
-            store.queue.push(store.index[id])
           } catch (err) {
             dbg(`zip entry failed ${zp} ${name}: ${err instanceof Error ? err.message : String(err)}`)
           }
@@ -344,7 +344,6 @@ export function createLibraryService(
       }
       broadcast()
       await persistIndex().catch(() => {})
-      void pump()
     } catch (err) {
       dbg(`scan failed: ${err instanceof Error ? err.message : String(err)}`)
       console.error('[library] scan failed', err)
@@ -386,10 +385,8 @@ export function createLibraryService(
             status: 'pending'
           }
           store.index[id] = meta
-          store.queue.push(meta)
           broadcast()
           void persistIndex()
-          void pump()
         })
       })
       w.on('unlink', (p) => {
@@ -432,6 +429,8 @@ export function createLibraryService(
       async setRoots() {},
       async rescan() {},
       async remove() {},
+      async parse() {},
+      async parseAll() {},
       async detectVoice(id) {
         const meta = getMockLibrary().find((m) => m.id === id)
         return { hasVoice: Boolean(meta?.hasVoice), voiceSec: meta?.voiceSec ?? 0 }
@@ -538,6 +537,23 @@ export function createLibraryService(
 
     async rescan() {
       void scan()
+    },
+
+    /** 手动解析单个 demo（把条目加入解析队列） */
+    async parse(id: string) {
+      const meta = store.index[id]
+      if (!meta || meta.status === 'ready' || meta.status === 'parsing') return
+      if (!store.queue.some((q) => q.id === id)) store.queue.push(meta)
+      void pump()
+    },
+
+    /** 手动解析全部待解析 demo */
+    async parseAll() {
+      for (const meta of Object.values(store.index)) {
+        if (meta.status === 'ready' || meta.status === 'parsing') continue
+        if (!store.queue.some((q) => q.id === meta.id)) store.queue.push(meta)
+      }
+      void pump()
     },
 
     /** 从资料库移除（仅移出索引与缓存，不删源文件；路径进忽略列表，不再自动入库） */

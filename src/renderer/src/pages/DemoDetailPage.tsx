@@ -50,10 +50,27 @@ export function DemoDetailPage({
     if (!ok) toast.push(t('common.notimpl'), 'warn')
   }
 
+  const parseAndWait = async () => {
+    await window.api.library.parse(id)
+    toast.push(t('library.parseStart'))
+    for (let i = 0; i < 120; i++) {
+      await new Promise((r) => setTimeout(r, 500))
+      const d = await window.api.library.detail(id)
+      if (d) {
+        setDetail(d)
+        return
+      }
+    }
+  }
+
   if (!detail) {
     return (
       <div className="page">
-        <Empty ghost="LOADING" hint="…" />
+        <Empty ghost="DEMO" hint={t('library.notParsed')}>
+          <Btn variant="accent" onClick={parseAndWait} style={{ marginTop: 8 }}>
+            {t('library.parseNow')}
+          </Btn>
+        </Empty>
       </div>
     )
   }

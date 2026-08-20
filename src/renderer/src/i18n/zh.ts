@@ -84,6 +84,11 @@ export const zh = {
   'library.removed': '已从资料库移除（不会删源文件，可重新扫描其它目录）',
   'library.rootFilter': '按目录筛选',
   'library.allRoots': '全部目录',
+  'library.parseNow': '解析',
+  'library.parseAll': '全部解析',
+  'library.parseStart': '已开始解析',
+  'library.notParsed': '尚未解析，点击解析后即可查看分析',
+  'library.retry': '重试',
 
   // 详情
   'detail.hud.kills': '击杀',

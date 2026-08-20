@@ -101,6 +101,8 @@ function registerIpc(): void {
   ipcMain.handle('library:removeRoot', (_e, root: string) => library.removeRoot(root))
   ipcMain.handle('library:rescan', () => library.rescan())
   ipcMain.handle('library:remove', (_e, id: string) => library.remove(id))
+  ipcMain.handle('library:parse', (_e, id: string) => library.parse(id))
+  ipcMain.handle('library:parseAll', () => library.parseAll())
 
   // 收藏
   ipcMain.handle('favorites:list', async () => {

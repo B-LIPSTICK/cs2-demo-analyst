@@ -169,6 +169,17 @@ function LibraryPageInner({
             <IcRefresh size={13} />
             {t('library.rescan')}
           </Btn>
+          {demos.some((d) => d.status === 'pending') && (
+            <Btn
+              variant="accent"
+              onClick={async () => {
+                await window.api.library.parseAll()
+                toast.push(t('library.parseStart'))
+              }}
+            >
+              {t('library.parseAll')}（{demos.filter((d) => d.status === 'pending').length}）
+            </Btn>
+          )}
           <Btn variant="ghost" onClick={() => window.api.favorites.reveal()}>
             ★ {t('library.favFolder')}
           </Btn>
@@ -197,6 +208,10 @@ function LibraryPageInner({
               onOpen={() => onOpenDemo(d.id)}
               onToggleFav={() => toggleFav(d.id)}
               onRemove={() => removeDemo(d.id)}
+              onParse={() => {
+                window.api.library.parse(d.id)
+                toast.push(t('library.parseStart'))
+              }}
             />
           ))}
         </div>
@@ -270,7 +285,8 @@ function DemoCard({
   fav,
   onOpen,
   onToggleFav,
-  onRemove
+  onRemove,
+  onParse
 }: {
   demo: DemoMeta
   index: number
@@ -278,6 +294,7 @@ function DemoCard({
   onOpen: () => void
   onToggleFav: () => void
   onRemove: () => void
+  onParse: () => void
 }) {
   const t = useTKey()
   const toast = useToast()
@@ -382,12 +399,34 @@ function DemoCard({
 
       {(demo.status === 'parsing' || demo.status === 'pending') && (
         <div className="status-cover">
-          <Ring pct={0.35} label={t('library.parsing')} />
+          {demo.status === 'parsing' ? (
+            <Ring pct={0.35} label={t('library.parsing')} />
+          ) : (
+            <Btn
+              size="sm"
+              variant="accent"
+              onClick={(e) => {
+                e.stopPropagation()
+                onParse()
+              }}
+            >
+              {t('library.parseNow')}
+            </Btn>
+          )}
         </div>
       )}
       {demo.status === 'error' && (
         <div className="status-cover">
-          <Ring pct={1} label="!" />
+          <Btn
+            size="sm"
+            variant="danger"
+            onClick={(e) => {
+              e.stopPropagation()
+              onParse()
+            }}
+          >
+            {t('library.retry')}
+          </Btn>
         </div>
       )}
     </article>

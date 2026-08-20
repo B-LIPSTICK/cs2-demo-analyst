@@ -21,7 +21,9 @@ const api: ApiWithEvents = {
     addRoot: () => ipcRenderer.invoke('library:addRoot'),
     removeRoot: (root: string) => ipcRenderer.invoke('library:removeRoot', root),
     rescan: () => ipcRenderer.invoke('library:rescan'),
-    remove: (id: string) => ipcRenderer.invoke('library:remove', id)
+    remove: (id: string) => ipcRenderer.invoke('library:remove', id),
+    parse: (id: string) => ipcRenderer.invoke('library:parse', id),
+    parseAll: () => ipcRenderer.invoke('library:parseAll')
   },
   favorites: {
     list: () => ipcRenderer.invoke('favorites:list'),

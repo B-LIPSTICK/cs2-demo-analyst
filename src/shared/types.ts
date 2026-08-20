@@ -295,6 +295,8 @@ export interface Api {
     removeRoot: (root: string) => Promise<void>
     rescan: () => Promise<void>
     remove: (id: string) => Promise<void>
+    parse: (id: string) => Promise<void>
+    parseAll: () => Promise<void>
   }
   favorites: {
     list: () => Promise<Favorite[]>

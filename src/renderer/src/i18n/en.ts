@@ -82,6 +82,11 @@ export const en: Record<keyof ZhDict, string> = {
   'library.removed': 'Removed from library (source file kept)',
   'library.rootFilter': 'Filter by folder',
   'library.allRoots': 'All folders',
+  'library.parseNow': 'Parse',
+  'library.parseAll': 'Parse all',
+  'library.parseStart': 'Parsing started',
+  'library.notParsed': 'Not parsed yet — click Parse to analyze',
+  'library.retry': 'Retry',
 
   'detail.hud.kills': 'KILLS',
   'detail.hud.deaths': 'DEATHS',
