@@ -39,7 +39,12 @@ createServer(async (req, res) => {
       return
     }
     const data = await fs.readFile(safe)
-    res.writeHead(200, { 'Content-Type': MIME[extname(safe)] ?? 'application/octet-stream' })
+    // ffmpeg.wasm 需要跨域隔离（SharedArrayBuffer）
+    res.writeHead(200, {
+      'Content-Type': MIME[extname(safe)] ?? 'application/octet-stream',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp'
+    })
     res.end(data)
   } catch {
     res.writeHead(404)

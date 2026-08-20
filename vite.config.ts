@@ -28,6 +28,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    open: true // 一键运行：自动打开浏览器
+    open: true, // 一键运行：自动打开浏览器
+    headers: {
+      // ffmpeg.wasm 需要跨域隔离（SharedArrayBuffer）
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp'
+    }
   }
 })
