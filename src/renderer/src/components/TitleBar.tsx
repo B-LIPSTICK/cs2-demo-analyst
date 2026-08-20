@@ -27,32 +27,6 @@ export function TitleBar({
   const t = useTKey()
   return (
     <header className="titlebar">
-      {/* macOS 风格红绿灯（左） */}
-      <div className="win-btns">
-        <button className="win-btn close" onClick={() => window.api.window.close()} title="Close">
-          <svg viewBox="0 0 12 12">
-            <path d="M3 3l6 6M9 3L3 9" />
-          </svg>
-        </button>
-        <button
-          className="win-btn min"
-          onClick={() => window.api.window.minimize()}
-          title="Minimize"
-        >
-          <svg viewBox="0 0 12 12">
-            <path d="M2 6h8" />
-          </svg>
-        </button>
-        <button
-          className="win-btn max"
-          onClick={() => window.api.window.toggleMaximize()}
-          title="Maximize"
-        >
-          <svg viewBox="0 0 12 12">
-            <path d="M4 4l4 4M5 4h3v3" />
-          </svg>
-        </button>
-      </div>
       <div className="brand">
         <span className="logo">
           <svg viewBox="0 0 24 24" fill="none">
@@ -98,6 +72,28 @@ export function TitleBar({
               <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" />
             </svg>
           )}
+        </button>
+      </div>
+      {/* 窗口控制（右上角） */}
+      <div className="win-btns">
+        <button className="win-btn min" onClick={() => window.api.window.minimize()} title="Minimize">
+          <svg viewBox="0 0 12 12">
+            <path d="M2 6h8" />
+          </svg>
+        </button>
+        <button
+          className="win-btn max"
+          onClick={() => window.api.window.toggleMaximize()}
+          title="Maximize"
+        >
+          <svg viewBox="0 0 12 12">
+            <path d="M4 4l4 4M5 4h3v3" />
+          </svg>
+        </button>
+        <button className="win-btn close" onClick={() => window.api.window.close()} title="Close">
+          <svg viewBox="0 0 12 12">
+            <path d="M3 3l6 6M9 3L3 9" />
+          </svg>
         </button>
       </div>
     </header>

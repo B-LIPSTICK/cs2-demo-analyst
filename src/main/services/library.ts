@@ -8,7 +8,6 @@ import { app, dialog, BrowserWindow } from 'electron'
 import { promises as fs } from 'node:fs'
 import { basename, dirname, join, extname } from 'node:path'
 import { createHash } from 'node:crypto'
-import { watch, type FSWatcher } from 'chokidar'
 import AdmZip from 'adm-zip'
 import type { DemoDetail, DemoMeta, Settings } from '@shared/types'
 import { parseDemo } from './parser'
@@ -39,7 +38,6 @@ interface Store {
   roots: string[]
   queue: DemoMeta[]
   parsing: boolean
-  watchers: FSWatcher[]
 }
 
 function demoid(path: string, size: number, mtimeMs: number): string {
@@ -83,8 +81,7 @@ export function createLibraryService(
     details: new Map(),
     roots: [],
     queue: [],
-    parsing: false,
-    watchers: []
+    parsing: false
   }
 
   const libDir = () => join(app.getPath('userData'), 'library')
@@ -364,66 +361,8 @@ export function createLibraryService(
     }
   }
 
-  // ─── 目录监视 ─────────────────────────────────────────────────────────────
-
-  const stopWatchers = async () => {
-    for (const w of store.watchers) await w.close().catch(() => {})
-    store.watchers = []
-  }
-
-  const setupWatchers = async () => {
-    await stopWatchers()
-    for (const root of store.roots) {
-      const w = watch(root, {
-        depth: 6,
-        ignoreInitial: true,
-        awaitWriteFinish: { stabilityThreshold: 1500, pollInterval: 300 }
-      })
-      w.on('add', (p) => {
-        if (extname(p).toLowerCase() === '.zip') {
-          void scan() // zip 容器 → 整体扫描提取
-          return
-        }
-        if (extname(p).toLowerCase() !== '.dem') return
-        if (ignored.includes(p)) return
-        void fs.stat(p).then((st) => {
-          const id = demoid(p, st.size, st.mtimeMs)
-          if (store.index[id]) return
-          const meta: DemoMeta = {
-            id,
-            path: p,
-            fileName: p.split(/[\\/]/).pop() ?? p,
-            sizeBytes: st.size,
-            mtimeMs: st.mtimeMs,
-            addedAt: Date.now(),
-            status: 'pending'
-          }
-          store.index[id] = meta
-          broadcast()
-          void persistIndex()
-        })
-      })
-      w.on('unlink', (p) => {
-        if (extname(p).toLowerCase() === '.zip') {
-          void scan() // 容器消失 → 扫描清理对应条目
-          return
-        }
-        for (const id of Object.keys(store.index)) {
-          if (store.index[id].path === p) {
-            delete store.index[id]
-            store.details.delete(id)
-            fs.unlink(detailPath(id)).catch(() => {})
-          }
-        }
-        broadcast()
-        void persistIndex()
-      })
-      w.on('change', (p) => {
-        if (extname(p).toLowerCase() === '.zip') void scan()
-      })
-      store.watchers.push(w)
-    }
-  }
+  // ─── 目录监视（已停用：不做自动检测，只有手动「添加目录/重新扫描」才扫描） ──
+  // 若未来恢复：chokidar watch roots，add/unlink/change 处理见 git 历史
 
   // ─── Mock 分支 ────────────────────────────────────────────────────────────
 
@@ -508,10 +447,8 @@ export function createLibraryService(
         const settings = await getSettings()
         store.roots = settings.libraryRoots
         dbg(`init roots: ${JSON.stringify(store.roots)}`)
-        await setupWatchers()
-        dbg('init watchers ok')
+        // 启动不自动扫描：只显示缓存列表；手动「添加目录/重新扫描」才检测磁盘
         broadcast()
-        void scan()
         dbg('init done')
       } catch (err) {
         console.error('[library] init failed', err)
@@ -556,7 +493,7 @@ export function createLibraryService(
     async setRoots(roots: string[]) {
       store.roots = roots
       await updateSettings({ libraryRoots: roots })
-      await setupWatchers()
+      // 用户主动添加/移除目录 → 立即扫描（这是手动行为）
       void scan()
     },
 
