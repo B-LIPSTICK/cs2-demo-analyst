@@ -15,7 +15,11 @@ const library = createLibraryService(() => mainWindow, getSettings)
 import { LiveService } from './services/live'
 const live = new LiveService({
   status: (s) => mainWindow?.webContents.send('live:status', { status: s }),
-  gsi: (s) => mainWindow?.webContents.send('gsi:state', { state: s }),
+  gsi: (s) => {
+    mainWindow?.webContents.send('gsi:state', { state: s })
+    // 实况 GSI 同步进游戏内悬浮层（demo 演示模式优先）
+    void import('./overlay').then((m) => m.updateLiveGsi(s))
+  },
   consoleLine: (channel, text) =>
     mainWindow?.webContents.send('live:console', { channel, text })
 })
@@ -109,6 +113,12 @@ function registerIpc(): void {
   ipcMain.handle('live:setTimescale', (_e, x: number) => live.setTimescale(x))
   ipcMain.handle('live:specNext', () => live.specNext())
   ipcMain.handle('live:specPrev', () => live.specPrev())
+  ipcMain.handle('live:specGoto', (_e, userid: number) => live.specGoto(userid))
+  ipcMain.handle('live:launch', (_e, opts?: { toolsMode?: boolean; playDemoPath?: string }) =>
+    live.launch(opts)
+  )
+  ipcMain.handle('live:installGsi', () => live.installGsi())
+  ipcMain.handle('live:locateInstall', () => live.locateInstall())
 
   // Overlay 悬浮层
   ipcMain.handle('overlay:setEnabled', async (_e, enabled: boolean, demoId?: string) => {

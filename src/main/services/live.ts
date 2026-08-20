@@ -5,7 +5,8 @@ import { execFile } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import http from 'node:http'
-import type { GsiGameState, LiveStatus } from '@shared/types'
+import { shell } from 'electron'
+import type { GsiGameState, LaunchResult, LiveStatus } from '@shared/types'
 import { VConsoleClient } from './vconsole'
 
 export interface LiveEvents {
@@ -166,6 +167,10 @@ export class LiveService {
     return this.sendCommand('spec_prev')
   }
 
+  specGoto(userid: number): boolean {
+    return this.sendCommand(`spec_goto ${Math.round(userid)}`)
+  }
+
   // ─── GSI ─────────────────────────────────────────────────────────────────
 
   private restartGsiServer(): void {
@@ -232,7 +237,7 @@ export class LiveService {
   }
 
   /** 生成 GSI 配置文件（写进 CS2 的 csgo/cfg，游戏启动时加载） */
-  async installGsiCfg(installPath: string | undefined): Promise<string | null> {
+  async installGsiCfg(installPath?: string): Promise<string | null> {
     const base = installPath ?? (await locateCs2Install())
     if (!base) return null
     const cfgDir = join(base, 'game', 'csgo', 'cfg')
@@ -275,6 +280,28 @@ export class LiveService {
     const argStr = args.length ? `//${encodeURIComponent(args.join(' '))}` : ''
     const url = `steam://run/730${argStr}`
     return { ok: true, url }
+  }
+
+  /** 一键启动：构造 steam:// URL 并交给系统打开 */
+  async launch(opts?: { toolsMode?: boolean; playDemoPath?: string }): Promise<LaunchResult> {
+    const toolsMode = opts?.toolsMode ?? true
+    const { url } = this.launchCs2(toolsMode, opts?.playDemoPath)
+    try {
+      await shell.openExternal(url)
+      return { ok: true, url }
+    } catch (err) {
+      return { ok: false, url, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  /** 写入 GSI 配置到 CS2 的 csgo/cfg 目录（优先设置里的路径，否则自动定位） */
+  async installGsi(): Promise<string | null> {
+    return this.installGsiCfg()
+  }
+
+  /** 定位 CS2 安装目录（Steam 注册表 → libraryfolders.vdf） */
+  async locateInstall(): Promise<string | null> {
+    return locateCs2Install()
   }
 
   getStatus(): LiveStatus {

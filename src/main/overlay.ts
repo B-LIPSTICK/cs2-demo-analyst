@@ -4,7 +4,7 @@
  */
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'node:path'
-import type { DemoDetail, OverlayPosition, TeamSide } from '@shared/types'
+import type { DemoDetail, GsiGameState, OverlayPosition, TeamSide } from '@shared/types'
 
 interface OverlaySpeaker {
   name: string
@@ -46,6 +46,7 @@ let clickThrough = false
 let lastSpeakers: OverlaySpeaker[] = []
 let lineHistory: OverlayLine[] = []
 let eventHistory: NonNullable<OverlayState['events']> = []
+let liveGsi: GsiGameState | null = null // 实况模式：最近一次 GSI 状态
 
 const WIN_W = 560
 const WIN_H = 260
@@ -145,7 +146,19 @@ function sendState(): void {
           winner: r.winner
         }))
       }
-    : { mode: 'idle', tick: 0, tickRate: 64, speakers: [], lines: [] }
+    : liveGsi && (liveGsi.map || liveGsi.round != null)
+      ? {
+          mode: 'live',
+          tick: 0,
+          tickRate: 64,
+          map: liveGsi.map,
+          round: liveGsi.round,
+          scoreT: liveGsi.scoreT,
+          scoreCT: liveGsi.scoreCT,
+          speakers: [],
+          lines: []
+        }
+      : { mode: 'idle', tick: 0, tickRate: 64, speakers: [], lines: [] }
   if (win && !win.isDestroyed()) win.webContents.send('overlay:state', { state })
   if (fullWin && !fullWin.isDestroyed()) fullWin.webContents.send('overlay:state', { state })
 }
@@ -269,6 +282,17 @@ export function setClickThrough(on: boolean): void {
   applyClickThrough(on)
 }
 
+/**
+ * 实况模式：把 GSI 状态推给悬浮层（demo 演示模式优先）。
+ * 仅当未在演示模式下且悬浮层已创建时更新显示。
+ */
+export function updateLiveGsi(s: GsiGameState): void {
+  liveGsi = s
+  if (simDetail) return
+  if (win && !win.isDestroyed()) sendState()
+  if (fullWin && !fullWin.isDestroyed()) sendState()
+}
+
 // ─── 全屏面板（游戏内观战控制台） ───────────────────────────────────────────
 
 function createFullWindow(): void {
@@ -384,5 +408,17 @@ export function getState(): OverlayState {
         speakers: lastSpeakers,
         lines: lineHistory.slice(-3)
       }
-    : { mode: 'idle', tick: 0, tickRate: 64, speakers: [], lines: [] }
+    : liveGsi && (liveGsi.map || liveGsi.round != null)
+      ? {
+          mode: 'live',
+          tick: 0,
+          tickRate: 64,
+          map: liveGsi.map,
+          round: liveGsi.round,
+          scoreT: liveGsi.scoreT,
+          scoreCT: liveGsi.scoreCT,
+          speakers: [],
+          lines: []
+        }
+      : { mode: 'idle', tick: 0, tickRate: 64, speakers: [], lines: [] }
 }

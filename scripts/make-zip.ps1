@@ -3,6 +3,7 @@
 $ErrorActionPreference = 'Stop'
 
 Write-Host '[zip] electron-builder --dir ...' -ForegroundColor Cyan
+# electronDist 已在 electron-builder.yml 指向本地 node_modules（离线打包，不下载）
 npx electron-builder --dir
 if ($LASTEXITCODE -ne 0) { throw "electron-builder --dir failed" }
 
@@ -13,25 +14,14 @@ $version = (node -p "require('./package.json').version").Trim()
 $zipPath = Join-Path $PWD "dist\CS2-Demo-Analyst-$version-win64-portable.zip"
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 
-Write-Host '[zip] compressing (fastest level) ...' -ForegroundColor Cyan
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zip = [System.IO.Compression.ZipFile]::Open($zipPath, [System.IO.Compression.ZipArchiveMode]::Create)
-$level = [System.IO.Compression.CompressionLevel]::Fastest
-$files = Get-ChildItem $unpacked -Recurse -File
-$total = $files.Count
-$i = 0
-foreach ($file in $files) {
-    $i++
-    if ($i % 300 -eq 0) { Write-Host "  $i / $total" }
-    $rel = $file.FullName.Substring($unpacked.Length + 1).Replace('\', '/')
-    $entry = $zip.CreateEntry("CS2-Demo-Analyst/$rel", $level)
-    $in = $file.OpenRead()
-    $out = $entry.Open()
-    $in.CopyTo($out)
-    $out.Dispose()
-    $in.Dispose()
-}
-$zip.Dispose()
+# 解压后目录名统一为 CS2-Demo-Analyst/：先复制到临时目录再整体压缩
+$stage = Join-Path $PWD "dist\.zip-stage\CS2-Demo-Analyst"
+if (Test-Path (Split-Path $stage -Parent)) { Remove-Item (Split-Path $stage -Parent) -Recurse -Force }
+Copy-Item $unpacked $stage -Recurse
+
+Write-Host '[zip] compressing (Compress-Archive) ...' -ForegroundColor Cyan
+Compress-Archive -Path $stage -DestinationPath $zipPath -CompressionLevel Fastest
+Remove-Item (Split-Path $stage -Parent) -Recurse -Force
 
 $sizeMB = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
 Write-Host "[zip] DONE -> $zipPath ($sizeMB MB)" -ForegroundColor Green

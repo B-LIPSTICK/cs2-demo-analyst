@@ -28,6 +28,7 @@ export function LivePage() {
   const [cmd, setCmd] = useState('')
   const [speed, setSpeed] = useState(1)
   const [roundJump, setRoundJump] = useState('')
+  const [specId, setSpecId] = useState('')
   const logRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -55,6 +56,12 @@ export function LivePage() {
     const ok = await fn()
     if (!ok) toast.push(t('common.notimpl'), 'warn')
     return ok
+  }
+
+  const launchCs2 = async () => {
+    const r = await window.api.live.launch({ toolsMode: true })
+    if (r.ok) toast.push(t('live.launched'))
+    else toast.push(r.error ?? t('common.error'), 'warn')
   }
 
   const sendCmd = () => {
@@ -114,6 +121,11 @@ export function LivePage() {
               }
             >
               {t('live.connect')}
+            </Btn>
+          )}
+          {!status.cs2Running && (
+            <Btn variant="primary" onClick={launchCs2}>
+              {t('live.launch')}
             </Btn>
           )}
         </div>
@@ -177,6 +189,22 @@ export function LivePage() {
             </Btn>
             <Btn variant="ghost" size="sm" onClick={() => guard(() => window.api.live.specNext())}>
               {t('live.specNext')}
+            </Btn>
+            <span className="gap" />
+            <input
+              className="input"
+              style={{ width: 84 }}
+              placeholder={t('live.specUserid')}
+              value={specId}
+              onChange={(e) => setSpecId(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && specId) {
+                  guard(() => window.api.live.specGoto(Number(specId))).then(() => setSpecId(''))
+                }
+              }}
+            />
+            <Btn variant="ghost" size="sm" onClick={() => guard(() => window.api.live.specGoto(Number(specId)))}>
+              {t('live.specGoto')}
             </Btn>
           </div>
 

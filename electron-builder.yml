@@ -19,3 +19,9 @@ portable:
 npmRebuild: false
 electronDownload:
   cache: true
+# 离线打包：直接用 npm 安装的本地 Electron dist（跳过 electron-builder 的 GitHub 下载）
+electronDist: node_modules/electron/dist
+# 只打包中/英语言包，减 ~40MB
+electronLanguages:
+  - en-US
+  - zh-CN

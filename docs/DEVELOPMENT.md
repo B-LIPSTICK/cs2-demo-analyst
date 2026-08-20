@@ -51,7 +51,7 @@ Web 版与桌面版共享 renderer；`installWebApiIfNeeded()`（renderer/src/we
 - **csgove 输出为满幅 int32 PCM（语音在高 16 位）**，`normalizeWav` 取 `v >> 16` 转 16-bit；取低 16 位会得到量化噪声（曾导致 whisper"广播幻觉"）。
 - VAD：能量门限切段 + 紧凑 WAV + 时间偏移映射（本地 CPU 提速 5-10 倍）。
 - 本地引擎：whisper-cli `-l auto -oj`；云端：OpenAI 兼容 `POST /audio/transcriptions`（Groq verbose_json）。
-- 浏览器解码（Web 版，实验）：vendored `wasm-audio-decoders`（decodeFrames）——**已知问题：输出接近静音**，待换 @mohayonao/opus-decoder 或 Ogg 容器方案（见 findings.md §12）。
+- 浏览器解码（Web 版）：首选 ffmpeg.wasm（core 从 `/ffmpeg/` 静态加载，`-f opus` 裸流解码，经真实 demo 验证可靠）；失败回退 vendored wasm-audio-decoders；页面已配 COOP/COEP 头。Electron 壳内 ffmpeg.wasm FS 受限（虚拟 FS 报错），桌面版走 csgove+whisper 链路（见 findings.md §12）。
 
 ### VConsole2（实况注入）
 - 发送：`"CMND"` + `00 D2 00 00` + int16BE(len+13) + `00 00` + cmd + `\0`。
@@ -77,11 +77,13 @@ Web 版与桌面版共享 renderer；`installWebApiIfNeeded()`（renderer/src/we
 
 1. `npm run web:build` → 部署 `web-dist/` 到 GitHub Pages / 任意静态托管。
 2. `npm run dist:zip` → 发布 `dist/CS2-Demo-Analyst-<ver>-win64-portable.zip`（绿色便携，秒级打包）。
+   - 离线打包：`electron-builder.yml` 已配 `electronDist: node_modules/electron/dist` + `electronLanguages: [en-US, zh-CN]`，不依赖 GitHub 下载。
+   - 运行时依赖只保留 main 进程所需（deadem/chokidar/adm-zip），React/ffmpeg/字体均为构建期依赖（devDependencies），包体显著更小。
 3. 更新 README 截图与版本号；侧车（csgove/whisper/模型）按需运行时下载，不入包。
 
 ## 已知问题与路线
 
-- Web 版浏览器内语音解码输出异常（见 findings.md §12）。
+- Web 版浏览器内语音解码以 ffmpeg.wasm 为主后端（真实 demo 已验证），Chrome 部署环境待最终验收（见 findings.md §12）。
 - Web 版实况注入依赖本地桥（live.ts 抽为 HTTP/WS 服务，Phase B）。
 - Overlay 悬浮层在 Web 版以 HUD 预览替代，真实 Overlay 在桌面版。
 - MM demo 无语音、CS2 更新可能破坏解析适配。

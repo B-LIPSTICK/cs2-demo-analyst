@@ -27,20 +27,21 @@
 - [ ] 2.5 转写工作台接通真实数据（分段流式显示、筛选、导出、点击跳转）
 - 验收: 测试 demo（含 2133s 语音）提取+转写成功, 时间戳与回合对齐
 
-### Phase 3 — 挂接与注入
-- [ ] 3.1 cs2 进程检测 + CS2 安装定位（Steam 注册表/steamapps）
-- [ ] 3.2 VConsole2 TS 客户端（CMND/PRNT/CHAN）+ mock server
-- [ ] 3.3 注入指令集: demo_gototick/pause/resume/timescale/spec_goto/spec_next/prev
-- [ ] 3.4 GSI: cfg 生成 + 本地 HTTP server
-- [ ] 3.5 启动器: Mode A 挂接 + Mode B 外部启动（steam://run/730//-tools）
-- [ ] 3.6 实况页接通 + 详情/转写页点击跳转打通
+### Phase 3 — 挂接与注入 ✅（本会话补齐 IPC/UI 出口）
+- [x] 3.1 cs2 进程检测（tasklist 轮询）+ CS2 安装定位（Steam 注册表/steamapps）→ `live:locateInstall`
+- [x] 3.2 VConsole2 TS 客户端（CMND/PRNT/CHAN）+ mock server（--vcon-mock）
+- [x] 3.3 注入指令集: demo_gototick/pause/resume/timescale/spec_goto/spec_next/spec_prev
+- [x] 3.4 GSI: cfg 生成 + 本地 HTTP server → `live:installGsi` + 设置页一键写入
+- [x] 3.5 启动器: Mode A 挂接 + Mode B 外部启动（steam://run/730//-tools / +playdemo）→ `live:launch`
+- [x] 3.6 实况页接通 + 详情/转写页点击跳转打通；GSI → 悬浮层实况模式（overlay.updateLiveGsi）
+- 验收: --vcon-mock 端到端通过（VCON 连接、demo_info 回显、LIVE 状态，截图 shot-live-vcon.png）
 
-### Phase 4 — Overlay + 打包 + 文档
-- [ ] 4.1 Overlay 透明置顶窗口（转写字幕/回合比分/说话指示）
-- [ ] 4.2 打磨: 动效/空态/性能/细节
-- [ ] 4.3 打包: NSIS + portable; 图标; 首次运行引导
-- [ ] 4.4 文档: README/DEVELOPMENT/FAIR PLAY 免责
-- [ ] 4.5 端到端自测
+### Phase 4 — Overlay + 打包 + 文档（进行中）
+- [x] 4.1 Overlay 透明置顶窗口（demo sim + GSI 实况模式; 说话者头像/声波 HUD; 全屏面板）
+- [ ] 4.2 打磨: 动效/空态/性能/细节（v2 主题已完成，余量小）
+- [x] 4.3 打包: portable zip 离线可用（electronDist 指向本地 node_modules）；NSIS 待网络
+- [ ] 4.4 文档: README/DEVELOPMENT/FAIR PLAY 免责（已有，随功能补齐）
+- [ ] 4.5 端到端自测（smoke + 截图 + web 版验证）
 
 ## 错误记录
 | 错误 | 尝试 | 解决 |

@@ -73,6 +73,28 @@ export function SettingsPage({ settings }: { settings: Settings }) {
     }
   }
 
+  const detectCs2 = async () => {
+    const path = await window.api.live.locateInstall()
+    if (path) {
+      setCs2({ installPath: path })
+      toast.push(t.t('settings.cs2Detected'))
+    } else {
+      toast.push(t.t('settings.cs2DetectFailed'), 'warn')
+    }
+  }
+
+  const installGsi = async () => {
+    const path = await window.api.live.installGsi()
+    if (path) toast.push(t.tf('settings.gsiInstalled', { path }))
+    else toast.push(t.t('settings.gsiInstallFailed'), 'warn')
+  }
+
+  const launchTools = async () => {
+    const r = await window.api.live.launch({ toolsMode: draft.cs2.useToolsMode })
+    if (r.ok) toast.push(t.t('settings.cs2Launched'))
+    else toast.push(r.error ?? t.t('common.error'), 'warn')
+  }
+
   return (
     <div className="page" style={{ maxWidth: 860 }}>
       <div className="page-head">
@@ -97,7 +119,7 @@ export function SettingsPage({ settings }: { settings: Settings }) {
                 className={`seg-item ${draft.language === l ? 'on' : ''}`}
                 onClick={() => set({ language: l })}
               >
-                {l === 'zh' ? '涓枃' : 'EN'}
+                {l === 'zh' ? '中文' : 'EN'}
               </span>
             ))}
           </div>
@@ -128,7 +150,7 @@ export function SettingsPage({ settings }: { settings: Settings }) {
                   size="sm"
                   onClick={() => set({ libraryRoots: draft.libraryRoots.filter((x) => x !== r) })}
                 >
-                  鉁?                </Btn>
+                  移除                </Btn>
               </div>
             ))}
           </div>
@@ -233,10 +255,24 @@ export function SettingsPage({ settings }: { settings: Settings }) {
             <div className="t">{t.t('settings.cs2Path')}</div>
             <div className="d">{draft.cs2.installPath ?? '—'}</div>
           </div>
-          <Btn variant="ghost" size="sm">
+          <Btn variant="ghost" size="sm" onClick={detectCs2}>
             <IcFolder size={12} />
             {t.t('settings.cs2Detect')}
           </Btn>
+        </div>
+        <div className="set-row">
+          <div className="info">
+            <div className="t">{t.t('settings.cs2Setup')}</div>
+            <div className="d">{t.t('settings.cs2SetupHint')}</div>
+          </div>
+          <div className="flex" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <Btn variant="ghost" size="sm" onClick={installGsi}>
+              {t.t('settings.gsiInstall')}
+            </Btn>
+            <Btn variant="accent" size="sm" onClick={launchTools}>
+              {t.t('settings.cs2Launch')}
+            </Btn>
+          </div>
         </div>
         <div className="set-row">
           <div className="info">

@@ -40,7 +40,12 @@ const api: ApiWithEvents = {
     resume: () => ipcRenderer.invoke('live:resume'),
     setTimescale: (x: number) => ipcRenderer.invoke('live:setTimescale', x),
     specNext: () => ipcRenderer.invoke('live:specNext'),
-    specPrev: () => ipcRenderer.invoke('live:specPrev')
+    specPrev: () => ipcRenderer.invoke('live:specPrev'),
+    specGoto: (userid: number) => ipcRenderer.invoke('live:specGoto', userid),
+    launch: (opts?: { toolsMode?: boolean; playDemoPath?: string }) =>
+      ipcRenderer.invoke('live:launch', opts),
+    installGsi: () => ipcRenderer.invoke('live:installGsi'),
+    locateInstall: () => ipcRenderer.invoke('live:locateInstall')
   },
   overlay: {
     setEnabled: (enabled: boolean, demoId?: string) =>

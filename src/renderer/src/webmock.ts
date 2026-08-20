@@ -286,7 +286,11 @@ export function createWebApi(): ApiWithEvents {
       resume: async () => false,
       setTimescale: async () => false,
       specNext: async () => false,
-      specPrev: async () => false
+      specPrev: async () => false,
+      specGoto: async () => false,
+      launch: async () => ({ ok: false, url: '', error: 'Web 版不支持启动 CS2：请使用桌面版' }),
+      installGsi: async () => null,
+      locateInstall: async () => null
     },
     overlay: {
       setEnabled: async (enabled, demoId) => {

@@ -82,14 +82,15 @@
 - [ ] deadem 对 `-tools` 无关, 纯文件解析, 无风险。
 - [ ] whisper.cpp 中文准确率: 默认推荐 small/medium 多语言模型; 云端 Groq 兜底。
 
-## 12. Web 版语音解码（浏览器内，进行中）
+## 12. Web 版语音解码（浏览器内）
 
 - **已闭环（Electron/Node 侧）**: csgove 提取 → normalizeWav 取 int32 高 16 位（根因：csgove 写满幅 int32 PCM，语音在高 16 位；取低 16 位得到量化噪声）→ VAD 裁剪 → whisper 转写。实测 55 段清晰中文。
-- **浏览器内方案（wasm-audio-decoders, vendored opus-decoder.js）**:
-  - parseDemoWeb 收集 SVC_VOICE_DATA → voiceData 为 **Uint8Array**（protobuf bytes，非 base64 字符串；已转 base64 存储）→ 分组/切段 → decodeFrames 逐帧。
-  - **问题**: decodeFrames 对 CS2 帧输出接近静音（rms ~2e-4，内容也不对，whisper 转写为"广播幻觉"）；构造参数（48k/16k、单双声道）均无效。与 Go libopus（csgove 修复后清晰）明显不一致。
-  - 待验证方向: A) @mohayonao/opus-decoder（逐帧 WASM）；B) 对比 deadem 与 demoinfocs(csgove) 解析的 voiceData 字节是否一致；C) ffmpeg.wasm 兜底（~30MB）；D) **最务实：Web 版语音转写走本地桥**（桥复用 csgove+whisper 已验证链路，Web 上传 wav → 桥转写返回文本）。
-- Ogg Opus 容器 muxer 原型已写（scripts/test-ogg-decode.mjs），decodeFile 需 @wasm-audio-decoders/ogg 组合，暂未纳入。
+- **浏览器内方案（ffmpeg.wasm 为主，已落地）**:
+  - parseDemoWeb 收集 SVC_VOICE_DATA → voiceData 为 **Uint8Array**（protobuf bytes，非 base64 字符串；已转 base64 存储）→ 分组/切段 → 帧序列 → Ogg Opus muxer → ffmpeg.wasm 解码出 WAV。
+  - ffmpeg core 从 `/ffmpeg/ffmpeg-core.js|wasm` 静态加载（renderer public 目录，web-dist 同步拷贝）；页面配 COOP/COEP 头（SharedArrayBuffer 需要）。
+  - **Electron 壳内 ffmpeg.wasm 虚拟 FS 受限**（FS error）→ 桌面版语音走 csgove+whisper 链路，不走 ffmpeg。
+  - 回退路径：wasm-audio-decoders（早期 decodeFrames 输出接近静音的方案保留为兜底）。
+  - 待验证：GitHub Pages 等真实部署环境（Chrome）下的 ffmpeg.wasm 加载与 COOP/COEP。
 
 ## 13. 架构演进（Web 优先，一套代码三种形态）
 
@@ -103,3 +104,10 @@
 - 默认推荐云端 Groq whisper-large-v3-turbo（免费档，秒级，设置页一键引导 Key）。
 - 本地 whisper.cpp（base/small/medium）作为离线备选，已接 VAD 静音裁剪提速。
 - csgove 侧车 DLL 需从引擎目录 cwd 运行（已处理）。
+
+## 15. 打包（离线可行，包体压缩）
+
+- **网络依赖**：electron-builder 默认要下载 electron zip（GitHub 直连在无代理环境 ETIMEDOUT）。解法：`electron-builder.yml` 配 `electronDist: node_modules/electron/dist`（本地 npm 安装的 dist 直接复用），winCodeSign/signtool 用本地缓存 → 离线可打包。
+- **包体**：运行时只需 main 进程依赖 → React/ReactDOM/ffmpeg/字体/@eshaz 全部移到 devDependencies（Vite 构建期打包进 out/renderer），asar 只留 @deademx/chokidar/adm-zip(+传递依赖)；`electronLanguages: [en-US, zh-CN]` 裁语言包。实测 portable zip 200MB → 159MB。
+- **PS5.1 坑**：`Add-Type System.IO.Compression.FileSystem` 在 Windows PowerShell 5.1 下加载失败 → make-zip.ps1 改用 `Compress-Archive`（复制到临时目录保证 zip 根为 `CS2-Demo-Analyst/`）。
+- NSIS 安装器未配置为目标（分发以绿色 zip 为主，目标 <120MB 仍需继续裁：可考虑关 ffmpeg 桌面端依赖、换 small 字体子集）。

@@ -93,6 +93,18 @@ export function DemoDetailPage({
             <div className="flex gap-8" style={{ alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <Btn
                 size="sm"
+                variant="accent"
+                onClick={async () => {
+                  const r = await window.api.live.launch({ toolsMode: false, playDemoPath: meta.path })
+                  if (r.ok) toast.push(t('detail.playLaunched'))
+                  else toast.push(r.error ?? t('common.error'), 'warn')
+                }}
+              >
+                <IcJump size={12} />
+                {t('detail.playInCs2')}
+              </Btn>
+              <Btn
+                size="sm"
                 variant="primary"
                 onClick={async () => {
                   await window.api.overlay.setFullPanel(true, id)

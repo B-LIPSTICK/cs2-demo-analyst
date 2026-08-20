@@ -155,6 +155,12 @@ export interface GsiGameState {
   moneyCT?: number
 }
 
+export interface LaunchResult {
+  ok: boolean
+  url: string
+  error?: string
+}
+
 // ─── 设置 ──────────────────────────────────────────────────────────────────
 
 export type LocalWhisperModel = 'base' | 'small' | 'medium'
@@ -254,6 +260,10 @@ export interface Api {
     setTimescale: (x: number) => Promise<boolean>
     specNext: () => Promise<boolean>
     specPrev: () => Promise<boolean>
+    specGoto: (userid: number) => Promise<boolean>
+    launch: (opts?: { toolsMode?: boolean; playDemoPath?: string }) => Promise<LaunchResult>
+    installGsi: () => Promise<string | null>
+    locateInstall: () => Promise<string | null>
   }
   overlay: {
     setEnabled: (enabled: boolean, demoId?: string) => Promise<void>
