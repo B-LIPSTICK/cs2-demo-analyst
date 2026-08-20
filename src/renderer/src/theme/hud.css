@@ -1,47 +1,43 @@
 /* ============================================================================
-   CS2 Demo Analyst — HUD 设计系统
-   观战指挥台语言：深石墨底 · 斜切角面板 · 发丝细线 · 金字/蓝字阵营色
+   CS2 Demo Analyst — HUD 设计系统 v2
+   语言：CS2 原生观战 UI —— 近黑蓝底 · 米白文字 · 柔和金/蓝阵营色
+        无斜切角、无噪点、无发光；1px 细分隔线；克制精确的排版
    ========================================================================== */
 
 :root {
-  /* 基底 */
-  --bg-0: #0a0c0f;
-  --bg-1: #0e1116;
-  --bg-2: #131822;
-  --bg-3: #1a212d;
-  --bg-4: #222b3a;
+  /* 基底（近黑蓝，CS2 HUD 观感） */
+  --bg-0: #0c0e11;
+  --bg-1: #101318;
+  --bg-2: #151920;
+  --bg-3: #1b202a;
+  --bg-4: #222834;
 
   /* 线条 */
-  --line-0: rgba(255, 255, 255, 0.045);
-  --line-1: rgba(255, 255, 255, 0.09);
-  --line-2: rgba(255, 255, 255, 0.17);
-  --line-3: rgba(255, 255, 255, 0.28);
+  --line-0: rgba(255, 255, 255, 0.05);
+  --line-1: rgba(255, 255, 255, 0.1);
+  --line-2: rgba(255, 255, 255, 0.18);
+  --line-3: rgba(255, 255, 255, 0.3);
 
-  /* 文本 */
-  --text-0: #e9edf3;
-  --text-1: #9da9ba;
-  --text-2: #5d6a7c;
+  /* 文本（暖白，CS2 HUD 是米白而非冷白） */
+  --text-0: #e8e6e1;
+  --text-1: #a3a29b;
+  --text-2: #6b6a64;
 
-  /* 阵营与状态 */
-  --ct: #6d9fe0;
-  --ct-dim: rgba(109, 159, 224, 0.14);
-  --t: #d0ac52;
-  --t-dim: rgba(208, 172, 82, 0.14);
-  --red: #e25555;
-  --red-dim: rgba(226, 85, 85, 0.14);
-  --green: #3ecfb0;
-  --green-dim: rgba(62, 207, 176, 0.14);
-  --amber: #e0a03d;
-  --amber-dim: rgba(224, 160, 61, 0.14);
+  /* 阵营与状态（柔和化） */
+  --ct: #8fb0d6;
+  --ct-dim: rgba(143, 176, 214, 0.12);
+  --t: #d2b573;
+  --t-dim: rgba(210, 181, 115, 0.12);
+  --red: #d9645c;
+  --red-dim: rgba(217, 100, 92, 0.12);
+  --green: #79c77c;
+  --green-dim: rgba(121, 199, 124, 0.12);
+  --amber: #d9a44d;
+  --amber-dim: rgba(217, 164, 77, 0.12);
 
-  /* 字体 */
-  --font-display: 'Chakra Petch', 'Segoe UI', sans-serif;
-  --font-body: 'Chakra Petch', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
-
-  /* 斜切 */
-  --notch-lg: 10px;
-  --notch-md: 6px;
-  --notch-sm: 4px;
+  /* 字体（Rajdhani ≈ Stratum2 的修长感） */
+  --font-display: 'Rajdhani', 'Segoe UI', sans-serif;
+  --font-body: 'Rajdhani', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
 
   /* 布局 */
   --titlebar-h: 46px;
@@ -77,32 +73,10 @@ body {
 }
 
 /* 噪点颗粒（全局，极淡） */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  pointer-events: none;
-  opacity: 0.028;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
-}
+
 
 /* 极淡扫描线 */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 9998;
-  pointer-events: none;
-  opacity: 0.5;
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(255, 255, 255, 0.012) 0px,
-    rgba(255, 255, 255, 0.012) 1px,
-    transparent 1px,
-    transparent 3px
-  );
-}
+
 
 ::selection {
   background: var(--green-dim);
@@ -188,7 +162,7 @@ body::after {
   height: 24px;
   display: grid;
   place-items: center;
-  clip-path: polygon(0 6px, 6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
+
   background: linear-gradient(180deg, var(--bg-4), var(--bg-2));
   border: 1px solid var(--line-1);
 }
@@ -297,19 +271,19 @@ body::after {
 
 .led.on::before {
   background: var(--green);
-  box-shadow: 0 0 8px var(--green);
+  
   animation: ledpulse 2.4s ease-in-out infinite;
 }
 
 .led.warn::before {
   background: var(--amber);
-  box-shadow: 0 0 8px var(--amber);
+  
   animation: ledpulse 1.6s ease-in-out infinite;
 }
 
 .led.red::before {
   background: var(--red);
-  box-shadow: 0 0 8px var(--red);
+  
 }
 
 @keyframes ledpulse {
@@ -350,7 +324,7 @@ body::after {
   letter-spacing: 0.16em;
   text-transform: uppercase;
   cursor: pointer;
-  clip-path: polygon(0 6px, 6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
+
   transition: color 0.12s, background 0.12s, border-color 0.12s;
   user-select: none;
 }
@@ -482,24 +456,13 @@ body::after {
 
 .panel {
   position: relative;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.022), transparent 26%),
-    var(--bg-1);
+  background: var(--bg-1);
   border: 1px solid var(--line-1);
-  clip-path: polygon(
-    0 var(--notch-lg),
-    var(--notch-lg) 0,
-    calc(100% - var(--notch-lg)) 0,
-    100% var(--notch-lg),
-    100% calc(100% - var(--notch-lg)),
-    calc(100% - var(--notch-lg)) 100%,
-    var(--notch-lg) 100%,
-    0 calc(100% - var(--notch-lg))
-  );
+
 }
 
 .panel.raised {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 30%),
-    var(--bg-2);
+  background: var(--bg-2);
   border-color: var(--line-1);
 }
 
@@ -525,7 +488,7 @@ body::after {
   width: 5px;
   height: 5px;
   background: var(--green);
-  box-shadow: 0 0 6px var(--green);
+  
 }
 
 .panel-bd {
@@ -550,14 +513,7 @@ body::after {
   color: var(--text-0);
   background: linear-gradient(180deg, var(--bg-4), var(--bg-3));
   border: 1px solid var(--line-1);
-  clip-path: polygon(
-    0 var(--notch-md),
-    var(--notch-md) 0,
-    100% 0,
-    100% calc(100% - var(--notch-md)),
-    calc(100% - var(--notch-md)) 100%,
-    0 100%
-  );
+
   cursor: pointer;
   transition: filter 0.12s, transform 0.05s, border-color 0.12s, color 0.12s;
   white-space: nowrap;
@@ -657,14 +613,7 @@ body::after {
   background: transparent;
   border: 1px solid transparent;
   cursor: pointer;
-  clip-path: polygon(
-    0 var(--notch-sm),
-    var(--notch-sm) 0,
-    100% 0,
-    100% calc(100% - var(--notch-sm)),
-    calc(100% - var(--notch-sm)) 100%,
-    0 100%
-  );
+
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 
@@ -686,14 +635,7 @@ body::after {
 .seg {
   display: inline-flex;
   border: 1px solid var(--line-1);
-  clip-path: polygon(
-    0 var(--notch-sm),
-    var(--notch-sm) 0,
-    100% 0,
-    100% calc(100% - var(--notch-sm)),
-    calc(100% - var(--notch-sm)) 100%,
-    0 100%
-  );
+
   background: var(--bg-1);
 }
 
@@ -743,14 +685,7 @@ body::after {
   text-transform: uppercase;
   color: var(--text-1);
   border: 1px solid var(--line-1);
-  clip-path: polygon(
-    0 3px,
-    3px 0,
-    100% 0,
-    100% calc(100% - 3px),
-    calc(100% - 3px) 100%,
-    0 100%
-  );
+
   background: var(--bg-2);
   white-space: nowrap;
 }
@@ -802,14 +737,7 @@ body::after {
   background: var(--bg-0);
   border: 1px solid var(--line-1);
   outline: none;
-  clip-path: polygon(
-    0 var(--notch-sm),
-    var(--notch-sm) 0,
-    100% 0,
-    100% calc(100% - var(--notch-sm)),
-    calc(100% - var(--notch-sm)) 100%,
-    0 100%
-  );
+
   transition: border-color 0.12s, box-shadow 0.12s;
 }
 
@@ -865,14 +793,7 @@ body::after {
   border: 1px solid var(--line-1);
   background: var(--bg-2);
   cursor: pointer;
-  clip-path: polygon(
-    0 4px,
-    4px 0,
-    100% 0,
-    100% calc(100% - 4px),
-    calc(100% - 4px) 100%,
-    0 100%
-  );
+
   transition: border-color 0.15s;
   flex: none;
 }
@@ -895,7 +816,7 @@ body::after {
 .switch.on::after {
   left: 20px;
   background: var(--green);
-  box-shadow: 0 0 7px var(--green);
+  
 }
 
 .row {
@@ -952,18 +873,9 @@ body::after {
 .card {
   position: relative;
   padding: 15px 16px 13px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.024), transparent 30%),
-    var(--bg-1);
+  background: var(--bg-1);
   border: 1px solid var(--line-1);
-  clip-path: polygon(
-    0 var(--notch-lg),
-    var(--notch-lg) 0,
-    100% 0,
-    100% calc(100% - var(--notch-lg)),
-    calc(100% - var(--notch-lg)) 100%,
-    var(--notch-lg) 100%,
-    0 calc(100% - var(--notch-lg))
-  );
+
   cursor: pointer;
   transition: transform 0.18s var(--ease-out), border-color 0.18s, box-shadow 0.18s;
   animation: fadeUp 0.4s var(--ease-out) both;
@@ -1006,14 +918,7 @@ body::after {
   flex: none;
   display: grid;
   place-items: center;
-  clip-path: polygon(
-    0 8px,
-    8px 0,
-    100% 0,
-    100% calc(100% - 8px),
-    calc(100% - 8px) 100%,
-    0 100%
-  );
+
   border: 1px solid rgba(255, 255, 255, 0.14);
   font-family: var(--font-display);
   font-weight: 700;
@@ -1149,7 +1054,7 @@ body::after {
   place-items: center;
   background: rgba(10, 12, 15, 0.78);
   backdrop-filter: blur(2px);
-  clip-path: inherit;
+
   z-index: 2;
 }
 
@@ -1215,14 +1120,7 @@ body::after {
   text-transform: uppercase;
   color: var(--text-1);
   border: 1px solid var(--line-1);
-  clip-path: polygon(
-    0 3px,
-    3px 0,
-    100% 0,
-    100% calc(100% - 3px),
-    calc(100% - 3px) 100%,
-    0 100%
-  );
+
   background: var(--bg-2);
 }
 
@@ -1380,7 +1278,7 @@ body::after {
   height: 5px;
   border-radius: 50%;
   background: var(--amber);
-  box-shadow: 0 0 5px var(--amber);
+  
 }
 
 .timeline .rlabel {
@@ -1510,14 +1408,7 @@ body::after {
   font-family: var(--font-display);
   font-size: 9.5px;
   font-weight: 700;
-  clip-path: polygon(
-    0 4px,
-    4px 0,
-    100% 0,
-    100% calc(100% - 4px),
-    calc(100% - 4px) 100%,
-    0 100%
-  );
+
   border: 1px solid;
   background: var(--bg-2);
 }
@@ -1549,15 +1440,7 @@ body::after {
   gap: 8px;
   padding: 72px 24px 56px;
   border: 1.5px dashed var(--line-2);
-  clip-path: polygon(
-    0 var(--notch-lg),
-    var(--notch-lg) 0,
-    100% 0,
-    100% calc(100% - var(--notch-lg)),
-    calc(100% - var(--notch-lg)) 100%,
-    var(--notch-lg) 100%,
-    0 calc(100% - var(--notch-lg))
-  );
+
   background: linear-gradient(180deg, rgba(62, 207, 176, 0.03), transparent 40%);
   transition: border-color 0.15s, background 0.15s;
   text-align: center;
@@ -1643,15 +1526,7 @@ body::after {
   gap: 10px;
   padding: 56px 20px;
   border: 1px dashed var(--line-1);
-  clip-path: polygon(
-    0 var(--notch-lg),
-    var(--notch-lg) 0,
-    100% 0,
-    100% calc(100% - var(--notch-lg)),
-    calc(100% - var(--notch-lg)) 100%,
-    var(--notch-lg) 100%,
-    0 calc(100% - var(--notch-lg))
-  );
+
   background: rgba(255, 255, 255, 0.008);
   color: var(--text-2);
 }
@@ -1692,14 +1567,7 @@ body::after {
   background: var(--bg-3);
   border: 1px solid var(--line-1);
   border-left: 3px solid var(--green);
-  clip-path: polygon(
-    0 var(--notch-md),
-    var(--notch-md) 0,
-    100% 0,
-    100% calc(100% - var(--notch-md)),
-    calc(100% - var(--notch-md)) 100%,
-    0 100%
-  );
+
   font-size: 12px;
   color: var(--text-0);
   box-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.7);
@@ -1740,14 +1608,7 @@ body::after {
   padding: 5px 9px;
   background: var(--bg-4);
   border: 1px solid var(--line-1);
-  clip-path: polygon(
-    0 4px,
-    4px 0,
-    100% 0,
-    100% calc(100% - 4px),
-    calc(100% - 4px) 100%,
-    0 100%
-  );
+
   font-family: var(--font-display);
   font-size: 10px;
   font-weight: 500;
@@ -1777,14 +1638,7 @@ body::after {
   color: var(--text-1);
   border: 1px solid var(--line-1);
   border-bottom-width: 2px;
-  clip-path: polygon(
-    0 3px,
-    3px 0,
-    100% 0,
-    100% calc(100% - 3px),
-    calc(100% - 3px) 100%,
-    0 100%
-  );
+
   background: var(--bg-2);
 }
 
@@ -1813,14 +1667,7 @@ body::after {
   padding: 4px 10px;
   border: 1px solid var(--line-1);
   color: var(--text-1);
-  clip-path: polygon(
-    0 4px,
-    4px 0,
-    100% 0,
-    100% calc(100% - 4px),
-    calc(100% - 4px) 100%,
-    0 100%
-  );
+
 }
 
 .phase-pill.live {
