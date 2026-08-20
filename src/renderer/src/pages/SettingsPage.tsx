@@ -58,6 +58,10 @@ export function SettingsPage({ settings }: { settings: Settings }) {
     set({ asr: { ...draft.asr, ...patch } })
   }
 
+  const setAi = (patch: Partial<Settings['ai']>) => {
+    set({ ai: { ...draft.ai, ...patch } })
+  }
+
   const setCs2 = (patch: Partial<Settings['cs2']>) => {
     set({ cs2: { ...draft.cs2, ...patch } })
   }
@@ -265,7 +269,57 @@ export function SettingsPage({ settings }: { settings: Settings }) {
         )}
       </Panel>
 
-      <SectionHead idx={4}>{t.t('settings.cs2')}</SectionHead>
+      <SectionHead idx={4}>{t.t('settings.ai')}</SectionHead>
+      <Panel>
+        <div className="set-row">
+          <div className="info">
+            <div className="t">{t.t('settings.aiApiKey')}</div>
+            <div className="d">{t.t('settings.aiHint')}</div>
+          </div>
+          <input
+            className="input"
+            style={{ width: 300 }}
+            type="password"
+            placeholder="sk-…"
+            value={draft.ai.apiKey}
+            onChange={(e) => setAi({ apiKey: e.target.value })}
+          />
+          <a
+            href="https://console.groq.com/keys"
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: 'var(--green)', fontSize: 12, textDecoration: 'none' }}
+          >
+            {t.t('settings.getKey')} ↗
+          </a>
+        </div>
+        <div className="set-row">
+          <div className="info">
+            <div className="t">{t.t('settings.aiBaseUrl')}</div>
+            <div className="d">{t.t('settings.aiBaseUrlHint')}</div>
+          </div>
+          <input
+            className="input"
+            style={{ width: 300 }}
+            value={draft.ai.baseUrl}
+            onChange={(e) => setAi({ baseUrl: e.target.value })}
+          />
+        </div>
+        <div className="set-row">
+          <div className="info">
+            <div className="t">{t.t('settings.aiModel')}</div>
+            <div className="d">{t.t('settings.aiModelHint')}</div>
+          </div>
+          <input
+            className="input"
+            style={{ width: 300 }}
+            value={draft.ai.model}
+            onChange={(e) => setAi({ model: e.target.value })}
+          />
+        </div>
+      </Panel>
+
+      <SectionHead idx={5}>{t.t('settings.cs2')}</SectionHead>
       <Panel>
         <div className="set-row">
           <div className="info">
@@ -326,7 +380,7 @@ export function SettingsPage({ settings }: { settings: Settings }) {
         </div>
       </Panel>
 
-      <SectionHead idx={5}>{t.t('settings.overlay')}</SectionHead>
+      <SectionHead idx={6}>{t.t('settings.overlay')}</SectionHead>
       <Panel>
         <div className="set-row">
           <div className="info">
@@ -390,7 +444,7 @@ export function SettingsPage({ settings }: { settings: Settings }) {
         </div>
       </Panel>
 
-      <SectionHead idx={6}>{t.t('settings.engines')}</SectionHead>
+      <SectionHead idx={7}>{t.t('settings.engines')}</SectionHead>
       <Panel>
         <div className="set-row">
           <div className="info">
@@ -442,7 +496,7 @@ export function SettingsPage({ settings }: { settings: Settings }) {
         })}
       </Panel>
 
-      <SectionHead idx={7}>{t.t('settings.about')}</SectionHead>
+      <SectionHead idx={8}>{t.t('settings.about')}</SectionHead>
       <Panel>
         <div className="panel-bd">
           <div className="muted" style={{ fontSize: 12, lineHeight: 1.7 }}>

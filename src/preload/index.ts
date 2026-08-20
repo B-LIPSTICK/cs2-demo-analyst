@@ -31,6 +31,10 @@ const api: ApiWithEvents = {
       ipcRenderer.invoke('asr:transcribe', id, opts),
     cancel: () => ipcRenderer.invoke('asr:cancel')
   },
+  ai: {
+    ask: (id: string, question: string) => ipcRenderer.invoke('ai:ask', id, question),
+    cancel: () => ipcRenderer.invoke('ai:cancel')
+  },
   live: {
     getStatus: () => ipcRenderer.invoke('live:getStatus'),
     connect: () => ipcRenderer.invoke('live:connect'),

@@ -146,6 +146,25 @@ export const IcBack = (p: IcProps) => (
   </Base>
 )
 
+export const IcSpark = (p: IcProps) => (
+  <Base {...p}>
+    <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />
+    <path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" />
+  </Base>
+)
+
+export const IcSend = (p: IcProps) => (
+  <Base {...p}>
+    <path d="M4 12l16-8-5.5 16-3.5-6.5L4 12z" />
+  </Base>
+)
+
+export const IcStop = (p: IcProps) => (
+  <Base {...p}>
+    <rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none" />
+  </Base>
+)
+
 // ─── 面板 ───────────────────────────────────────────────────────────────────
 
 export function Panel({

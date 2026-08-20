@@ -51,6 +51,13 @@
 - **UI 排布再打磨（参考 Mineradio）**: 标题渐变字、卡片 hover 蓝色辉光、背景蓝紫氛围光斑（26s 极慢漂移动画）、按钮蓝色渐变 + 光晕。
 - 验收: typecheck/build ✅; 打包 exe 冒烟 ✅; 浅色设置页/浅色资料库/深色资料库/全屏面板截图视觉验收 ✅（v4-*.png）; zip 146.8MB。
 
+## 本轮四（AI 分析功能）✅
+- **配置**: Settings.ai 节（baseUrl/apiKey/model，默认 Groq 免费 llama-3.3-70b，与转写共用 Key；DeepSeek/通义等 OpenAI 兼容接口均可填）。
+- **主进程** `services/ai.ts`: buildContext 把 demo 数据（选手/回合/击杀/语音转写≤250条/聊天）压缩成带 [mm:ss]+R回合 标注的文本；调 /v1/chat/completions SSE 流式（fetch + reader 逐行解析 delta）→ ai:delta/ai:done/ai:error 事件；AbortController 取消；无 Key/401/404 给可读错误。
+- **页面** `AiPage.tsx`: 导航新增「AI 分析」；选 demo（优先有语音）；4 个快捷问题（高光/破防/转折/选手总结）；流式渲染 + Markdown-lite（标题/列表/**粗体**）+ [mm:ss]/R回合 渲染成可点击 chip → live.jumpTick（R 经 rounds 表映射 startTick）；无 Key 时引导去设置。
+- **开发模式** `--ai-mock`: 本地规则引擎生成回答（高光选手=击杀最多+高光回合+破防词检测），无网无 Key 可验证全链路。
+- 验收: typecheck/build ✅; mock 流式回答截图（时间/回合 chip 渲染）✅; 无 Key 错误气泡+快捷问题 ✅; 设置页 AI 区块 ✅; 打包 exe 冒烟 ✅。
+
 ## 下一步
 - 发布: 推送提交到 origin（需代理在线）→ GitHub Pages 部署（web-dist, base './' 已配）。
 - 后续: Web 版本地桥（Phase B）; 实机 CS2 验证 VConsole 握手/GSI 推送; NSIS 安装器（可选）; 包体继续压缩（<120MB 目标）。

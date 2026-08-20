@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react'
-import { IcLibrary, IcTranscript, IcLive, IcSettings } from './ui'
+import { IcLibrary, IcTranscript, IcLive, IcSettings, IcSpark } from './ui'
 import { useTKey } from '@/i18n'
 
-export type Page = 'library' | 'transcript' | 'live' | 'settings'
+export type Page = 'library' | 'transcript' | 'live' | 'ai' | 'settings'
 
 const ITEMS: { id: Page; icon: (p: { size?: number }) => ReactNode; tag?: string }[] = [
   { id: 'library', icon: (p) => <IcLibrary {...p} /> },
   { id: 'transcript', icon: (p) => <IcTranscript {...p} /> },
+  { id: 'ai', icon: (p) => <IcSpark {...p} />, tag: 'AI' },
   { id: 'live', icon: (p) => <IcLive {...p} />, tag: 'INJECT' },
   { id: 'settings', icon: (p) => <IcSettings {...p} /> }
 ]

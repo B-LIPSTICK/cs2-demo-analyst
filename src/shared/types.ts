@@ -183,6 +183,11 @@ export interface Settings {
     cloudApiKey: string
     cloudModel: string
   }
+  ai: {
+    baseUrl: string
+    apiKey: string
+    model: string
+  }
   cs2: {
     installPath?: string
     vconsolePort: number
@@ -218,6 +223,11 @@ export const DEFAULT_SETTINGS: Settings = {
     cloudBaseUrl: 'https://api.groq.com/openai/v1',
     cloudApiKey: '',
     cloudModel: 'whisper-large-v3-turbo'
+  },
+  ai: {
+    baseUrl: 'https://api.groq.com/openai/v1',
+    apiKey: '',
+    model: 'llama-3.3-70b-versatile'
   },
   cs2: {
     vconsolePort: 29000,
@@ -259,6 +269,10 @@ export interface Api {
   }
   asr: {
     transcribe: (id: string, opts?: { players?: string[] }) => Promise<void>
+    cancel: () => Promise<void>
+  }
+  ai: {
+    ask: (id: string, question: string) => Promise<{ started: boolean; error?: string }>
     cancel: () => Promise<void>
   }
   live: {
@@ -308,6 +322,9 @@ export type MainEvent =
   | { type: 'gsi:state'; state: GsiGameState }
   | { type: 'asr:progress'; demoId: string; stage: string; done: number; total: number }
   | { type: 'asr:segment'; demoId: string; segment: VoiceSegment }
+  | { type: 'ai:delta'; demoId: string; chunk: string }
+  | { type: 'ai:done'; demoId: string; answer: string }
+  | { type: 'ai:error'; demoId: string; error: string }
   | { type: 'engine:progress'; what: string; received: number; total: number }
   | { type: 'overlay:state'; state: OverlayState }
   | { type: 'voice:detected'; id: string; hasVoice: boolean; voiceSec: number }

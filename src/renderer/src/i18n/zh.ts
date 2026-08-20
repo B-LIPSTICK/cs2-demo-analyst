@@ -14,6 +14,7 @@ export const zh = {
   // 导航
   'nav.library': '资料库',
   'nav.transcript': '转写',
+  'nav.ai': 'AI 分析',
   'nav.live': '实况',
   'nav.settings': '设置',
 
@@ -124,6 +125,26 @@ export const zh = {
   'transcript.stage.extract': '提取语音',
   'transcript.stage.asr': '转写',
 
+  // AI 分析
+  'ai.title': 'AI 分析',
+  'ai.subtitle': '用自然语言问这局发生了什么 · 找高光 · 找破防 · 找转折',
+  'ai.selectDemo': '选择 Demo',
+  'ai.configureKey': '配置 Key',
+  'ai.you': '你',
+  'ai.send': '发送',
+  'ai.stop': '停止',
+  'ai.placeholder': '问问这局发生了什么…例如：哪几回合适合做高光集锦？',
+  'ai.emptyTitle': '向 AI 提问，秒懂这局比赛',
+  'ai.emptySub': '回答基于本局解析数据（击杀/回合/语音转写/聊天）。答案里的 [时间] 和 R回合 可以直接点击，跳到对应时刻（需 CS2 播放中）。',
+  'ai.keyHint': '还没有配置 API Key：点这里去设置（与转写共用一个免费 Groq Key 即可）',
+  'ai.q1': '🎬 这局最适合做高光集锦的时刻有哪些？',
+  'ai.q2': '😤 对面什么时候破防、骂人了？',
+  'ai.q3': '📈 这局的关键转折点在哪几回合？',
+  'ai.q4': '👤 表现最好的选手是谁？总结一下他的高光',
+  'ai.tag1': '数据基于本局解析：击杀 / 回合 / 语音转写 / 聊天',
+  'ai.tag2': '答案中的时间与回合可点击跳转',
+  'ai.tagVoice': '含语音转写数据',
+
   // 实况
   'live.title': '实况注入',
   'live.subtitle': '检测运行中的 CS2 · 注入控制台指令 · 读取当前状态',
@@ -179,6 +200,13 @@ export const zh = {
   'settings.cloudModel': '模型',
   'settings.getKey': '获取免费 Key',
   'settings.keyHint': '默认 Groq whisper-large-v3-turbo：免费、秒级转写。支持任意 OpenAI 兼容接口',
+  'settings.ai': 'AI 分析',
+  'settings.aiHint': '对话式分析比赛（找高光/破防/转折）。OpenAI 兼容接口，默认 Groq 免费档，可与转写共用一个 Key',
+  'settings.aiApiKey': 'AI API Key',
+  'settings.aiBaseUrl': 'AI API 地址',
+  'settings.aiBaseUrlHint': 'OpenAI 兼容接口；DeepSeek/通义/Moonshot 等均可填',
+  'settings.aiModel': 'AI 模型',
+  'settings.aiModelHint': '默认 Groq llama-3.3-70b（免费）；可换任意模型名',
   'settings.cs2': 'CS2 注入',
   'settings.cs2Path': 'CS2 安装路径',
   'settings.cs2Detect': '自动检测',

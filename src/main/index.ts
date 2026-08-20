@@ -23,6 +23,12 @@ const live = new LiveService({
   consoleLine: (channel, text) =>
     mainWindow?.webContents.send('live:console', { channel, text })
 })
+import { AiService } from './services/ai'
+const ai = new AiService({
+  delta: (demoId, chunk) => mainWindow?.webContents.send('ai:delta', { demoId, chunk }),
+  done: (demoId, answer) => mainWindow?.webContents.send('ai:done', { demoId, answer }),
+  error: (demoId, error) => mainWindow?.webContents.send('ai:error', { demoId, error })
+})
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -104,6 +110,15 @@ function registerIpc(): void {
     library.transcribe(id, opts)
   )
   ipcMain.handle('asr:cancel', () => library.cancelTranscribe())
+
+  // AI 分析
+  ipcMain.handle('ai:ask', async (_e, id: string, question: string) => {
+    const detail = await library.detail(id)
+    if (!detail) return { started: false, error: 'demo not found' }
+    const s = await getSettings()
+    return ai.ask(id, question, detail, s.ai, s.language)
+  })
+  ipcMain.handle('ai:cancel', () => ai.cancel())
 
   // 实况 / 注入
   ipcMain.handle('live:getStatus', () => live.getStatus())
@@ -217,6 +232,11 @@ if (!gotLock) {
           live.setMockCs2(true)
           console.log('[vcon-mock] mock console started')
         })
+      }
+      // 开发模式: --ai-mock 本地生成 AI 回答（无需 Key/网络）
+      if (process.argv.includes('--ai-mock')) {
+        ai.setMock(true)
+        console.log('[ai-mock] AI mock mode on')
       }
     })
 

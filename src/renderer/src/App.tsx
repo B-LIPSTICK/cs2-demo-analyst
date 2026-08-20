@@ -6,6 +6,7 @@ import { NavRail, type Page } from './components/NavRail'
 import { LibraryPage } from './pages/LibraryPage'
 import { TranscriptPage } from './pages/TranscriptPage'
 import { LivePage } from './pages/LivePage'
+import { AiPage } from './pages/AiPage'
 import { SettingsPage } from './pages/SettingsPage'
 import type { LiveStatus, Settings } from '@shared/types'
 
@@ -48,7 +49,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 function initialRoute(): Route {
   const hash = window.location.hash.replace(/^#/, '')
   const [page, demoId] = hash.split('/')
-  if (page === 'library' || page === 'transcript' || page === 'live' || page === 'settings') {
+  if (page === 'library' || page === 'transcript' || page === 'live' || page === 'ai' || page === 'settings') {
     return { page, demoId: demoId || undefined }
   }
   return { page: 'library' }
@@ -153,6 +154,7 @@ export default function App() {
                   <TranscriptPage initialDemoId={route.demoId} onOpenDemo={(id) => navigate('transcript', id)} />
                 )}
                 {route.page === 'live' && <LivePage />}
+                {route.page === 'ai' && <AiPage onGoSettings={() => navigate('settings')} />}
                 {route.page === 'settings' && <SettingsPage settings={settings} />}
               </main>
             </div>
