@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:"
+    />
+    <title>Overlay</title>
+  </head>
+  <body class="ov-body">
+    <div class="ov-root">
+      <!-- 说话者指示（CS2 左下角语音 HUD 风格） -->
+      <div id="speakers" class="ov-speakers"></div>
+      <!-- 转写字幕 -->
+      <div id="lines" class="ov-lines"></div>
+      <!-- 状态条：回合 / 比分 / 时间 -->
+      <div id="status" class="ov-status"></div>
+    </div>
+    <script type="module" src="/overlay-src/main.ts"></script>
+  </body>
+</html>

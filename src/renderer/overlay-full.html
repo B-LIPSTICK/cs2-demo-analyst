@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:"
+    />
+    <title>Full Panel</title>
+  </head>
+  <body>
+    <div id="app" class="fp-root">
+      <!-- 顶部 HUD 条 -->
+      <header class="fp-top">
+        <div class="fp-brand">
+          <span class="fp-logo">◉</span>
+          <span class="fp-map" id="map">—</span>
+          <span class="fp-score"><b class="t" id="scT">0</b>:<b class="ct" id="scCT">0</b></span>
+        </div>
+        <div class="fp-meta">
+          <span class="fp-round" id="round">R—</span>
+          <span class="fp-time" id="time">00:00</span>
+          <span class="fp-close" id="closeBtn" title="退出全屏">✕</span>
+        </div>
+      </header>
+
+      <!-- 主体 -->
+      <main class="fp-body">
+        <!-- 左：事件流 -->
+        <section class="fp-events">
+          <div class="fp-panel-hd">事件流 <span id="evCount" class="fp-ghost"></span></div>
+          <div id="events" class="fp-events-list"></div>
+        </section>
+
+        <!-- 中：时间轴 -->
+        <section class="fp-center">
+          <div class="fp-panel-hd">回合时间轴 <span id="tlInfo" class="fp-ghost"></span></div>
+          <div id="timeline" class="fp-timeline"></div>
+          <div id="speakers" class="fp-speakers"></div>
+          <div id="captions" class="fp-captions"></div>
+        </section>
+
+        <!-- 右：选手 -->
+        <section class="fp-players">
+          <div class="fp-panel-hd">选手 <span id="plCount" class="fp-ghost"></span></div>
+          <div id="players" class="fp-players-list"></div>
+        </section>
+      </main>
+
+      <!-- 底部控制条 -->
+      <footer class="fp-deck">
+        <button class="fp-btn" id="btnPause">⏸</button>
+        <button class="fp-btn" id="btnPlay">▶</button>
+        <div class="fp-seg" id="speedSeg">
+          <span data-s="0.5">0.5x</span><span data-s="1" class="on">1x</span><span data-s="2">2x</span><span data-s="4">4x</span>
+        </div>
+        <span class="fp-div"></span>
+        <button class="fp-btn" id="btnPrevR">◀ 上回合</button>
+        <button class="fp-btn" id="btnNextR">下回合 ▶</button>
+        <span class="fp-div"></span>
+        <button class="fp-btn" id="btnSpecPrev">◀ POV</button>
+        <button class="fp-btn" id="btnSpecNext">POV ▶</button>
+        <span class="fp-grow"></span>
+        <button class="fp-btn fp-ghost" id="btnDemo">模式：演示</button>
+      </footer>
+    </div>
+    <script type="module" src="/full-src/main.ts"></script>
+  </body>
+</html>

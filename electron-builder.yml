@@ -1,0 +1,21 @@
+appId: com.demoanalyst.cs2
+productName: CS2 Demo Analyst
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**
+  - package.json
+  - build/icon-256.png
+asar: true
+win:
+  icon: build/icon.ico
+  target:
+    - target: portable
+      arch: [x64]
+  artifactName: ${productName}-${version}-portable-${arch}.${ext}
+portable:
+  artifactName: ${productName}-${version}-portable-${arch}.${ext}
+npmRebuild: false
+electronDownload:
+  cache: true

@@ -1,0 +1,315 @@
+/**
+ * 主进程入口：窗口、IPC 装配、冒烟模式。
+ */
+import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { join } from 'node:path'
+import type { Settings } from '@shared/types'
+import { createLibraryService } from './services/library'
+import { getSettings, updateSettings } from './services/settings'
+
+// 固定应用名，保证开发与打包后 userData 一致（%APPDATA%\CS2 Demo Analyst）
+app.setName('CS2 Demo Analyst')
+
+let mainWindow: BrowserWindow | null = null
+const library = createLibraryService(() => mainWindow, getSettings)
+import { LiveService } from './services/live'
+const live = new LiveService({
+  status: (s) => mainWindow?.webContents.send('live:status', { status: s }),
+  gsi: (s) => mainWindow?.webContents.send('gsi:state', { state: s }),
+  consoleLine: (channel, text) =>
+    mainWindow?.webContents.send('live:console', { channel, text })
+})
+
+function createWindow(): void {
+  mainWindow = new BrowserWindow({
+    width: 1440,
+    height: 900,
+    minWidth: 1080,
+    minHeight: 680,
+    show: false,
+    frame: false,
+    backgroundColor: '#0A0C0F',
+    icon: join(app.getAppPath(), 'build', 'icon-256.png'),
+    title: 'CS2 Demo Analyst',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  })
+
+  mainWindow.on('ready-to-show', () => mainWindow?.show())
+
+  mainWindow.on('maximize', () => mainWindow?.webContents.send('window:maximized', true))
+  mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window:maximized', false))
+
+  // 开发辅助：--route=library/demoId 直接打开指定页面
+  const routeArg = process.argv.find((a) => a.startsWith('--route='))
+  const route = routeArg ? routeArg.slice('--route='.length) : ''
+
+  if (process.env['ELECTRON_RENDERER_URL']) {
+    mainWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#${route}`)
+  } else {
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: route })
+  }
+
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
+}
+
+// ─── IPC ───────────────────────────────────────────────────────────────────
+
+function registerIpc(): void {
+  // 窗口控制
+  ipcMain.handle('window:minimize', () => mainWindow?.minimize())
+  ipcMain.handle('window:toggleMaximize', () => {
+    if (!mainWindow) return
+    mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize()
+  })
+  ipcMain.handle('window:close', () => mainWindow?.close())
+  ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized() ?? false)
+
+  // 设置
+  ipcMain.handle('settings:get', () => getSettings())
+  ipcMain.handle('settings:set', async (_e, patch: Partial<Settings>) => {
+    const settings = await updateSettings(patch)
+    if (patch.libraryRoots) {
+      await library.setRoots(patch.libraryRoots)
+    }
+    mainWindow?.webContents.send('settings:changed', settings)
+    return settings
+  })
+
+  // 资料库
+  ipcMain.handle('library:list', () => library.list())
+  ipcMain.handle('library:detail', (_e, id: string) => library.detail(id))
+  ipcMain.handle('library:addRoot', () => library.addRoot())
+  ipcMain.handle('library:removeRoot', (_e, root: string) => library.removeRoot(root))
+  ipcMain.handle('library:rescan', () => library.rescan())
+
+  // 语音
+  ipcMain.handle('voice:detect', (_e, id: string) => library.detectVoice(id))
+  ipcMain.handle('voice:extract', (_e, id: string) => library.extractVoice(id))
+
+  // 转写
+  ipcMain.handle('asr:transcribe', (_e, id: string, opts?: { players?: string[] }) =>
+    library.transcribe(id, opts)
+  )
+  ipcMain.handle('asr:cancel', () => library.cancelTranscribe())
+
+  // 实况 / 注入
+  ipcMain.handle('live:getStatus', () => live.getStatus())
+  ipcMain.handle('live:connect', () => live.connect())
+  ipcMain.handle('live:sendCommand', (_e, cmd: string) => live.sendCommand(cmd))
+  ipcMain.handle('live:jumpTick', (_e, tick: number) => live.jumpTick(tick))
+  ipcMain.handle('live:pause', () => live.pause())
+  ipcMain.handle('live:resume', () => live.resume())
+  ipcMain.handle('live:setTimescale', (_e, x: number) => live.setTimescale(x))
+  ipcMain.handle('live:specNext', () => live.specNext())
+  ipcMain.handle('live:specPrev', () => live.specPrev())
+
+  // Overlay 悬浮层
+  ipcMain.handle('overlay:setEnabled', async (_e, enabled: boolean, demoId?: string) => {
+    const { setEnabled } = await import('./overlay')
+    let detail = null
+    if (enabled && demoId) detail = await library.detail(demoId)
+    setEnabled(enabled, demoId, detail)
+  })
+  ipcMain.handle('overlay:setPosition', async (_e, pos: string) => {
+    const { setPosition } = await import('./overlay')
+    setPosition(pos as never)
+  })
+  ipcMain.handle('overlay:setClickThrough', async (_e, on: boolean) => {
+    const { setClickThrough } = await import('./overlay')
+    setClickThrough(on)
+  })
+  ipcMain.handle('overlay:getState', async () => {
+    const { getState } = await import('./overlay')
+    return getState()
+  })
+
+  // 引擎/模型管理
+  ipcMain.handle('engines:status', async () => {
+    const { engineStatus } = await import('./services/engines')
+    return engineStatus()
+  })
+  ipcMain.handle('engines:ensure', async (_e, kind: string) => {
+    const { ensureCsgove, ensureWhisperCli, ensureWhisperModel } = await import('./services/engines')
+    const onProgress = (p: { what: string; received: number; total: number }) => {
+      mainWindow?.webContents.send('engine:progress', p)
+    }
+    switch (kind) {
+      case 'csgove':
+        await ensureCsgove(onProgress)
+        break
+      case 'whisper':
+        await ensureWhisperCli(onProgress)
+        break
+      case 'model-base':
+        await ensureWhisperModel('base', onProgress)
+        break
+      case 'model-small':
+        await ensureWhisperModel('small', onProgress)
+        break
+      case 'model-medium':
+        await ensureWhisperModel('medium', onProgress)
+        break
+      default:
+        throw new Error(`unknown engine kind ${kind}`)
+    }
+  })
+
+  // 通用
+  ipcMain.handle('app:version', () => app.getVersion())
+  ipcMain.handle('app:revealInFolder', (_e, path: string) => {
+    shell.showItemInFolder(path)
+  })
+}
+
+// ─── 生命周期 ──────────────────────────────────────────────────────────────
+
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+
+  app.whenReady().then(() => {
+    registerIpc()
+    createWindow()
+    void library.init()
+    void getSettings().then((s) => {
+      live.setPorts(s.cs2.vconsolePort, s.cs2.gsiPort)
+      live.start()
+      // 开发模式: --vcon-mock 启动模拟控制台并伪装 CS2 运行
+      if (process.argv.includes('--vcon-mock')) {
+        import('./services/vconsole').then(({ startVConsoleMock }) => {
+          startVConsoleMock(s.cs2.vconsolePort)
+          live.setMockCs2(true)
+          console.log('[vcon-mock] mock console started')
+        })
+      }
+    })
+
+    // 开发模式: --overlay-demo=<demoId|文件名片段> 等待解析完成后在悬浮层启动演示
+    const overlayDemoArg = process.argv.find((a) => a.startsWith('--overlay-demo='))
+    if (overlayDemoArg) {
+      const key = overlayDemoArg.slice('--overlay-demo='.length)
+      ;(async () => {
+        let meta: Awaited<ReturnType<typeof library.list>>[number] | null = null
+        for (let i = 0; i < 120; i++) {
+          const demos = await library.list()
+          meta = demos.find((d) => d.id === key || d.fileName.includes(key)) ?? null
+          if (meta && meta.status === 'ready') break
+          await new Promise((r) => setTimeout(r, 1000))
+        }
+        if (!meta || meta.status !== 'ready') {
+          console.error(`[overlay] demo not ready: ${key}`)
+          app.exit(1)
+          return
+        }
+        const detail = await library.detail(meta.id)
+        const { setEnabled } = await import('./overlay')
+        setEnabled(true, meta.id, detail)
+        console.log(`[overlay] demo sim started: ${detail?.voice.length ?? 0} voice segments`)
+      })()
+    }
+    // 开发模式: --transcribe=<demoId|文件名片段> 等待解析完成后执行转写并退出
+    const transcribeArg = process.argv.find((a) => a.startsWith('--transcribe='))
+    if (transcribeArg) {
+      const key = transcribeArg.slice('--transcribe='.length)
+      ;(async () => {
+        let meta: Awaited<ReturnType<typeof library.list>>[number] | null = null
+        for (let i = 0; i < 120; i++) {
+          const demos = await library.list()
+          meta = demos.find((d) => d.id === key || d.fileName.includes(key)) ?? null
+          if (meta && meta.status === 'ready') break
+          await new Promise((r) => setTimeout(r, 1000))
+        }
+        if (!meta || meta.status !== 'ready') {
+          console.error(`[transcribe] demo not ready: ${key}`)
+          app.exit(1)
+          return
+        }
+        const t0 = Date.now()
+        try {
+          await library.transcribe(meta.id)
+          const det = await library.detail(meta.id)
+          const secs = ((Date.now() - t0) / 1000).toFixed(1)
+          console.log(`[transcribe] done: ${det?.voice.length ?? 0} segments in ${secs}s`)
+          if (det?.voice.length) {
+            console.log('sample:', JSON.stringify(det.voice.slice(0, 3)))
+          }
+        } catch (err) {
+          console.error('[transcribe] FAILED', err)
+          app.exit(1)
+          return
+        }
+        app.exit(0)
+      })()
+    }
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+
+    // 冒烟模式：加载完成后退出（用于无头验证）
+    if (process.env['ELECTRON_SMOKE'] === '1') {
+      mainWindow?.webContents.on('did-finish-load', () => {
+        console.log('[smoke] renderer loaded OK')
+        setTimeout(() => app.exit(0), 500)
+      })
+      mainWindow?.webContents.on('did-fail-load', (_e, code, desc) => {
+        console.error(`[smoke] load failed: ${code} ${desc}`)
+        app.exit(1)
+      })
+    }
+
+    // 截图模式：--screenshot <path> 渲染后直接捕获窗口内容（--shot-delay 毫秒可调）
+    const shotIdx = process.argv.indexOf('--screenshot')
+    if (shotIdx >= 0 && process.argv[shotIdx + 1]) {
+      const shotPath = process.argv[shotIdx + 1]
+      const delayArg = process.argv.find((a) => a.startsWith('--shot-delay='))
+      const delay = delayArg ? Number(delayArg.slice('--shot-delay='.length)) || 1600 : 1600
+      const isOverlayShot = Boolean(process.argv.find((a) => a.startsWith('--overlay-demo=')))
+      const target = () => {
+        if (isOverlayShot) {
+          return import('./overlay').then((m) => m.getOverlayWindow())
+        }
+        return Promise.resolve(mainWindow)
+      }
+      const onLoaded = async () => {
+        setTimeout(async () => {
+          try {
+            const win = await target()
+            if (!win) throw new Error('target window not found')
+            const image = await win.webContents.capturePage()
+            const { promises: fs } = await import('node:fs')
+            await fs.writeFile(shotPath, image.toPNG())
+            console.log(`[shot] saved ${shotPath}`)
+          } catch (e) {
+            console.error('[shot] failed', e)
+          }
+          app.exit(0)
+        }, delay)
+      }
+      if (isOverlayShot) {
+        // 悬浮层窗口加载完成后再等演示推进
+        setTimeout(onLoaded, delay)
+      } else {
+        mainWindow?.webContents.on('did-finish-load', onLoaded)
+      }
+    }
+  })
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit()
+  })
+}

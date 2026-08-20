@@ -1,0 +1,266 @@
+/* 游戏内悬浮层：CS2 观战 HUD 风格 */
+:root {
+  --bg: rgba(10, 12, 15, 0.78);
+  --bg2: rgba(19, 24, 34, 0.85);
+  --line: rgba(255, 255, 255, 0.12);
+  --text0: #e9edf3;
+  --text1: #a9b4c3;
+  --text2: #647084;
+  --ct: #6d9fe0;
+  --t: #d0ac52;
+  --green: #3ecfb5;
+  --red: #e25555;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  background: transparent;
+  overflow: hidden;
+  font-family: 'Chakra Petch', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+  user-select: none;
+}
+
+.ov-body {
+  width: 100vw;
+  height: 100vh;
+}
+
+.ov-root {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 10px;
+  pointer-events: none;
+}
+
+/* ─── 说话者条 ─────────────────────────────────────────────── */
+
+.ov-speakers {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.speaker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px 0 6px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  clip-path: polygon(0 6px, 6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.speaker.on {
+  opacity: 1;
+  transform: none;
+}
+
+.speaker .tag {
+  width: 4px;
+  align-self: stretch;
+  margin-left: -6px;
+}
+
+.speaker.t .tag {
+  background: var(--t);
+}
+
+.speaker.ct .tag {
+  background: var(--ct);
+}
+
+.speaker .nm {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text0);
+  white-space: nowrap;
+}
+
+.speaker .nm.t {
+  color: var(--t);
+}
+
+.speaker .nm.ct {
+  color: var(--ct);
+}
+
+/* 声波动画 */
+.vu {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+}
+
+.vu i {
+  width: 3px;
+  background: var(--green);
+  border-radius: 1px;
+  animation: vu 0.7s ease-in-out infinite;
+}
+
+.vu i:nth-child(1) {
+  height: 35%;
+}
+.vu i:nth-child(2) {
+  height: 70%;
+  animation-delay: 0.12s;
+}
+.vu i:nth-child(3) {
+  height: 50%;
+  animation-delay: 0.24s;
+}
+.vu i:nth-child(4) {
+  height: 85%;
+  animation-delay: 0.36s;
+}
+.vu i:nth-child(5) {
+  height: 60%;
+  animation-delay: 0.48s;
+}
+
+@keyframes vu {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.speaker .nm.idle .vu {
+  display: none;
+}
+
+/* ─── 转写字幕 ─────────────────────────────────────────────── */
+
+.ov-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 640px;
+}
+
+.ovline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--green);
+  clip-path: polygon(0 5px, 5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%);
+  font-size: 12.5px;
+  color: var(--text0);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.ovline.show {
+  opacity: 1;
+  transform: none;
+}
+
+.ovline .who {
+  font-weight: 600;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.ovline .who.t {
+  color: var(--t);
+}
+
+.ovline .who.ct {
+  color: var(--ct);
+}
+
+.ovline .txt {
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+/* ─── 状态条 ─────────────────────────────────────────────── */
+
+.ov-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  padding: 5px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  clip-path: polygon(0 5px, 5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--text1);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.ov-status.show {
+  opacity: 1;
+}
+
+.ov-status .map {
+  color: var(--text0);
+  text-transform: uppercase;
+}
+
+.ov-status .sc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ov-status .sc .t {
+  color: var(--t);
+}
+
+.ov-status .sc .ct {
+  color: var(--ct);
+}
+
+.ov-status .tm {
+  font-variant-numeric: tabular-nums;
+  color: var(--text2);
+}
+
+.ov-status .dot-live {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
