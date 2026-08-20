@@ -1655,6 +1655,21 @@ body {
   color: var(--red);
 }
 
+.kill-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+
+.kill-icons .smoke {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: var(--text-1);
+  opacity: 0.85;
+}
+
 .kill-row .rn {
   font-family: var(--font-mono);
   font-size: 12px;

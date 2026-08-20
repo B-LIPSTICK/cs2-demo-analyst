@@ -335,6 +335,29 @@ export function DemoDetailPage({
   )
 }
 
+/** 击杀标记图标：爆头（红骷髅）+ 穿烟（灰云），一眼可辨 */
+function KillIcons({ kill }: { kill: KillEvent }) {
+  return (
+    <span className="kill-icons">
+      {kill.headshot && (
+        <span title="爆头">
+          <svg className="hs" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2a8 8 0 0 0-8 8c0 2.5 1.2 4.7 3 6v3a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-3c1.8-1.3 3-3.5 3-6a8 8 0 0 0-8-8zm-3.5 7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM9 16c.8.8 1.9 1.3 3 1.3s2.2-.5 3-1.3c-.9.6-1.9.9-3 .9s-2.1-.3-3-.9z" />
+          </svg>
+        </span>
+      )}
+      {kill.throughSmoke && (
+        <span title="穿烟">
+          <svg className="smoke" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M7.2 18a4.2 4.2 0 0 1-.3-8.4 5.2 5.2 0 0 1 10-1.8 4.6 4.6 0 0 1 .4 9.2 1 1 0 0 1-.2 0H7.2z" />
+            <path d="M10 21a1 1 0 0 1-.2-2h4.4a1 1 0 0 1-.2 2H10z" />
+          </svg>
+        </span>
+      )}
+    </span>
+  )
+}
+
 function KillRow({
   kill,
   tickRate,
@@ -352,14 +375,7 @@ function KillRow({
       </span>
       <span className="wp">
         {kill.weapon}
-        {kill.headshot && (
-          <span title="爆头" style={{ display: 'inline-flex', alignItems: 'center' }}>
-            <svg className="hs" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2a8 8 0 0 0-8 8c0 2.5 1.2 4.7 3 6v3a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-3c1.8-1.3 3-3.5 3-6a8 8 0 0 0-8-8zm-3.5 7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM9 16c.8.8 1.9 1.3 3 1.3s2.2-.5 3-1.3c-.9.6-1.9.9-3 .9s-2.1-.3-3-.9z" />
-            </svg>
-          </span>
-        )}
-        {kill.throughSmoke && <span style={{ color: 'var(--text-2)' }}>SMK</span>}
+        <KillIcons kill={kill} />
       </span>
       <span className={`nm ${kill.victimTeam === 'T' ? 't' : kill.victimTeam === 'CT' ? 'ct' : ''}`}>
         {kill.victimName ?? '—'}
@@ -460,7 +476,10 @@ function PlayerModal({
                 }}
               >
                 <span className="tm">{fmtTick(k.tick, tickRate)}</span>
-                <span className="wp">{k.weapon}{k.headshot ? ' ☠' : ''}</span>
+                <span className="wp">
+                  {k.weapon}
+                  <KillIcons kill={k} />
+                </span>
                 <span className="vic">{k.victimName ?? '—'}</span>
                 <span className="rn">R{k.roundNum}</span>
               </div>
