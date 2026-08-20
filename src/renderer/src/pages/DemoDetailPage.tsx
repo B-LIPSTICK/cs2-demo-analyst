@@ -17,7 +17,7 @@ import {
   useToast
 } from '@/components/ui'
 import { useTKey } from '@/i18n'
-import type { DemoDetail, KillEvent, PlayerInfo, RoundInfo, TeamSide } from '@shared/types'
+import type { DemoDetail, KillEvent, PlayerInfo, RoundEndType, RoundInfo, TeamSide } from '@shared/types'
 
 export function DemoDetailPage({
   id,
@@ -184,6 +184,15 @@ export function DemoDetailPage({
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* 回合结束栏（爆炸 / 拆除 / 全死 / 超时） */}
+          <div style={{ marginTop: 16 }}>
+            <RoundBar
+              rounds={rounds}
+              selectedRound={selectedRound === 'all' ? undefined : selectedRound}
+              onSelectRound={(r) => setSelectedRound((cur) => (cur === r ? 'all' : r))}
+            />
           </div>
         </div>
       </Panel>
@@ -356,6 +365,82 @@ function KillIcons({ kill }: { kill: KillEvent }) {
         </span>
       )}
     </span>
+  )
+}
+
+/** 回合结束方式图标（SVG 原色，不着阵营色） */
+function RoundIcon({ type }: { type: RoundEndType }) {
+  const style = { width: 13, height: 13, display: 'block' } as const
+  switch (type) {
+    case 'bomb_exploded':
+      return (
+        <svg viewBox="0 0 24 24" fill="currentColor" style={style}>
+          <path d="M12 2l2 3 3-.5-.7 3.2 3.2 2.8-3.7 1.3 1 3.7-3.8-1.4-2.3 3.4-.7-3.6L6 13l1.6-2.9L7 6.5l3 .3L12 2z" />
+        </svg>
+      )
+    case 'bomb_defused':
+      return (
+        <svg viewBox="0 0 24 24" fill="currentColor" style={style}>
+          <path d="M21.7 5.4l-3.8 3.8a3 3 0 0 1-4.1 0L9.6 5a3 3 0 0 1-.9-2.4A7 7 0 0 0 3.6 9l4.2 4.2-1 1a2.1 2.1 0 1 0 3 3l1-1L15 20.4A7 7 0 0 0 21.4 6.3 3 3 0 0 1 19 7.2l-3.6-3.6 4-4H21v5.8z" />
+        </svg>
+      )
+    case 'elimination':
+      return (
+        <svg viewBox="0 0 24 24" fill="currentColor" style={style}>
+          <path d="M12 2a8 8 0 0 0-8 8c0 2.5 1.2 4.7 3 6v3a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-3c1.8-1.3 3-3.5 3-6a8 8 0 0 0-8-8zm-3.5 7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM9 16c.8.8 1.9 1.3 3 1.3s2.2-.5 3-1.3c-.9.6-1.9.9-3 .9s-2.1-.3-3-.9z" />
+        </svg>
+      )
+    case 'timeout':
+      return (
+        <svg viewBox="0 0 24 24" fill="currentColor" style={style}>
+          <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 10.3V16h-2v-4.4l-2.9-1.7 1-1.7 3.9 2.1z" />
+        </svg>
+      )
+    default:
+      return null
+  }
+}
+
+/** 回合结束栏：每回合显示结束方式图标（爆炸/拆除/全死/超时），无信息回合显示占位 */
+function RoundBar({
+  rounds,
+  selectedRound,
+  onSelectRound
+}: {
+  rounds: RoundInfo[]
+  selectedRound?: number
+  onSelectRound: (roundNum: number) => void
+}) {
+  return (
+    <div className="round-grid">
+      {rounds.map((r) => {
+        const endLabel =
+          r.endType === 'bomb_exploded'
+            ? '爆炸'
+            : r.endType === 'bomb_defused'
+              ? '拆除'
+              : r.endType === 'elimination'
+                ? '全死'
+                : r.endType === 'timeout'
+                  ? '超时'
+                  : ''
+        return (
+          <div
+            key={r.roundNum}
+            className={`round-cell ${r.winner === 'T' ? 'win-t' : r.winner === 'CT' ? 'win-ct' : ''} ${
+              selectedRound === r.roundNum ? 'active' : ''
+            }`}
+            onClick={() => onSelectRound(r.roundNum)}
+            title={`R${r.roundNum} · ${r.winner === 'T' ? 'T' : r.winner === 'CT' ? 'CT' : '-'} 胜 · ${endLabel || '未知'}`}
+          >
+            <div className="rc-icon">
+              {r.endType !== 'unknown' ? <RoundIcon type={r.endType} /> : <span className="rc-empty">·</span>}
+            </div>
+            <div className={`rc-r ${r.winner === 'T' ? 't' : r.winner === 'CT' ? 'ct' : ''}`}>{r.roundNum}</div>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

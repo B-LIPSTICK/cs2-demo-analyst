@@ -1172,6 +1172,76 @@ body {
   opacity: 0.8;
 }
 
+/* ─── 回合结束栏（爆炸/拆除/全死/超时） ────────────────────────────────────── */
+
+.round-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.round-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 46px;
+  padding: 5px 4px;
+  background: var(--field-bg);
+  border: 1px solid var(--line-1);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, transform 0.12s;
+}
+
+.round-cell:hover {
+  background: var(--hover-bg);
+  transform: translateY(-1px);
+}
+
+.round-cell.win-t {
+  border-color: rgba(201, 168, 106, 0.4);
+}
+
+.round-cell.win-ct {
+  border-color: rgba(123, 163, 201, 0.4);
+}
+
+.round-cell.active {
+  border-color: var(--accent-strong);
+  outline: 1.5px solid var(--accent-strong);
+  outline-offset: 0;
+}
+
+.rc-icon {
+  display: grid;
+  place-items: center;
+  height: 16px;
+  color: var(--text-0);
+}
+
+.rc-empty {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-2);
+}
+
+.rc-r {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.rc-r.t {
+  color: var(--t);
+}
+
+.rc-r.ct {
+  color: var(--ct);
+}
+
 /* ─── 目录下拉（可筛选可删除） ─────────────────────────────────────────────── */
 
 .root-select {
