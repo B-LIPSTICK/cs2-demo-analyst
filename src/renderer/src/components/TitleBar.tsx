@@ -73,7 +73,7 @@ export function TitleBar({
           </svg>
         </span>
         <div className="wordmark">
-          Demo<span className="slash">//</span>Analyst
+          Demo Analyst
           <span className="ver">{t('titlebar.version')}{version}</span>
         </div>
       </div>

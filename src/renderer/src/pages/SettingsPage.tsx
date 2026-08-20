@@ -124,7 +124,7 @@ export function SettingsPage({ settings }: { settings: Settings }) {
       <div className="page-head">
         <div>
           <div className="title">
-            {t.t('settings.title')} <span className="accent">//</span>
+            {t.t('settings.title')}
           </div>
           <div className="sub">{t.t('settings.subtitle')}</div>
         </div>

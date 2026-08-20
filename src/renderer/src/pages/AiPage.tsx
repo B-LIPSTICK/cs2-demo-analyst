@@ -217,7 +217,7 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
       <div className="page-head">
         <div>
           <div className="title">
-            {t('ai.title')} <span className="accent">//</span>
+            {t('ai.title')}
           </div>
           <div className="sub">{t('ai.subtitle')}</div>
         </div>

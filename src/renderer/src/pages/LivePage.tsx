@@ -87,7 +87,7 @@ export function LivePage() {
       <div className="page-head">
         <div>
           <div className="title">
-            {t('live.title')} <span className="accent">//</span>
+            {t('live.title')}
           </div>
           <div className="sub">{t('live.subtitle')}</div>
         </div>

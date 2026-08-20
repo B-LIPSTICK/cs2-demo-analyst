@@ -154,7 +154,7 @@ export function TranscriptPage({
       <div className="page-head">
         <div>
           <div className="title">
-            {t('transcript.title')} <span className="accent">//</span>
+            {t('transcript.title')}
           </div>
           <div className="sub">{t('transcript.subtitle')}</div>
         </div>

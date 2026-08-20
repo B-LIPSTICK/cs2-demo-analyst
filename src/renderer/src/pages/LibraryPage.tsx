@@ -81,7 +81,7 @@ function LibraryPageInner({
       <div className="page-head">
         <div>
           <div className="title">
-            {t('library.title')} <span className="accent">//</span>
+            {t('library.title')}
           </div>
           <div className="sub">{t('library.subtitle')}</div>
         </div>
