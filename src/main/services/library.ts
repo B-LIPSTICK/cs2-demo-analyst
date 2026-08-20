@@ -10,7 +10,7 @@ import { basename, dirname, join, extname } from 'node:path'
 import { createHash } from 'node:crypto'
 import { watch, type FSWatcher } from 'chokidar'
 import AdmZip from 'adm-zip'
-import type { DemoDetail, DemoMeta, Settings, ZipEntry } from '@shared/types'
+import type { DemoDetail, DemoMeta, Settings } from '@shared/types'
 import { parseDemo } from './parser'
 import { getMockDetail, getMockLibrary } from './mock'
 import { updateSettings } from './settings'
@@ -25,8 +25,6 @@ export interface LibraryService {
   setRoots(roots: string[]): Promise<void>
   rescan(): Promise<void>
   remove(id: string): Promise<void>
-  listZips(): Promise<ZipEntry[]>
-  extractZip(path: string): Promise<{ count: number }>
   detectVoice(id: string): Promise<{ hasVoice: boolean; voiceSec: number }>
   extractVoice(id: string): Promise<number>
   transcribe(id: string, opts?: { players?: string[] }): Promise<void>
@@ -210,8 +208,8 @@ export function createLibraryService(
     }
   }
 
-  /** 收集目录下的 .zip（demo 压缩包） */
-  async function walkZip(dir: string, out: ZipEntry[]): Promise<void> {
+  /** 收集目录下的 .zip（demo 压缩包容器） */
+  async function walkZip(dir: string, out: string[]): Promise<void> {
     let entries
     try {
       entries = await fs.readdir(dir, { withFileTypes: true })
@@ -224,22 +222,48 @@ export function createLibraryService(
         if (e.name.startsWith('.')) continue
         await walkZip(p, out)
       } else if (e.isFile() && extname(e.name).toLowerCase() === '.zip') {
-        const st = await fs.stat(p).catch(() => null)
-        if (st) out.push({ path: p, name: e.name, sizeBytes: st.size })
+        out.push(p)
       }
     }
   }
 
+  /** zip 内 .dem 的缓存目录（userData/cache/zips/<id>/） */
+  const zipCacheDir = () => join(app.getPath('userData'), 'cache', 'zips')
+
+  /** 把 zip 内的 .dem 条目提取到缓存文件（解析/播放均用缓存路径） */
+  async function ensureZipEntry(zip: AdmZip, entry: { entryName: string }, id: string): Promise<string> {
+    const name = basename(entry.entryName.replace(/\\/g, '/'))
+    const destPath = join(zipCacheDir(), id, name)
+    try {
+      await fs.access(destPath)
+      return destPath
+    } catch {
+      /* 缓存不存在 → 提取 */
+    }
+    const data = zip.readFile(entry.entryName)
+    if (!data) throw new Error(`无法读取压缩包内文件：${entry.entryName}`)
+    await fs.mkdir(dirname(destPath), { recursive: true })
+    await fs.writeFile(destPath, data)
+    return destPath
+  }
+
   const scan = async () => {
     try {
-      const found: string[] = []
-      await Promise.all(store.roots.map((r) => walk(r, found)))
-      // 过滤用户手动移除的路径
+      const foundDems: string[] = []
+      const foundZips: string[] = []
+      await Promise.all(
+        store.roots.map(async (r) => {
+          await walk(r, foundDems)
+          await walkZip(r, foundZips)
+        })
+      )
       const ignoredSet = new Set(ignored)
-      const visible = found.filter((p) => !ignoredSet.has(p))
-      dbg(`scan found ${found.length} demos in ${store.roots.length} roots`)
+      dbg(`scan found ${foundDems.length} demos + ${foundZips.length} zips in ${store.roots.length} roots`)
       const seen = new Set<string>()
-      for (const path of visible) {
+
+      // ── 普通 .dem ──
+      for (const path of foundDems) {
+        if (ignoredSet.has(path)) continue
         let st
         try {
           st = await fs.stat(path)
@@ -262,12 +286,60 @@ export function createLibraryService(
         store.index[id] = meta
         store.queue.push(meta)
       }
-      // 清理已删除文件
+
+      // ── .zip 容器：把其中 .dem 提取到缓存，直接入库解析 ──
+      for (const zp of foundZips) {
+        if (ignoredSet.has(zp)) continue
+        let zst
+        try {
+          zst = await fs.stat(zp)
+        } catch {
+          continue
+        }
+        let zip: AdmZip
+        try {
+          zip = new AdmZip(zp)
+        } catch {
+          continue
+        }
+        const entries = zip
+          .getEntries()
+          .filter((e) => !e.isDirectory && /\.dem$/i.test(e.entryName))
+        for (const e of entries) {
+          const name = basename(e.entryName.replace(/\\/g, '/'))
+          const id = demoid(`${zp}|${name}`, zst.size, zst.mtimeMs)
+          seen.add(id)
+          const existing = store.index[id]
+          if (existing && existing.containerPath === zp) continue
+          try {
+            const cachePath = await ensureZipEntry(zip, e, id)
+            store.index[id] = {
+              id,
+              path: cachePath,
+              containerPath: zp,
+              fileName: name,
+              sizeBytes: e.header.size,
+              mtimeMs: zst.mtimeMs,
+              addedAt: Date.now(),
+              status: 'pending'
+            }
+            store.queue.push(store.index[id])
+          } catch (err) {
+            dbg(`zip entry failed ${zp} ${name}: ${err instanceof Error ? err.message : String(err)}`)
+          }
+        }
+      }
+
+      // ── 清理失效条目（源文件/容器消失或变更）──
       for (const id of Object.keys(store.index)) {
         if (!seen.has(id)) {
+          const meta = store.index[id]
           delete store.index[id]
           store.details.delete(id)
           fs.unlink(detailPath(id)).catch(() => {})
+          if (meta.containerPath) {
+            fs.rm(join(zipCacheDir(), id), { recursive: true, force: true }).catch(() => {})
+          }
         }
       }
       broadcast()
@@ -295,6 +367,10 @@ export function createLibraryService(
         awaitWriteFinish: { stabilityThreshold: 1500, pollInterval: 300 }
       })
       w.on('add', (p) => {
+        if (extname(p).toLowerCase() === '.zip') {
+          void scan() // zip 容器 → 整体扫描提取
+          return
+        }
         if (extname(p).toLowerCase() !== '.dem') return
         if (ignored.includes(p)) return
         void fs.stat(p).then((st) => {
@@ -317,6 +393,10 @@ export function createLibraryService(
         })
       })
       w.on('unlink', (p) => {
+        if (extname(p).toLowerCase() === '.zip') {
+          void scan() // 容器消失 → 扫描清理对应条目
+          return
+        }
         for (const id of Object.keys(store.index)) {
           if (store.index[id].path === p) {
             delete store.index[id]
@@ -326,6 +406,9 @@ export function createLibraryService(
         }
         broadcast()
         void persistIndex()
+      })
+      w.on('change', (p) => {
+        if (extname(p).toLowerCase() === '.zip') void scan()
       })
       store.watchers.push(w)
     }
@@ -349,12 +432,6 @@ export function createLibraryService(
       async setRoots() {},
       async rescan() {},
       async remove() {},
-      async listZips() {
-        return []
-      },
-      async extractZip() {
-        return { count: 0 }
-      },
       async detectVoice(id) {
         const meta = getMockLibrary().find((m) => m.id === id)
         return { hasVoice: Boolean(meta?.hasVoice), voiceSec: meta?.voiceSec ?? 0 }
@@ -380,6 +457,17 @@ export function createLibraryService(
           store.index = {}
         }
         await loadIgnored()
+        // 清理孤儿 zip 缓存（index 里不存在的缓存目录，如上次退出未落盘时遗留）
+        try {
+          const cached = await fs.readdir(zipCacheDir()).catch(() => [] as string[])
+          for (const cid of cached) {
+            if (!store.index[cid]) {
+              await fs.rm(join(zipCacheDir(), cid), { recursive: true, force: true }).catch(() => {})
+            }
+          }
+        } catch {
+          /* noop */
+        }
         dbg(`init index loaded: ${Object.keys(store.index).length}`)
         // 校验缓存文件仍存在
         for (const id of Object.keys(store.index)) {
@@ -458,55 +546,18 @@ export function createLibraryService(
       if (!meta) return
       delete store.index[id]
       store.details.delete(id)
-      if (!ignored.includes(meta.path)) ignored.push(meta.path)
+      // 普通文件忽略其路径；zip 容器条目忽略其容器（整个 zip 不再入库）
+      const ignoreKey = meta.containerPath ?? meta.path
+      if (!ignored.includes(ignoreKey)) ignored.push(ignoreKey)
       await Promise.all([
         saveIgnored(),
         persistIndex(),
-        fs.unlink(detailPath(id)).catch(() => {})
+        fs.unlink(detailPath(id)).catch(() => {}),
+        meta.containerPath
+          ? fs.rm(join(zipCacheDir(), id), { recursive: true, force: true }).catch(() => {})
+          : Promise.resolve()
       ])
       broadcast()
-    },
-
-    /** 列出库目录下的 demo 压缩包（.zip） */
-    async listZips() {
-      const out: ZipEntry[] = []
-      for (const root of store.roots) {
-        await walkZip(root, out)
-      }
-      const ignoredSet = new Set(ignored)
-      return out.filter((z) => !ignoredSet.has(z.path))
-    },
-
-    /** 一键解压 zip 里的 .dem 到压缩包同目录，随后自动扫描入库 */
-    async extractZip(path: string) {
-      const zip = new AdmZip(path)
-      const entries = zip
-        .getEntries()
-        .filter((e) => !e.isDirectory && /\.dem$/i.test(e.entryName))
-      if (entries.length === 0) throw new Error('压缩包里没有 .dem 文件')
-      const destDir = dirname(path)
-      await fs.mkdir(destDir, { recursive: true })
-      let count = 0
-      for (const entry of entries) {
-        const name = basename(entry.entryName.replace(/\\/g, '/'))
-        if (!/\.dem$/i.test(name)) continue
-        // 同名自动加序号，避免覆盖已有文件
-        let target = join(destDir, name)
-        let i = 1
-        while (await fs.access(target).then(() => true).catch(() => false)) {
-          const dot = name.lastIndexOf('.')
-          target = join(destDir, `${name.slice(0, dot)}-${i}${name.slice(dot)}`)
-          i++
-        }
-        const data = zip.readFile(entry)
-        if (data) {
-          await fs.writeFile(target, data)
-          count++
-        }
-      }
-      // 解压完成后触发扫描，自动入库解析
-      void scan()
-      return { count }
     },
 
     async detectVoice(id) {

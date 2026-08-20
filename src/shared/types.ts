@@ -17,6 +17,8 @@ export interface DemoMeta {
   addedAt: number
   status: DemoStatus
   error?: string
+  /** 源压缩包（.zip 容器）路径：zip 内的 demo 由工具内部缓存到 userData，此字段记录容器 */
+  containerPath?: string
   /** 解析结果 */
   mapName?: string
   tickRate?: number
@@ -132,13 +134,9 @@ export interface Favorite {
   addedAt: number
 }
 
-// ─── demo 压缩包（zip 一键解压） ────────────────────────────────────────────
+// ─── demo 压缩包（zip 直接解析，内部缓存） ──────────────────────────────────
 
-export interface ZipEntry {
-  path: string
-  name: string
-  sizeBytes: number
-}
+// 见 DemoMeta.containerPath；zip 内的 .dem 由工具解出到 userData 缓存目录解析/播放
 
 // ─── AI 对话会话（记忆） ────────────────────────────────────────────────────
 
@@ -303,10 +301,6 @@ export interface Api {
     add: (id: string) => Promise<Favorite>
     remove: (id: string) => Promise<void>
     reveal: () => Promise<void>
-  }
-  zip: {
-    list: () => Promise<ZipEntry[]>
-    extract: (path: string) => Promise<{ count: number }>
   }
   voice: {
     detect: (id: string) => Promise<{ hasVoice: boolean; voiceSec: number }>
