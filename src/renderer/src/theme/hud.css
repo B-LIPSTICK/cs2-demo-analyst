@@ -1431,6 +1431,40 @@ body {
 .kill-list {
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
+}
+
+/* 击杀行窄容器（按实际宽度，而非窗口宽度）自适应换行 */
+@container (max-width: 540px) {
+  .kill-row {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      'tk rn'
+      'atk wp'
+      'vic vic';
+    row-gap: 6px;
+  }
+
+  .kill-row .tk {
+    grid-area: tk;
+  }
+
+  .kill-row .rn {
+    grid-area: rn;
+  }
+
+  .kill-row .nm:first-of-type {
+    grid-area: atk;
+  }
+
+  .kill-row .wp {
+    grid-area: wp;
+    justify-self: start;
+  }
+
+  .kill-row .nm:last-of-type {
+    grid-area: vic;
+  }
 }
 
 .kill-row {
@@ -1508,9 +1542,14 @@ body {
 
 /* ─── 选手表 ──────────────────────────────────────────────────────────────── */
 
+.tbl-wrap {
+  overflow-x: auto;
+}
+
 .tbl {
   width: 100%;
   border-collapse: collapse;
+  min-width: 0;
 }
 
 .tbl th {
