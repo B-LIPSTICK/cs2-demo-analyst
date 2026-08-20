@@ -6,10 +6,11 @@
  */
 import { app, dialog, BrowserWindow } from 'electron'
 import { promises as fs } from 'node:fs'
-import { join, extname } from 'node:path'
+import { basename, dirname, join, extname } from 'node:path'
 import { createHash } from 'node:crypto'
 import { watch, type FSWatcher } from 'chokidar'
-import type { DemoDetail, DemoMeta, Settings } from '@shared/types'
+import AdmZip from 'adm-zip'
+import type { DemoDetail, DemoMeta, Settings, ZipEntry } from '@shared/types'
 import { parseDemo } from './parser'
 import { getMockDetail, getMockLibrary } from './mock'
 import { updateSettings } from './settings'
@@ -24,6 +25,8 @@ export interface LibraryService {
   setRoots(roots: string[]): Promise<void>
   rescan(): Promise<void>
   remove(id: string): Promise<void>
+  listZips(): Promise<ZipEntry[]>
+  extractZip(path: string): Promise<{ count: number }>
   detectVoice(id: string): Promise<{ hasVoice: boolean; voiceSec: number }>
   extractVoice(id: string): Promise<number>
   transcribe(id: string, opts?: { players?: string[] }): Promise<void>
@@ -207,6 +210,26 @@ export function createLibraryService(
     }
   }
 
+  /** 收集目录下的 .zip（demo 压缩包） */
+  async function walkZip(dir: string, out: ZipEntry[]): Promise<void> {
+    let entries
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      const p = join(dir, e.name)
+      if (e.isDirectory()) {
+        if (e.name.startsWith('.')) continue
+        await walkZip(p, out)
+      } else if (e.isFile() && extname(e.name).toLowerCase() === '.zip') {
+        const st = await fs.stat(p).catch(() => null)
+        if (st) out.push({ path: p, name: e.name, sizeBytes: st.size })
+      }
+    }
+  }
+
   const scan = async () => {
     try {
       const found: string[] = []
@@ -326,6 +349,12 @@ export function createLibraryService(
       async setRoots() {},
       async rescan() {},
       async remove() {},
+      async listZips() {
+        return []
+      },
+      async extractZip() {
+        return { count: 0 }
+      },
       async detectVoice(id) {
         const meta = getMockLibrary().find((m) => m.id === id)
         return { hasVoice: Boolean(meta?.hasVoice), voiceSec: meta?.voiceSec ?? 0 }
@@ -436,6 +465,48 @@ export function createLibraryService(
         fs.unlink(detailPath(id)).catch(() => {})
       ])
       broadcast()
+    },
+
+    /** 列出库目录下的 demo 压缩包（.zip） */
+    async listZips() {
+      const out: ZipEntry[] = []
+      for (const root of store.roots) {
+        await walkZip(root, out)
+      }
+      const ignoredSet = new Set(ignored)
+      return out.filter((z) => !ignoredSet.has(z.path))
+    },
+
+    /** 一键解压 zip 里的 .dem 到压缩包同目录，随后自动扫描入库 */
+    async extractZip(path: string) {
+      const zip = new AdmZip(path)
+      const entries = zip
+        .getEntries()
+        .filter((e) => !e.isDirectory && /\.dem$/i.test(e.entryName))
+      if (entries.length === 0) throw new Error('压缩包里没有 .dem 文件')
+      const destDir = dirname(path)
+      await fs.mkdir(destDir, { recursive: true })
+      let count = 0
+      for (const entry of entries) {
+        const name = basename(entry.entryName.replace(/\\/g, '/'))
+        if (!/\.dem$/i.test(name)) continue
+        // 同名自动加序号，避免覆盖已有文件
+        let target = join(destDir, name)
+        let i = 1
+        while (await fs.access(target).then(() => true).catch(() => false)) {
+          const dot = name.lastIndexOf('.')
+          target = join(destDir, `${name.slice(0, dot)}-${i}${name.slice(dot)}`)
+          i++
+        }
+        const data = zip.readFile(entry)
+        if (data) {
+          await fs.writeFile(target, data)
+          count++
+        }
+      }
+      // 解压完成后触发扫描，自动入库解析
+      void scan()
+      return { count }
     },
 
     async detectVoice(id) {

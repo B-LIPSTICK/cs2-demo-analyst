@@ -132,6 +132,14 @@ export interface Favorite {
   addedAt: number
 }
 
+// ─── demo 压缩包（zip 一键解压） ────────────────────────────────────────────
+
+export interface ZipEntry {
+  path: string
+  name: string
+  sizeBytes: number
+}
+
 // ─── AI 对话会话（记忆） ────────────────────────────────────────────────────
 
 export interface AiChatMessage {
@@ -295,6 +303,10 @@ export interface Api {
     add: (id: string) => Promise<Favorite>
     remove: (id: string) => Promise<void>
     reveal: () => Promise<void>
+  }
+  zip: {
+    list: () => Promise<ZipEntry[]>
+    extract: (path: string) => Promise<{ count: number }>
   }
   voice: {
     detect: (id: string) => Promise<{ hasVoice: boolean; voiceSec: number }>

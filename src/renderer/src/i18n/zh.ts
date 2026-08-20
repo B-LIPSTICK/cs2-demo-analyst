@@ -82,6 +82,11 @@ export const zh = {
   'library.removeDemo': '移除',
   'library.removeConfirm': '确定把该 demo 从资料库移除吗？不会删除源文件。',
   'library.removed': '已从资料库移除（不会删源文件，可重新扫描其它目录）',
+  'library.zips': '发现 demo 压缩包',
+  'library.unzip': '解压',
+  'library.unzipAll': '全部解压',
+  'library.unzipDone': '已解压 {n} 个 demo，正在自动入库',
+  'library.unzipFailed': '解压失败：{err}',
 
   // 详情
   'detail.hud.kills': '击杀',

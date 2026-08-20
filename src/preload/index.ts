@@ -29,6 +29,10 @@ const api: ApiWithEvents = {
     remove: (id: string) => ipcRenderer.invoke('favorites:remove', id),
     reveal: () => ipcRenderer.invoke('favorites:reveal')
   },
+  zip: {
+    list: () => ipcRenderer.invoke('zip:list'),
+    extract: (path: string) => ipcRenderer.invoke('zip:extract', path)
+  },
   voice: {
     detect: (id: string) => ipcRenderer.invoke('voice:detect', id),
     extract: (id: string) => ipcRenderer.invoke('voice:extract', id)

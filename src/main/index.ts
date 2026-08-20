@@ -102,6 +102,10 @@ function registerIpc(): void {
   ipcMain.handle('library:rescan', () => library.rescan())
   ipcMain.handle('library:remove', (_e, id: string) => library.remove(id))
 
+  // demo 压缩包（zip 一键解压）
+  ipcMain.handle('zip:list', () => library.listZips())
+  ipcMain.handle('zip:extract', (_e, path: string) => library.extractZip(path))
+
   // 收藏
   ipcMain.handle('favorites:list', async () => {
     const { favoritesList } = await import('./services/favorites')

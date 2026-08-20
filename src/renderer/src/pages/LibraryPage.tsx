@@ -12,7 +12,7 @@ import {
   useToast
 } from '@/components/ui'
 import { useTKey } from '@/i18n'
-import type { DemoMeta } from '@shared/types'
+import type { DemoMeta, ZipEntry } from '@shared/types'
 import { DemoDetailPage } from './DemoDetailPage'
 
 function LibraryPageInner({
@@ -26,6 +26,7 @@ function LibraryPageInner({
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [favIds, setFavIds] = useState<Set<string>>(new Set())
+  const [zips, setZips] = useState<ZipEntry[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -50,6 +51,25 @@ function LibraryPageInner({
       .then((list) => setFavIds(new Set(list.map((f) => f.id))))
       .catch(() => {})
   }, [])
+
+  // 压缩包列表（zip 一键解压）
+  useEffect(() => {
+    window.api.zip.list().then(setZips).catch(() => {})
+  }, [])
+
+  const doExtract = async (path: string) => {
+    try {
+      const r = await window.api.zip.extract(path)
+      toast.push(t('library.unzipDone').replace('{n}', String(r.count)))
+      setZips((zs) => zs.filter((z) => z.path !== path))
+      load()
+    } catch (err) {
+      toast.push(
+        t('library.unzipFailed').replace('{err}', err instanceof Error ? err.message : String(err)),
+        'err'
+      )
+    }
+  }
 
   const toggleFav = async (id: string) => {
     if (favIds.has(id)) {
@@ -144,6 +164,25 @@ function LibraryPageInner({
           </Btn>
         </div>
       </div>
+
+      {zips.length > 0 && (
+        <div className="zip-bar">
+          <span className="zip-bar-title">📦 {t('library.zips')}（{zips.length}）</span>
+          {zips.map((z) => (
+            <span key={z.path} className="zip-item">
+              <span className="zip-name" title={z.path}>
+                {z.name} · {fmtBytes(z.sizeBytes)}
+              </span>
+              <Btn size="sm" variant="ghost" onClick={() => doExtract(z.path)}>
+                {t('library.unzip')}
+              </Btn>
+            </span>
+          ))}
+          <Btn size="sm" variant="accent" onClick={() => zips.forEach((z) => doExtract(z.path))}>
+            {t('library.unzipAll')}
+          </Btn>
+        </div>
+      )}
 
       {loading ? (
         <Empty ghost="SCANNING" hint="…" />

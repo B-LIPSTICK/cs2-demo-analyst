@@ -80,6 +80,11 @@ export const en: Record<keyof ZhDict, string> = {
   'library.removeDemo': 'Remove',
   'library.removeConfirm': 'Remove this demo from the library? The source file will not be deleted.',
   'library.removed': 'Removed from library (source file kept)',
+  'library.zips': 'Demo archives found',
+  'library.unzip': 'Extract',
+  'library.unzipAll': 'Extract all',
+  'library.unzipDone': 'Extracted {n} demo(s), importing now',
+  'library.unzipFailed': 'Extract failed: {err}',
 
   'detail.hud.kills': 'KILLS',
   'detail.hud.deaths': 'DEATHS',
