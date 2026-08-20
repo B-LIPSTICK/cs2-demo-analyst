@@ -61,7 +61,8 @@ export function DemoDetailPage({
   const { meta, rounds, chat, voice } = detail
   const round = selectedRound === 'all' ? null : rounds.find((r) => r.roundNum === selectedRound)
   const kills: KillEvent[] = round ? round.kills : rounds.flatMap((r) => r.kills)
-  const sortedKills = [...kills].sort((a, b) => b.tick - a.tick)
+  // 按时间正序：比赛开始 → 结束
+  const sortedKills = [...kills].sort((a, b) => a.tick - b.tick)
   const voiceSecs = voice.reduce((s, v) => s + (v.endSec - v.timeSec), 0)
 
   return (
