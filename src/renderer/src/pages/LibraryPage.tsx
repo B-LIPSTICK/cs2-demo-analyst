@@ -160,7 +160,7 @@ function LibraryPageInner({
           <div className="sub">{t('library.subtitle')}</div>
         </div>
         <div className="actions">
-          {selectMode ? (
+          {selectedIds.size > 0 ? (
             <>
               <span className="muted" style={{ fontSize: 12.5, fontWeight: 600 }}>
                 {t('library.selected').replace('{n}', String(selectedIds.size))}
@@ -266,7 +266,12 @@ function LibraryPageInner({
               progress={progress[d.id]}
               selectMode={selectMode}
               selected={selectedIds.has(d.id)}
-              onOpen={() => onOpenDemo(d.id)}
+              onOpen={() => {
+                // 打开详情前清空多选状态
+                setSelectMode(false)
+                setSelectedIds(new Set())
+                onOpenDemo(d.id)
+              }}
               onToggleSelect={() => toggleSelect(d.id)}
               onToggleFav={() => toggleFav(d.id)}
               onRemoveMenu={() => setRemoveModal({ ids: [d.id] })}
@@ -445,7 +450,15 @@ function DemoCard({
     <article
       className={`card ${selected ? 'selected' : ''}`}
       style={{ ['--i' as string]: index } as React.CSSProperties}
-      onClick={selectMode ? onToggleSelect : onOpen}
+      onClick={(e) => {
+        // Ctrl/⌘ 点击或选择模式 → 切换选中；普通点击 → 打开详情
+        if (e.ctrlKey || e.metaKey || selectMode) {
+          e.preventDefault()
+          onToggleSelect()
+        } else {
+          onOpen()
+        }
+      }}
     >
       {/* 选择模式：左上角勾选 */}
       {selectMode && <span className={`card-check ${selected ? 'on' : ''}`}>{selected ? '✓' : ''}</span>}
