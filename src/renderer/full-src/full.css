@@ -47,9 +47,7 @@ body {
   cursor: pointer;
   color: rgba(245, 245, 247, 0.72);
   font-size: 14px;
-  background: rgba(24, 24, 28, 0.5);
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
-  backdrop-filter: blur(18px) saturate(180%);
+  background: rgba(24, 24, 28, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 50%;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
@@ -79,9 +77,7 @@ body {
   align-items: center;
   gap: 10px;
   padding: 7px 18px 7px 8px;
-  background: rgba(24, 24, 28, 0.55);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(24, 24, 28, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 999px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
@@ -170,9 +166,7 @@ body {
   align-items: baseline;
   gap: 14px;
   padding: 8px 20px;
-  background: rgba(24, 24, 28, 0.55);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(24, 24, 28, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 999px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);

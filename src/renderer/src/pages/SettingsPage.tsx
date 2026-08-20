@@ -110,6 +110,23 @@ export function SettingsPage({ settings }: { settings: Settings }) {
       <Panel>
         <div className="set-row">
           <div className="info">
+            <div className="t">{t.t('settings.theme')}</div>
+            <div className="d">{t.t('settings.themeHint')}</div>
+          </div>
+          <div className="seg">
+            {(['dark', 'light'] as const).map((th) => (
+              <span
+                key={th}
+                className={`seg-item ${(draft.ui?.theme ?? 'dark') === th ? 'on' : ''}`}
+                onClick={() => set({ ui: { ...(draft.ui ?? { theme: 'dark' }), theme: th } })}
+              >
+                {t.t(`settings.theme${th === 'dark' ? 'Dark' : 'Light'}` as never)}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="set-row">
+          <div className="info">
             <div className="t">{t.t('settings.language')}</div>
           </div>
           <div className="seg">

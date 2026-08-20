@@ -92,12 +92,12 @@
   - 回退路径：wasm-audio-decoders（早期 decodeFrames 输出接近静音的方案保留为兜底）。
   - 待验证：GitHub Pages 等真实部署环境（Chrome）下的 ffmpeg.wasm 加载与 COOP/COEP。
 
-## 13. 架构演进（Web 优先，一套代码三种形态）
+## 13. 架构演进（最终：桌面版单形态）
 
-- Web 版（浏览器打开即用）：vite.config.ts + src/web/（parseDemo 浏览器解析、decodeVoice WASM 解码）+ webmock（window.api 适配，无 Electron 时用 mock）+ GitHub Pages 可发布；**解析已验证 1.3s/76MB，UI 100KB 级**。
-- Electron 版：保留（绿色 zip 分发），Overlay/注入/桌面能力。
-- 本地桥：live.ts 逻辑（VConsole+GSI+进程检测）→ HTTP/WS 服务（Phase B）。
-- 注意：`--url` 需为 electron 自定义脚本的最后一个参数（Chromium 会吞其后参数）；executeJavaScript 与 WASM Worker 组合易崩（调试用 --eval-file + 渲染 console 转发）。
+- ~~Web 版~~：已按用户要求整体移除（src/web、webmock、ffmpeg.wasm、web 脚本、web-dist），代码库只保留 Electron 桌面形态；renderer 包 1.86MB → 674KB，zip 146.8MB。
+- Electron 版：主形态（绿色 zip 分发），Overlay/注入/桌面能力。
+- 主题：苹果风 v4（SF 系统字体/毛玻璃/iOS 蓝/macOS 红绿灯）+ 深色/浅色双主题（CSS 变量 `:root[data-theme='light']` 覆盖）+ Mineradio 式氛围光斑。
+- 全屏面板性能：去 backdrop-filter blur（全屏模糊 GPU 开销是卡死主因）；tickSim 改按真实时间推进（Date.now delta），帧率 60→20fps；窗口 focusable:false 不抢焦点。
 
 ## 14. 语音转写引擎选择（用户要求快+免费+一键配置）
 

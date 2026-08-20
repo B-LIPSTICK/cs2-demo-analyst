@@ -171,10 +171,16 @@ function roundOf(tick: number): number | undefined {
   return undefined
 }
 
-/** 演示模式：按倍速推进 tick，从转写数据计算说话者与字幕 */
+let lastSimAt = 0 // 上帧时间戳（按真实时间推进 tick）
+
+/** 演示模式：按真实时间 × 倍速推进 tick，从转写数据计算说话者与字幕 */
 function tickSim(): void {
   if (!simDetail || simPaused) return
-  simTick += 64 * simSpeed
+  const now = Date.now()
+  const dt = lastSimAt ? Math.min(now - lastSimAt, 250) : 0 // 卡顿后不跳帧
+  lastSimAt = now
+  if (dt > 0) simTick += Math.round(64 * simSpeed * (dt / 1000))
+  if (simTick < 0) simTick = 0
   if (process.env['DEBUG_OVERLAY'] === '1' && simTick % 6400 < 64) {
     console.log(`[overlay] tick=${simTick} speakers=${lastSpeakers.length} lines=${lineHistory.length}`)
   }
@@ -261,7 +267,8 @@ export function setEnabled(enabled: boolean, demoId?: string, detail?: DemoDetai
     applyClickThrough(clickThrough)
     win?.showInactive()
     if (simTimer) clearInterval(simTimer)
-    simTimer = setInterval(tickSim, 1000 / 60)
+    lastSimAt = 0
+    simTimer = setInterval(tickSim, 1000 / 20)
     sendState()
   } else {
     if (simTimer) clearInterval(simTimer)
@@ -312,6 +319,7 @@ function createFullWindow(): void {
     resizable: false,
     hasShadow: false,
     fullscreenable: false,
+    focusable: false,
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
@@ -340,10 +348,11 @@ export function setFullPanel(enabled: boolean, demoId?: string, detail?: DemoDet
       eventHistory = []
     }
     createFullWindow()
-    fullWin?.show()
+    fullWin?.showInactive()
     if (simTimer) clearInterval(simTimer)
     simPaused = false
-    simTimer = setInterval(tickSim, 1000 / 60)
+    lastSimAt = 0
+    simTimer = setInterval(tickSim, 1000 / 20)
     sendState()
   } else {
     if (fullWin && !fullWin.isDestroyed()) fullWin.destroy()

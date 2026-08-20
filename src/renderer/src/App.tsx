@@ -73,6 +73,11 @@ export default function App() {
     window.api.window.isMaximized()
   }, [])
 
+  // 主题应用到根节点（明暗切换）
+  useEffect(() => {
+    document.documentElement.dataset.theme = settings?.ui?.theme ?? 'dark'
+  }, [settings?.ui?.theme])
+
   // 事件订阅
   useEffect(() => {
     // 防御：载荷异常时保持原设置（曾经因主进程发裸对象导致 e.settings=undefined → 黑屏）
@@ -103,6 +108,16 @@ export default function App() {
     window.api.settings.set({ language: lang }).catch(() => {})
   }, [])
 
+  const onToggleTheme = useCallback(() => {
+    setSettings((s) => {
+      if (!s) return s
+      const theme: 'dark' | 'light' = s.ui.theme === 'dark' ? 'light' : 'dark'
+      const next = { ...s, ui: { ...s.ui, theme } }
+      window.api.settings.set({ ui: { theme } }).catch(() => {})
+      return next
+    })
+  }, [])
+
   // 设置未就绪时显示加载壳（而不是 return null 导致黑屏）
   if (!settings) {
     return (
@@ -118,7 +133,12 @@ export default function App() {
       <I18nProvider lang={settings.language} onLangChange={onLangChange}>
         <ToastProvider>
           <div className="app">
-            <TitleBar status={live} version={version} />
+            <TitleBar
+              status={live}
+              version={version}
+              theme={settings.ui.theme}
+              onToggleTheme={onToggleTheme}
+            />
             <div className="app-body">
               <NavRail page={route.page} onNavigate={(p) => navigate(p)} version={version} />
               <main className="page-scroll">

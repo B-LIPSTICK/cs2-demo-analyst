@@ -13,7 +13,17 @@ function ledFor(status: LiveStatus, kind: 'cs2' | 'vcon' | 'gsi'): 'on' | 'warn'
   return status.gsiActive ? 'on' : 'off'
 }
 
-export function TitleBar({ status, version }: { status: LiveStatus; version: string }) {
+export function TitleBar({
+  status,
+  version,
+  theme,
+  onToggleTheme
+}: {
+  status: LiveStatus
+  version: string
+  theme: 'dark' | 'light'
+  onToggleTheme: () => void
+}) {
   const t = useTKey()
   return (
     <header className="titlebar">
@@ -72,6 +82,23 @@ export function TitleBar({ status, version }: { status: LiveStatus; version: str
         <Led state={ledFor(status, 'cs2')} label={t('status.cs2')} />
         <Led state={ledFor(status, 'vcon')} label={t('status.vcon')} />
         <Led state={ledFor(status, 'gsi')} label={t('status.gsi')} />
+        <button
+          className="theme-btn"
+          onClick={onToggleTheme}
+          title={t('titlebar.themeToggle')}
+          aria-label={t('titlebar.themeToggle')}
+        >
+          {theme === 'dark' ? (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round">
+              <circle cx="12" cy="12" r="4.2" />
+              <path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" />
+            </svg>
+          )}
+        </button>
       </div>
     </header>
   )

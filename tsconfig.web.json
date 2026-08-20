@@ -25,7 +25,6 @@
     "src/renderer/src/**/*.ts",
     "src/renderer/src/**/*.tsx",
     "src/renderer/overlay-src/**/*.ts",
-    "src/web/**/*.ts",
     "src/main/types/**/*.d.ts",
     "src/shared/**/*.ts"
   ]

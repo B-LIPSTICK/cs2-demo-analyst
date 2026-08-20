@@ -173,6 +173,9 @@ export type LocalWhisperModel = 'base' | 'small' | 'medium'
 export interface Settings {
   language: 'zh' | 'en'
   libraryRoots: string[]
+  ui: {
+    theme: 'dark' | 'light'
+  }
   asr: {
     engine: AsrEngine
     localModel: LocalWhisperModel
@@ -206,6 +209,9 @@ export type OverlayPosition =
 export const DEFAULT_SETTINGS: Settings = {
   language: 'zh',
   libraryRoots: [],
+  ui: {
+    theme: 'dark'
+  },
   asr: {
     engine: 'local',
     localModel: 'small',

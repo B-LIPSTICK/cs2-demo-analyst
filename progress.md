@@ -44,6 +44,13 @@
 - 验收: typecheck/build/web:build ✅; 9 张截图全页面视觉验收 ✅（apple-*.png）; 黑屏回归 ×2（切英文/改端口设置，UI 正常英文渲染非黑屏）✅; overlay/fullpanel 无地图比分 ✅; 打包 exe 冒烟 ✅; zip 158.3MB。
 - README 截图/文案更新为 v4 主题。
 
+## 本轮三（全屏修复 + 删 Web 版 + 明暗主题 + 打包）✅
+- **全屏面板卡死修复**: 卡死主因 = 全屏透明窗口上大面积 backdrop-filter blur 的 GPU 开销。修复: full.css 全部去 blur（改高不透明度纯色胶囊）; overlay.ts tickSim 从固定步进 60fps 改**按真实时间推进**（Date.now delta，帧率 20fps）; 全屏窗口 focusable:false + showInactive 不抢焦点。
+- **删除 Web 版**（用户要求只做 exe）: 删 src/web、webmock.ts、renderer/public（opus/ffmpeg/deadem-web）、vite.config.ts、web 脚本、@ffmpeg/@eshaz/字体依赖、README/GUIDE/DEVELOPMENT 的 Web 内容。renderer 包 1.86MB→674KB，zip 158→146.8MB。
+- **明暗双主题**: Settings.ui.theme + 标题栏太阳/月亮切换按钮 + 设置页分段；CSS 变量玻璃材质体系（--glass-*/--field-bg/--hover-bg 等）+ `:root[data-theme='light']` 全量覆盖；App 根节点 data-theme 同步。
+- **UI 排布再打磨（参考 Mineradio）**: 标题渐变字、卡片 hover 蓝色辉光、背景蓝紫氛围光斑（26s 极慢漂移动画）、按钮蓝色渐变 + 光晕。
+- 验收: typecheck/build ✅; 打包 exe 冒烟 ✅; 浅色设置页/浅色资料库/深色资料库/全屏面板截图视觉验收 ✅（v4-*.png）; zip 146.8MB。
+
 ## 下一步
 - 发布: 推送提交到 origin（需代理在线）→ GitHub Pages 部署（web-dist, base './' 已配）。
 - 后续: Web 版本地桥（Phase B）; 实机 CS2 验证 VConsole 握手/GSI 推送; NSIS 安装器（可选）; 包体继续压缩（<120MB 目标）。

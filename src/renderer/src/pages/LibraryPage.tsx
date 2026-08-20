@@ -25,8 +25,6 @@ function LibraryPageInner({
   const [demos, setDemos] = useState<DemoMeta[]>([])
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
-  const [dragOver, setDragOver] = useState(false)
-  const isWeb = typeof window !== 'undefined' && Boolean((window as unknown as { __demoAnalystWeb?: unknown }).__demoAnalystWeb)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -66,49 +64,6 @@ function LibraryPageInner({
     }
   }
 
-  const tryDemo = async () => {
-    const w = window as unknown as { __demoAnalystWeb?: { loadDemoDemos: () => void } }
-    w.__demoAnalystWeb?.loadDemoDemos()
-    toast.push('demo')
-  }
-
-  // 拖放导入（Web 模式）
-  useEffect(() => {
-    if (!isWeb) return
-    const onDragOver = (e: DragEvent) => {
-      e.preventDefault()
-      setDragOver(true)
-    }
-    const onDragLeave = (e: DragEvent) => {
-      if (e.relatedTarget === null) setDragOver(false)
-    }
-    const onDrop = async (e: DragEvent) => {
-      e.preventDefault()
-      setDragOver(false)
-      const files = Array.from(e.dataTransfer?.files ?? [])
-      const demFiles = files.filter((f) => f.name.toLowerCase().endsWith('.dem'))
-      if (demFiles.length === 0) {
-        toast.push('仅支持 .dem 文件', 'warn')
-        return
-      }
-      const w = window as unknown as { __demoAnalystWeb?: { addFile: (f: File) => Promise<string | null> } }
-      let ok = 0
-      for (const f of demFiles) {
-        const id = await w.__demoAnalystWeb?.addFile(f)
-        if (id) ok++
-      }
-      if (ok) toast.push(`+${ok} demo`)
-    }
-    window.addEventListener('dragover', onDragOver)
-    window.addEventListener('dragleave', onDragLeave)
-    window.addEventListener('drop', onDrop)
-    return () => {
-      window.removeEventListener('dragover', onDragOver)
-      window.removeEventListener('dragleave', onDragLeave)
-      window.removeEventListener('drop', onDrop)
-    }
-  }, [isWeb, toast])
-
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return demos
@@ -128,7 +83,7 @@ function LibraryPageInner({
           <div className="title">
             {t('library.title')} <span className="accent">//</span>
           </div>
-          <div className="sub">{isWeb ? t('library.webIntro') : t('library.subtitle')}</div>
+          <div className="sub">{t('library.subtitle')}</div>
         </div>
         <div className="actions">
           <div className="row">
@@ -143,7 +98,7 @@ function LibraryPageInner({
           </div>
           <Btn variant="ghost" onClick={addRoot}>
             <IcPlus size={13} />
-            {isWeb ? t('library.pickFiles') : t('library.addRoot')}
+            {t('library.addRoot')}
           </Btn>
           <Btn variant="ghost" onClick={load}>
             <IcRefresh size={13} />
@@ -155,39 +110,12 @@ function LibraryPageInner({
       {loading ? (
         <Empty ghost="SCANNING" hint="…" />
       ) : filtered.length === 0 && demos.length === 0 ? (
-        isWeb ? (
-          <div className={`drop-zone ${dragOver ? 'over' : ''}`}>
-            <div className="drop-icon">
-              <svg viewBox="0 0 48 48" fill="none">
-                <path d="M24 6v22M13 17l11-11 11 11" stroke="currentColor" strokeWidth="2.4" strokeLinecap="square" />
-                <path d="M8 30v8a4 4 0 0 0 4 4h24a4 4 0 0 0 4-4v-8" stroke="currentColor" strokeWidth="2.4" strokeLinecap="square" />
-              </svg>
-            </div>
-            <div className="drop-title">{t('library.dropTitle')}</div>
-            <div className="drop-hint">{t('library.dropHint')}</div>
-            <div className="flex gap-8" style={{ marginTop: 16, justifyContent: 'center' }}>
-              <Btn variant="primary" onClick={addRoot}>
-                <IcPlus size={13} />
-                {t('library.pickFiles')}
-              </Btn>
-              <Btn variant="ghost" onClick={tryDemo}>
-                {t('library.tryDemo')}
-              </Btn>
-            </div>
-            <div className="drop-steps">
-              <div className="ds"><span>{t('library.step1')}</span>{t('library.step1Desc')}</div>
-              <div className="ds"><span>{t('library.step2')}</span>{t('library.step2Desc')}</div>
-              <div className="ds"><span>{t('library.step3')}</span>{t('library.step3Desc')}</div>
-            </div>
-          </div>
-        ) : (
-          <Empty ghost="NO DEMOS" hint={t('library.emptyHint')}>
-            <Btn variant="ghost" onClick={addRoot} style={{ marginTop: 6 }}>
-              <IcPlus size={13} />
-              {t('library.addRoot')}
-            </Btn>
-          </Empty>
-        )
+        <Empty ghost="NO DEMOS" hint={t('library.emptyHint')}>
+          <Btn variant="ghost" onClick={addRoot} style={{ marginTop: 6 }}>
+            <IcPlus size={13} />
+            {t('library.addRoot')}
+          </Btn>
+        </Empty>
       ) : filtered.length === 0 ? (
         <Empty ghost="NO DEMOS" hint={query ? t('common.search') : ''} />
       ) : (
@@ -203,7 +131,6 @@ function LibraryPageInner({
           {t('library.mmNoVoice')}
         </span>
       </div>
-      {dragOver && <div className="drop-overlay">{t('library.dropTitle')}</div>}
     </div>
   )
 }
