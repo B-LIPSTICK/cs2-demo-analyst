@@ -19,6 +19,8 @@ export interface DemoMeta {
   error?: string
   /** 源压缩包（.zip 容器）路径：zip 内的 demo 由工具内部缓存到 userData，此字段记录容器 */
   containerPath?: string
+  /** demo 日期（近似比赛时间）：默认取文件 mtime */
+  dateMs?: number
   /** 解析结果 */
   mapName?: string
   tickRate?: number

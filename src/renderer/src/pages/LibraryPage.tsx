@@ -14,6 +14,7 @@ import {
 import { useTKey } from '@/i18n'
 import type { DemoMeta } from '@shared/types'
 import { DemoDetailPage } from './DemoDetailPage'
+import { fmtDate } from '@/components/ui'
 
 function LibraryPageInner({
   onOpenDemo
@@ -28,6 +29,7 @@ function LibraryPageInner({
   const [favIds, setFavIds] = useState<Set<string>>(new Set())
   const [roots, setRoots] = useState<string[]>([])
   const [rootFilter, setRootFilter] = useState('')
+  const [sortMode, setSortMode] = useState<'date' | 'added'>('date')
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [removeModal, setRemoveModal] = useState<{ ids: string[] } | null>(null)
@@ -143,6 +145,12 @@ function LibraryPageInner({
         (d) => d.path.startsWith(rootFilter) || (d.containerPath?.startsWith(rootFilter) ?? false)
       )
     }
+    // 排序：按日期（默认，新的在前）或按加入时间
+    list = [...list].sort((a, b) => {
+      const keyA = sortMode === 'date' ? (a.dateMs ?? a.mtimeMs ?? a.addedAt) : a.addedAt
+      const keyB = sortMode === 'date' ? (b.dateMs ?? b.mtimeMs ?? b.addedAt) : b.addedAt
+      return keyB - keyA
+    })
     const q = query.trim().toLowerCase()
     if (!q) return list
     return list.filter(
@@ -152,7 +160,7 @@ function LibraryPageInner({
         d.teamT?.toLowerCase().includes(q) ||
         d.teamCT?.toLowerCase().includes(q)
     )
-  }, [demos, query, rootFilter])
+  }, [demos, query, rootFilter, sortMode])
 
   return (
     <div className="page" style={{ position: 'relative' }}>
@@ -202,12 +210,22 @@ function LibraryPageInner({
                 <IcSearch size={15} />
                 <input
                   className="input"
-                  style={{ width: 180 }}
+                  style={{ width: 160 }}
                   placeholder={t('common.search')}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
               </div>
+              <select
+                className="input select"
+                style={{ width: 110 }}
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value as 'date' | 'added')}
+                title={t('library.sortBy')}
+              >
+                <option value="date">{t('library.sortDate')}</option>
+                <option value="added">{t('library.sortAdded')}</option>
+              </select>
               <Btn variant="ghost" onClick={async () => {
                 await window.api.library.addRoot()
                 load()
@@ -511,6 +529,7 @@ function DemoCard({
           <div className="file" title={demo.path}>
             {demo.fileName}
           </div>
+          <div className="date">{fmtDate(demo.dateMs ?? demo.mtimeMs ?? demo.addedAt)}</div>
         </div>
         <div className="score">
           <span className="t">{demo.scoreT ?? 0}</span>

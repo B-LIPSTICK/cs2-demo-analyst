@@ -408,3 +408,10 @@ export function fmtBytes(b: number): string {
   if (b >= 1024 ** 2) return `${(b / 1024 ** 2).toFixed(0)} MB`
   return `${(b / 1024).toFixed(0)} KB`
 }
+
+export function fmtDate(ms: number): string {
+  if (!isFinite(ms) || ms <= 0) return '—'
+  const d = new Date(ms)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}

@@ -292,6 +292,7 @@ export function createLibraryService(
           fileName: path.split(/[\\/]/).pop() ?? path,
           sizeBytes: st.size,
           mtimeMs: st.mtimeMs,
+          dateMs: st.mtimeMs,
           addedAt: Date.now(),
           status: 'pending'
         }
@@ -333,6 +334,7 @@ export function createLibraryService(
               fileName: name,
               sizeBytes: e.header.size,
               mtimeMs: zst.mtimeMs,
+              dateMs: zst.mtimeMs,
               addedAt: Date.now(),
               status: 'pending'
             }

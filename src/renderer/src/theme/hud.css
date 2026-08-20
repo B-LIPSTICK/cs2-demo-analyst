@@ -1164,6 +1164,14 @@ body {
   white-space: nowrap;
 }
 
+.card .date {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-2);
+  margin-top: 3px;
+  opacity: 0.8;
+}
+
 .card .score {
   margin-left: auto;
   display: flex;
