@@ -109,17 +109,24 @@ export function createLibraryService(
   }
 
   const persistIndex = async () => {
-    await fs.mkdir(libDir(), { recursive: true })
-    const tmp = indexPath() + '.tmp'
-    await fs.writeFile(tmp, JSON.stringify(store.index), 'utf-8')
-    await fs.rename(tmp, indexPath())
+    await safePersist(indexPath(), store.index)
   }
 
   const persistDetail = async (detail: DemoDetail) => {
-    await fs.mkdir(libDir(), { recursive: true })
-    const tmp = detailPath(detail.meta.id) + '.tmp'
-    await fs.writeFile(tmp, JSON.stringify(detail), 'utf-8')
-    await fs.rename(tmp, detailPath(detail.meta.id))
+    await safePersist(detailPath(detail.meta.id), detail)
+  }
+
+  /** 原子写 + 容错：rename 覆盖失败（Windows 占用/杀软）时先删目标再重试 */
+  async function safePersist(target: string, data: unknown): Promise<void> {
+    await fs.mkdir(dirname(target), { recursive: true })
+    const tmp = target + '.tmp'
+    await fs.writeFile(tmp, JSON.stringify(data), 'utf-8')
+    try {
+      await fs.rename(tmp, target)
+    } catch {
+      await fs.unlink(target).catch(() => {})
+      await fs.rename(tmp, target)
+    }
   }
 
   const broadcast = () => {
@@ -181,8 +188,12 @@ export function createLibraryService(
         firstTick: result.firstTick,
         lastTick: result.lastTick
       })
-      await persistDetail(store.details.get(meta.id)!)
-      await persistIndex()
+      await persistDetail(store.details.get(meta.id)!).catch((err) => {
+        dbg(`persistDetail failed ${meta.id}: ${err instanceof Error ? err.message : String(err)}`)
+      })
+      await persistIndex().catch((err) => {
+        dbg(`persistIndex failed: ${err instanceof Error ? err.message : String(err)}`)
+      })
       dbg(`doParse done ${meta.fileName} rounds=${result.rounds.length}`)
     } catch (err) {
       meta.status = 'error'
@@ -309,7 +320,9 @@ export function createLibraryService(
           .filter((e) => !e.isDirectory && /\.dem$/i.test(e.entryName))
         for (const e of entries) {
           const name = basename(e.entryName.replace(/\\/g, '/'))
-          const id = demoid(`${zp}|${name}`, zst.size, zst.mtimeMs)
+          // id 只依赖 zip 路径 + 内部条目名 + 解压大小（不含 zip mtime/size）：
+          // 完美平台会持续改写 zip 文件，若把 mtime 纳入 key，解析结果会被反复清成 pending
+          const id = demoid(`${zp}|${name}`, e.header.size, 0)
           seen.add(id)
           const existing = store.index[id]
           if (existing && existing.containerPath === zp) continue
@@ -464,6 +477,17 @@ export function createLibraryService(
             if (!store.index[cid]) {
               await fs.rm(join(zipCacheDir(), cid), { recursive: true, force: true }).catch(() => {})
             }
+          }
+        } catch {
+          /* noop */
+        }
+        // 清理孤儿详情缓存（index 里不存在的 detail json）
+        try {
+          const files = await fs.readdir(libDir()).catch(() => [] as string[])
+          for (const f of files) {
+            if (!f.endsWith('.json') || f === 'index.json' || f === 'ignored.json') continue
+            const cid = f.slice(0, -5)
+            if (!store.index[cid]) await fs.unlink(join(libDir(), f)).catch(() => {})
           }
         } catch {
           /* noop */
