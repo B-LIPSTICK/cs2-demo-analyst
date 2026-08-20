@@ -85,6 +85,8 @@ export const en: Record<keyof ZhDict, string> = {
   'library.sortBy': 'Sort by',
   'library.sortDate': 'By date',
   'library.sortAdded': 'By added time',
+  'library.removeDir': 'Remove folder',
+  'library.rootRemoved': 'Folder removed',
   'library.parseNow': 'Parse',
   'library.parseAll': 'Parse all',
   'library.parseStart': 'Parsing started',

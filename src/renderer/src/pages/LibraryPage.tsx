@@ -30,6 +30,7 @@ function LibraryPageInner({
   const [roots, setRoots] = useState<string[]>([])
   const [rootFilter, setRootFilter] = useState('')
   const [sortMode, setSortMode] = useState<'date' | 'added'>('date')
+  const [rootOpen, setRootOpen] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [removeModal, setRemoveModal] = useState<{ ids: string[] } | null>(null)
@@ -135,6 +136,30 @@ function LibraryPageInner({
     setSelectedIds(new Set())
   }
 
+  const rootName = (r: string) => r.split(/[\\/]/).filter(Boolean).at(-1) ?? r
+
+  /** 从下拉里移除目录（主进程同步清理并扫描） */
+  const removeRootAt = async (r: string) => {
+    try {
+      await window.api.library.removeRoot(r)
+      setRoots((rs) => rs.filter((x) => x !== r))
+      if (rootFilter === r) setRootFilter('')
+      setRootOpen(false)
+      load()
+      toast.push(t('library.rootRemoved'))
+    } catch {
+      toast.push(t('common.error'), 'err')
+    }
+  }
+
+  // 点击外部关闭目录下拉
+  useEffect(() => {
+    if (!rootOpen) return
+    const close = () => setRootOpen(false)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [rootOpen])
+
   const pendingCount = demos.filter((d) => d.status === 'pending').length
 
   const filtered = useMemo(() => {
@@ -190,21 +215,53 @@ function LibraryPageInner({
             </>
           ) : (
             <>
-              {roots.length > 1 && (
-                <select
-                  className="input select"
-                  style={{ maxWidth: 200 }}
-                  value={rootFilter}
-                  onChange={(e) => setRootFilter(e.target.value)}
-                  title={t('library.rootFilter')}
-                >
-                  <option value="">{t('library.allRoots')}</option>
-                  {roots.map((r) => (
-                    <option key={r} value={r}>
-                      {r.split(/[\\/]/).filter(Boolean).at(-1) ?? r}
-                    </option>
-                  ))}
-                </select>
+              {roots.length > 0 && (
+                <div className="root-select" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    className="input root-select-btn"
+                    onClick={() => setRootOpen((v) => !v)}
+                    title={t('library.rootFilter')}
+                  >
+                    <span className="grow" style={{ textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {rootFilter ? rootName(rootFilter) : t('library.allRoots')}
+                    </span>
+                    <span style={{ color: 'var(--text-2)', fontSize: 10 }}>▾</span>
+                  </button>
+                  {rootOpen && (
+                    <div className="root-menu">
+                      <button
+                        className={`root-item ${rootFilter === '' ? 'on' : ''}`}
+                        onClick={() => {
+                          setRootFilter('')
+                          setRootOpen(false)
+                        }}
+                      >
+                        {t('library.allRoots')}
+                      </button>
+                      {roots.map((r) => (
+                        <div key={r} className={`root-item row ${rootFilter === r ? 'on' : ''}`}>
+                          <button
+                            className="grow root-name"
+                            title={r}
+                            onClick={() => {
+                              setRootFilter(r)
+                              setRootOpen(false)
+                            }}
+                          >
+                            {rootName(r)}
+                          </button>
+                          <button
+                            className="root-del"
+                            title={t('library.removeDir')}
+                            onClick={() => removeRootAt(r)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
               <div className="row">
                 <IcSearch size={15} />

@@ -1172,6 +1172,92 @@ body {
   opacity: 0.8;
 }
 
+/* ─── 目录下拉（可筛选可删除） ─────────────────────────────────────────────── */
+
+.root-select {
+  position: relative;
+  display: inline-block;
+}
+
+.root-select-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 170px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.root-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 220px;
+  max-width: 340px;
+  padding: 5px;
+  background: var(--glass-toast);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  box-shadow: var(--shadow-2);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.root-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-0);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.root-item:hover {
+  background: var(--hover-bg);
+}
+
+.root-item.on {
+  color: var(--accent-strong);
+  background: var(--accent-dim);
+}
+
+.root-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.root-del {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 10px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.root-del:hover {
+  background: var(--red-dim);
+  color: var(--red);
+}
+
 .card .score {
   margin-left: auto;
   display: flex;

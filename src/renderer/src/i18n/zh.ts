@@ -87,6 +87,8 @@ export const zh = {
   'library.sortBy': '排序方式',
   'library.sortDate': '按日期',
   'library.sortAdded': '按加入时间',
+  'library.removeDir': '移除目录',
+  'library.rootRemoved': '目录已移除',
   'library.parseNow': '解析',
   'library.parseAll': '全部解析',
   'library.parseStart': '已开始解析',
