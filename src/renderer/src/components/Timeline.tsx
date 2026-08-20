@@ -1,81 +1,53 @@
 /**
- * 回合时间轴：CS2 DemoUI 风格的轨道 + 回合分段 + 击杀/语音/炸弹标记。
- * 全量渲染，标记按 tick 比例定位。
+ * 比分走势时间轴：上半为比分差折线（正=T 领先，负=CT 领先），
+ * 下半为简化回合胜败色块条。点击色块/走势点可选中回合。
  */
-import { useMemo, type ReactNode } from 'react'
-import type { RoundInfo, VoiceSegment } from '@shared/types'
-import { fmtTick } from './ui'
+import type { RoundInfo } from '@shared/types'
 
 interface TimelineProps {
   rounds: RoundInfo[]
-  voice?: VoiceSegment[]
-  firstTick: number
-  lastTick: number
-  tickRate?: number
   selectedRound?: number
   onSelectRound: (roundNum: number) => void
-  onJumpTick: (tick: number) => void
 }
 
-export function Timeline({
-  rounds,
-  voice,
-  firstTick,
-  lastTick,
-  tickRate = 64,
-  selectedRound,
-  onSelectRound,
-  onJumpTick
-}: TimelineProps) {
-  const span = Math.max(1, lastTick - firstTick)
-  const pct = (tick: number) => ((tick - firstTick) / span) * 100
+const W = 100
+const H = 44
+const MID = H / 2
 
-  const voiceByRound = useMemo(() => {
-    const map = new Map<number, VoiceSegment[]>()
-    for (const v of voice ?? []) {
-      const key = v.roundNum ?? 0
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(v)
-    }
-    return map
-  }, [voice])
+export function Timeline({ rounds, selectedRound, onSelectRound }: TimelineProps) {
+  // 每回合结束后的比分与分差
+  let t = 0
+  let c = 0
+  const points = rounds.map((r) => {
+    if (r.winner === 'T') t++
+    else if (r.winner === 'CT') c++
+    return { r: r.roundNum, diff: t - c }
+  })
+  if (points.length === 0) return null
 
-  const bombSpans: ReactNode[] = []
-  for (const r of rounds) {
-    if (r.bombPlantedTick) {
-      bombSpans.push(
-        <span
-          key={`p${r.roundNum}`}
-          className="bomb tt"
-          style={{ left: `${pct(r.bombPlantedTick)}%` }}
-          data-tip={`R${r.roundNum} 安放`}
-        />
-      )
-    }
-    if (r.bombExplodedTick) {
-      bombSpans.push(
-        <span
-          key={`x${r.roundNum}`}
-          className="bomb tt"
-          style={{ left: `${pct(r.bombExplodedTick)}%`, background: 'var(--red)' }}
-          data-tip={`R${r.roundNum} 爆炸`}
-        />
-      )
-    }
-    if (r.bombDefusedTick) {
-      bombSpans.push(
-        <span
-          key={`d${r.roundNum}`}
-          className="bomb tt"
-          style={{ left: `${pct(r.bombDefusedTick)}%`, background: 'var(--green)' }}
-          data-tip={`R${r.roundNum} 拆除`}
-        />
-      )
-    }
-  }
+  const maxAbs = Math.max(1, ...points.map((p) => Math.abs(p.diff)))
+  const px = (i: number) => (points.length > 1 ? (i / (points.length - 1)) * W : W / 2)
+  const py = (d: number) => MID - (d / maxAbs) * (H / 2 - 5)
+  const line = points.map((p, i) => `${px(i).toFixed(2)},${py(p.diff).toFixed(2)}`).join(' ')
 
   return (
     <div className="timeline">
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="trend">
+        <line x1={0} y1={MID} x2={W} y2={MID} className="trend-zero" />
+        <polyline points={line} className="trend-line" />
+        {points.map((p, i) => (
+          <circle
+            key={p.r}
+            cx={px(i)}
+            cy={py(p.diff)}
+            r={1.2}
+            className={`trend-dot ${selectedRound === p.r ? 'on' : ''}`}
+            onClick={() => onSelectRound(p.r)}
+          >
+            <title>{`R${p.r} · 分差 ${p.diff > 0 ? '+' : ''}${p.diff}`}</title>
+          </circle>
+        ))}
+      </svg>
       <div className="track">
         {rounds.map((r) => (
           <div
@@ -83,53 +55,18 @@ export function Timeline({
             className={`seg ${r.winner === 'T' ? 'win-t' : r.winner === 'CT' ? 'win-ct' : ''} ${
               selectedRound === r.roundNum ? 'active' : ''
             }`}
-            style={{ left: `${pct(r.startTick)}%`, width: `${pct(r.endTick) - pct(r.startTick)}%` }}
+            style={{ left: `${(r.roundNum - 1) / rounds.length * 100}%`, width: `${100 / rounds.length}%` }}
             onClick={() => onSelectRound(r.roundNum)}
-            title={`R${r.roundNum} · ${r.winner === 'T' ? 'T' : r.winner === 'CT' ? 'CT' : '-'} · ${
-              r.kills.length
-            } kills`}
+            title={`R${r.roundNum} · ${r.winner === 'T' ? 'T' : r.winner === 'CT' ? 'CT' : '-'} · ${r.kills.length} 击杀`}
           />
         ))}
+      </div>
+      <div className="rlabels">
         {rounds.map((r) => (
-          <span key={`l${r.roundNum}`} className={`rlabel ${selectedRound === r.roundNum ? 'on' : ''}`} style={{ left: `${pct(r.startTick)}%` }}>
+          <span key={r.roundNum} className={`rlabel ${selectedRound === r.roundNum ? 'on' : ''}`} style={{ left: `${(r.roundNum - 0.5) / rounds.length * 100}%` }}>
             {r.roundNum}
           </span>
         ))}
-        {rounds.flatMap((r) =>
-          r.kills.map((k, i) => (
-            <span
-              key={`k${r.roundNum}-${i}`}
-              className={`kill tt ${k.headshot ? 'hs' : ''}`}
-              style={{ left: `${pct(k.tick)}%` }}
-              data-tip={`${fmtTick(k.tick, tickRate)} ${k.attackerName} → ${k.victimName} ${k.weapon}${k.headshot ? ' HS' : ''}`}
-              onClick={(e) => {
-                e.stopPropagation()
-                onJumpTick(k.tick)
-              }}
-            />
-          ))
-        )}
-        {bombSpans}
-        {[...voiceByRound.entries()].flatMap(([roundNum, segs]) =>
-          segs.map((v, i) => (
-            <span
-              key={`v${roundNum}-${i}`}
-              className="voice tt"
-              style={{
-                left: `${pct(v.tick)}%`,
-                width: `${Math.max(0.5, pct(v.endTick) - pct(v.tick))}%`
-              }}
-              data-tip={`${v.playerName}: ${v.text.slice(0, 40)}`}
-              onClick={(e) => {
-                e.stopPropagation()
-                onJumpTick(v.tick)
-              }}
-            />
-          ))
-        )}
-        <span className="ticks">
-          {fmtTick(firstTick, tickRate)} → {fmtTick(lastTick, tickRate)}
-        </span>
       </div>
     </div>
   )

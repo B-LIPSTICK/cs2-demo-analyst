@@ -134,7 +134,9 @@ export const zh = {
   'detail.voiceHud': '语音悬浮',
   'detail.voicePanel': '语音大屏',
   'detail.hudOn': '语音悬浮已开启：屏幕左下角显示谁在说话，附上一段/下一段语音按钮',
+  'detail.hudOff': '语音悬浮已关闭',
   'detail.panelOn': '语音大屏已开启：大字字幕 + 说话者，右上角可切换语音段',
+  'detail.panelOff': '语音大屏已关闭',
   'detail.noVoice': '该 Demo 未检测到语音',
   'detail.voiceHint': '第三方平台（FACEIT 等）或本地录制的 demo 通常包含语音',
 

@@ -131,7 +131,9 @@ export const en: Record<keyof ZhDict, string> = {
   'detail.voiceHud': 'Voice HUD',
   'detail.voicePanel': 'Voice panel',
   'detail.hudOn': 'Voice HUD on — bottom-left shows who is speaking, with prev/next voice buttons',
+  'detail.hudOff': 'Voice HUD off',
   'detail.panelOn': 'Voice panel opened — big captions + speakers, voice switching at top-right',
+  'detail.panelOff': 'Voice panel closed',
   'detail.noVoice': 'No voice detected in this demo',
   'detail.voiceHint': 'Third-party (FACEIT etc.) or locally recorded demos usually contain voice',
 

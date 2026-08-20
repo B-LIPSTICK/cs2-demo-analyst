@@ -34,6 +34,8 @@ export function DemoDetailPage({
   const [detail, setDetail] = useState<DemoDetail | null>(null)
   const [selectedRound, setSelectedRound] = useState<number | 'all'>('all')
   const [player, setPlayer] = useState<PlayerInfo | null>(null)
+  const [hudOn, setHudOn] = useState(false)
+  const [panelOn, setPanelOn] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -124,10 +126,12 @@ export function DemoDetailPage({
               </Btn>
               <Btn
                 size="sm"
-                variant="accent"
+                variant={hudOn ? 'primary' : 'accent'}
                 onClick={async () => {
-                  await window.api.overlay.setEnabled(true, id)
-                  toast.push(t('detail.hudOn'))
+                  const next = !hudOn
+                  setHudOn(next)
+                  await window.api.overlay.setEnabled(next, next ? id : undefined)
+                  toast.push(next ? t('detail.hudOn') : t('detail.hudOff'))
                 }}
               >
                 <IcMic size={12} />
@@ -135,10 +139,12 @@ export function DemoDetailPage({
               </Btn>
               <Btn
                 size="sm"
-                variant="primary"
+                variant={panelOn ? 'primary' : 'accent'}
                 onClick={async () => {
-                  await window.api.overlay.setFullPanel(true, id)
-                  toast.push(t('detail.panelOn'))
+                  const next = !panelOn
+                  setPanelOn(next)
+                  await window.api.overlay.setFullPanel(next, next ? id : undefined)
+                  toast.push(next ? t('detail.panelOn') : t('detail.panelOff'))
                 }}
               >
                 <IcTranscript size={12} />
@@ -206,17 +212,12 @@ export function DemoDetailPage({
             {t('detail.sideNote')}
           </div>
 
-          {/* 时间轴 */}
+          {/* 比分走势时间轴 */}
           <div style={{ marginTop: 20 }}>
             <Timeline
               rounds={rounds}
-              voice={voice}
-              firstTick={detail.firstTick}
-              lastTick={detail.lastTick}
-              tickRate={meta.tickRate ?? 64}
               selectedRound={selectedRound === 'all' ? undefined : selectedRound}
               onSelectRound={(r) => setSelectedRound((cur) => (cur === r ? 'all' : r))}
-              onJumpTick={jump}
             />
           </div>
         </div>
