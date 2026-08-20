@@ -302,6 +302,23 @@ body {
   word-break: break-all;
 }
 
+.app-crash-stack {
+  max-width: 100%;
+  max-height: 140px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-2);
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding: 8px 10px;
+  background: var(--field-bg);
+  border: 1px solid var(--line-1);
+  border-radius: 8px;
+  user-select: text;
+}
+
 /* ─── 标题栏（毛玻璃 + macOS 红绿灯） ─────────────────────────────────────── */
 
 .titlebar {

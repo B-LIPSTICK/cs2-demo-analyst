@@ -31,12 +31,17 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
           <div className="app-crash-box">
             <div className="app-crash-title">UI 渲染异常</div>
             <div className="app-crash-msg">{String(this.state.error?.message ?? this.state.error)}</div>
-            <button className="btn primary" onClick={() => this.setState({ error: null })}>
-              重试
-            </button>
-            <button className="btn ghost" onClick={() => window.api.app.revealInFolder('')}>
-              打开数据目录
-            </button>
+            <div className="app-crash-stack">
+              {String(this.state.error?.stack ?? '').split('\n').slice(0, 12).join('\n')}
+            </div>
+            <div className="flex" style={{ gap: 8 }}>
+              <button className="btn primary" onClick={() => this.setState({ error: null })}>
+                重试
+              </button>
+              <button className="btn ghost" onClick={() => window.api.app.revealInFolder('')}>
+                打开数据目录
+              </button>
+            </div>
           </div>
         </div>
       )
