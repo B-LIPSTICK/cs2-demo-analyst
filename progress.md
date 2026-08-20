@@ -61,3 +61,9 @@
 ## 下一步
 - 发布: 推送提交到 origin（需代理在线）→ GitHub Pages 部署（web-dist, base './' 已配）。
 - 后续: Web 版本地桥（Phase B）; 实机 CS2 验证 VConsole 握手/GSI 推送; NSIS 安装器（可选）; 包体继续压缩（<120MB 目标）。
+
+## 本轮五（背景滚动 + 删除 demo + 对话记忆 + 收藏）✅
+- **背景随滚动移动**: 氛围渐变从 body 移到 .page-scroll（滚动容器），AI 对话滚动时背景光斑跟着走。
+- **删除 demo**: library.remove（移出索引+缓存，源文件不动；路径写入 ignored.json 黑名单，扫描/监视不再自动加回）。
+- **对话记忆/多会话**: ai-chats.json 持久化会话（标题=首问）；AiPage 顶部会话下拉 + 新建/删除；多轮对话把最近 12 条历史随上下文发给 LLM。
+- **demo 收藏**: favorites 服务把 demo 复制到 <exe 目录>/favorites（打包版）或 userData/favorites（开发）；DEMO 卡片右上角 hover 星标收藏 + 移除按钮；顶部「收藏夹」按钮打开目录；移除收藏只删副本不动原文件。
