@@ -37,6 +37,7 @@ export const en: Record<keyof ZhDict, string> = {
   'common.sec': 's',
   'common.back': 'Back',
   'common.notimpl': 'Coming in a later phase',
+  'common.jumpHint': 'Jump needs the console connected: launch CS2 with -tools, then click "Connect console" on the Live page',
 
   'library.title': 'DEMO',
   'library.subtitle': 'Local demo collection · auto scanned & analyzed',

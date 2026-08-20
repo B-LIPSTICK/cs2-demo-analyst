@@ -54,7 +54,7 @@ export function LivePage() {
 
   const guard = async (fn: () => Promise<boolean>): Promise<boolean> => {
     const ok = await fn()
-    if (!ok) toast.push(t('common.notimpl'), 'warn')
+    if (!ok) toast.push(t('live.toolsHint'), 'warn')
     return ok
   }
 

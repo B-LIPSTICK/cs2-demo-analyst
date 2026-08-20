@@ -49,7 +49,7 @@ export function DemoDetailPage({
 
   const jump = async (tick: number) => {
     const ok = await window.api.live.jumpTick(tick)
-    if (!ok) toast.push(t('common.notimpl'), 'warn')
+    if (!ok) toast.push(t('common.jumpHint'), 'warn')
   }
 
   const parseAndWait = async () => {
@@ -114,8 +114,9 @@ export function DemoDetailPage({
                 size="sm"
                 variant="accent"
                 onClick={async () => {
-                  // 统一以 -tools 模式启动（用户自定义启动项自动带上），保证能注入跳转
-                  const r = await window.api.live.launch({ toolsMode: true, playDemoPath: meta.path })
+                  // 普通模式启动并加载 demo（-tools 模式 +playdemo 在部分版本不生效）；
+                  // 需要注入跳转时，用设置页「启动 CS2（-tools）」或自定义启动项
+                  const r = await window.api.live.launch({ toolsMode: false, playDemoPath: meta.path })
                   if (r.ok) {
                     toast.push(r.injected ? t('detail.playInjected') : t('detail.playLaunched'))
                   } else toast.push(r.error ?? t('common.error'), 'warn')

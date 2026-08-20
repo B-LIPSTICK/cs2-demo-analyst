@@ -38,6 +38,7 @@ export const zh = {
   'common.sec': '秒',
   'common.back': '返回',
   'common.notimpl': '该功能在后续阶段实现',
+  'common.jumpHint': '跳转需要先连接控制台：请确认 CS2 以 -tools 启动，然后在「实况」页点「连接控制台」',
 
   // 资料库
   'library.title': 'DEMO',

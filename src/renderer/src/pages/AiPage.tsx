@@ -290,7 +290,7 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
 
   const jump = (tick: number) => {
     window.api.live.jumpTick(tick).then((ok) => {
-      if (!ok) toast.push(t('common.notimpl'), 'warn')
+      if (!ok) toast.push(t('common.jumpHint'), 'warn')
     })
   }
 

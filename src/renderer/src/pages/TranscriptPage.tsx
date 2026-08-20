@@ -117,7 +117,7 @@ export function TranscriptPage({
 
   const jump = async (tick: number) => {
     const ok = await window.api.live.jumpTick(tick)
-    if (!ok) toast.push(t('common.notimpl'), 'warn')
+    if (!ok) toast.push(t('common.jumpHint'), 'warn')
   }
 
   const togglePlayer = (name: string) => {

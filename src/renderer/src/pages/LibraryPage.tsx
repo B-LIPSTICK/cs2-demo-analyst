@@ -465,6 +465,15 @@ function mapBadge(mapName?: string): { cls: string; abbr: string } {
   return { cls, abbr }
 }
 
+/** 未解析时从文件名推断地图（文件名常含 de_xxx；纯数字文件名的平台 demo 推不出返回 undefined） */
+function inferMap(fileName: string): string | undefined {
+  const f = fileName.toLowerCase()
+  const m = f.match(/de_[a-z0-9_]+/)
+  if (m) return m[0]
+  const known = Object.keys(MAP_BADGE_CLASS)
+  return known.find((k) => k.startsWith('de_') && f.includes(k))
+}
+
 function DemoCard({
   demo,
   index,
@@ -493,7 +502,9 @@ function DemoCard({
   const t = useTKey()
   const toast = useToast()
   const [menuOpen, setMenuOpen] = useState(false)
-  const badge = mapBadge(demo.mapName)
+  // 未解析时用文件名推断地图（已解析用真实 mapName）
+  const mapName = demo.mapName ?? inferMap(demo.fileName)
+  const badge = mapBadge(mapName)
 
   // 点击外部关闭菜单
   useEffect(() => {
@@ -589,7 +600,7 @@ function DemoCard({
       <div className="top">
         <span className={`map-badge ${badge.cls}`}>{badge.abbr}</span>
         <div style={{ minWidth: 0 }}>
-          <div className="map">{demo.mapName ?? '—'}</div>
+          <div className="map">{mapName ?? '—'}</div>
           <div className="file" title={demo.path}>
             {demo.fileName}
           </div>
