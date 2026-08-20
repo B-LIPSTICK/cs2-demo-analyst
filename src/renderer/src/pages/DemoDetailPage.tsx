@@ -96,8 +96,9 @@ export function DemoDetailPage({
                 variant="accent"
                 onClick={async () => {
                   const r = await window.api.live.launch({ toolsMode: false, playDemoPath: meta.path })
-                  if (r.ok) toast.push(t('detail.playLaunched'))
-                  else toast.push(r.error ?? t('common.error'), 'warn')
+                  if (r.ok) {
+                    toast.push(r.injected ? t('detail.playInjected') : t('detail.playLaunched'))
+                  } else toast.push(r.error ?? t('common.error'), 'warn')
                 }}
               >
                 <IcJump size={12} />

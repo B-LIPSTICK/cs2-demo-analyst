@@ -93,7 +93,8 @@ export const zh = {
   'detail.unknownEnd': '结束',
   'detail.selectRound': '点击回合标记可查看该回合',
   'detail.playInCs2': 'CS2 中播放',
-  'detail.playLaunched': '已发送到 Steam 启动 CS2 并加载该 demo',
+  'detail.playLaunched': '已启动 CS2 并加载该 demo',
+  'detail.playInjected': '已向运行中的 CS2 注入 playdemo 指令',
   'detail.noVoice': '该 Demo 未检测到语音',
   'detail.voiceHint': '第三方平台（FACEIT 等）或本地录制的 demo 通常包含语音',
 

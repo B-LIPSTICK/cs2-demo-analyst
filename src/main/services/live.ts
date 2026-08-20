@@ -1,9 +1,9 @@
 /**
  * 实况服务：CS2 进程检测、VConsole2 注入、GSI 状态读取、一键启动。
  */
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { promises as fs } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import http from 'node:http'
 import { shell } from 'electron'
 import type { GsiGameState, LaunchResult, LiveStatus } from '@shared/types'
@@ -282,10 +282,42 @@ export class LiveService {
     return { ok: true, url }
   }
 
-  /** 一键启动：构造 steam:// URL 并交给系统打开 */
+  /** 一键启动/播放（三层策略，越靠前越可靠） */
   async launch(opts?: { toolsMode?: boolean; playDemoPath?: string }): Promise<LaunchResult> {
     const toolsMode = opts?.toolsMode ?? true
-    const { url } = this.launchCs2(toolsMode, opts?.playDemoPath)
+    const demoPath = opts?.playDemoPath
+
+    // ① 已连接 VConsole（CS2 正在 -tools 模式运行）→ 直接注入 playdemo 指令，最稳
+    if (demoPath && this.status.vconsoleConnected) {
+      const sent = this.sendCommand(`playdemo ${demoPath}`)
+      if (sent) return { ok: true, url: '', injected: true }
+    }
+
+    // ② 直接启动 cs2.exe（execFile 数组传参，路径带空格/中文都可靠；steam:// 对引号透传不稳）
+    const install = await locateCs2Install()
+    if (install) {
+      const exe = join(install, 'game', 'bin', 'win64', 'cs2.exe')
+      try {
+        await fs.access(exe)
+        const args: string[] = []
+        if (toolsMode) args.push('-tools')
+        if (demoPath) args.push('+playdemo', demoPath)
+        const child = spawn(exe, args, {
+          cwd: dirname(exe),
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: false
+        })
+        child.on('error', () => {})
+        child.unref()
+        return { ok: true, url: '', direct: true, exe }
+      } catch {
+        /* exe 不存在 → 回退 steam:// */
+      }
+    }
+
+    // ③ 回退：steam:// URL（无法定位安装目录时）
+    const { url } = this.launchCs2(toolsMode, demoPath)
     try {
       await shell.openExternal(url)
       return { ok: true, url }

@@ -90,7 +90,8 @@ export const en: Record<keyof ZhDict, string> = {
   'detail.unknownEnd': 'End',
   'detail.selectRound': 'Click a round marker to inspect',
   'detail.playInCs2': 'Play in CS2',
-  'detail.playLaunched': 'Sent to Steam — CS2 will launch and load this demo',
+  'detail.playLaunched': 'CS2 launched with this demo loaded',
+  'detail.playInjected': 'playdemo command injected into running CS2',
   'detail.noVoice': 'No voice detected in this demo',
   'detail.voiceHint': 'Third-party (FACEIT etc.) or locally recorded demos usually contain voice',
 

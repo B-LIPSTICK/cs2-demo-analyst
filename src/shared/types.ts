@@ -159,6 +159,11 @@ export interface LaunchResult {
   ok: boolean
   url: string
   error?: string
+  /** 已通过 VConsole 直接注入 playdemo 指令（CS2 运行中） */
+  injected?: boolean
+  /** 直接启动了 cs2.exe（而非 steam:// URL） */
+  direct?: boolean
+  exe?: string
 }
 
 // ─── 设置 ──────────────────────────────────────────────────────────────────
