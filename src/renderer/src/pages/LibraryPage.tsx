@@ -61,16 +61,23 @@ function LibraryPageInner({
     })
     const offLib = window.api.onEvent('library:updated', (e) => setDemos(e.demos))
     const offProg = window.api.onEvent('library:progress', (e) => {
+      // 只更新进度数据（单卡片 Ring 展示），不动整个列表
       setProgress((p) => ({ ...p, [e.id]: typeof e.progress === 'number' ? e.progress : 0 }))
-      // pending → parsing（进度事件驱动，避免解析开始时的全列表广播）
-      setDemos((ds) =>
-        ds.map((d) => (d.id === e.id && d.status === 'pending' ? { ...d, status: 'parsing' as const } : d))
-      )
+    })
+    const offItem = window.api.onEvent('library:item', (e) => {
+      // 单条目更新：只替换该 demo 的卡片，清掉其进度
+      setProgress((p) => {
+        const n = { ...p }
+        delete n[e.id]
+        return n
+      })
+      setDemos((ds) => ds.map((d) => (d.id === e.id ? e.meta : d)))
     })
     return () => {
       off()
       offLib()
       offProg()
+      offItem()
     }
   }, [])
 
@@ -620,9 +627,9 @@ function DemoCard({
         </div>
       </div>
 
-      {(demo.status === 'parsing' || demo.status === 'pending') && (
+      {(demo.status === 'parsing' || (demo.status === 'pending' && progress !== undefined)) && (
         <div className="status-cover">
-          {demo.status === 'parsing' ? (
+          {demo.status === 'parsing' || progress !== undefined ? (
             <Ring pct={Math.max(0.03, Math.min(0.99, progress ?? 0.03))} label={`${Math.round((progress ?? 0.03) * 100)}%`} />
           ) : (
             <Btn

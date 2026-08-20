@@ -197,7 +197,8 @@ export function createLibraryService(
       meta.status = 'error'
       meta.error = err instanceof Error ? err.message : String(err)
     }
-    broadcast()
+    // 单条目更新（只刷新这一张卡片，不广播全列表）
+    emit('library:item', { id: meta.id, meta: { ...meta } })
   }
 
   // ─── 扫描 ─────────────────────────────────────────────────────────────────

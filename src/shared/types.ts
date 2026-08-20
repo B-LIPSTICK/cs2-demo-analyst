@@ -365,6 +365,7 @@ export type EngineKind = 'csgove' | 'whisper' | 'model-base' | 'model-small' | '
 export type MainEvent =
   | { type: 'window:maximized'; maximized: boolean }
   | { type: 'library:updated'; demos: DemoMeta[] }
+  | { type: 'library:item'; id: string; meta: DemoMeta }
   | { type: 'library:progress'; id: string; stage: string; progress: number }
   | { type: 'library:detail'; id: string; detail: DemoDetail | null }
   | { type: 'library:detail'; id: string; detail: DemoDetail | null }
