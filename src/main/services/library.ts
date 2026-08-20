@@ -123,7 +123,8 @@ export function createLibraryService(
   }
 
   const broadcast = () => {
-    emit('library:updated', Object.values(store.index))
+    // 载荷必须带 { demos } 包装（renderer 按 e.demos 读取；之前发裸数组导致 e.demos=undefined → setDemos(undefined) → 渲染崩溃）
+    emit('library:updated', { demos: Object.values(store.index) })
   }
 
   // ─── 解析队列 ─────────────────────────────────────────────────────────────
