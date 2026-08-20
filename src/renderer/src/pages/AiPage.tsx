@@ -116,6 +116,56 @@ function newSession(demoId: string): AiChatSession {
   }
 }
 
+/** 统一样式的选择下拉（按钮触发 + 浮层列表，图标/文本自适应） */
+function AiSelect({
+  label,
+  value,
+  options,
+  onChange,
+  width
+}: {
+  label: string
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (v: string) => void
+  width: number
+}) {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [open])
+  return (
+    <div className="root-select" onClick={(e) => e.stopPropagation()}>
+      <button className="input root-select-btn" style={{ width }} onClick={() => setOpen((v) => !v)}>
+        <span className="grow" style={{ textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {label}
+        </span>
+        <span style={{ color: 'var(--text-2)', fontSize: 10 }}>▾</span>
+      </button>
+      {open && (
+        <div className="root-menu">
+          {options.map((o) => (
+            <button
+              key={o.value}
+              className={`root-item ${o.value === value ? 'on' : ''}`}
+              title={o.label}
+              onClick={() => {
+                onChange(o.value)
+                setOpen(false)
+              }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
   const t = useTKey()
   const toast = useToast()
@@ -308,45 +358,43 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
           </div>
           <div className="sub">{t('ai.subtitle')}</div>
         </div>
-        <div className="actions">
-          <select
-            className="input select"
-            style={{ minWidth: 220 }}
-            value={currentId}
-            onChange={(e) => setCurrentId(e.target.value)}
-            title={t('ai.chatTitle')}
-          >
-            {sessions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.title}
-              </option>
-            ))}
-          </select>
-          <Btn variant="ghost" size="sm" onClick={newChat} title={t('ai.newChat')}>
-            <IcPlus size={12} />
-            {t('ai.newChat')}
-          </Btn>
-          <Btn variant="ghost" size="sm" onClick={deleteChat} title={t('ai.deleteChat')}>
-            {t('ai.deleteChat')}
-          </Btn>
-          <select
-            className="input select"
-            style={{ minWidth: 220 }}
-            value={selectedId}
-            onChange={(e) => setSelectedId(e.target.value)}
-          >
-            {demos.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.fileName}
-                {d.hasVoice === true ? ' · VOICE' : ''}
-              </option>
-            ))}
-          </select>
-          {!hasKey && (
-            <Btn variant="ghost" size="sm" onClick={onGoSettings}>
-              {t('ai.configureKey')} →
+        <div className="actions ai-actions">
+          {/* 会话组 */}
+          <div className="ai-group">
+            <AiSelect
+              width={180}
+              label={`💬 ${current?.title ?? '…'}`}
+              value={currentId}
+              options={sessions.map((s) => ({ value: s.id, label: s.title }))}
+              onChange={(v) => setCurrentId(v)}
+            />
+            <Btn variant="ghost" size="sm" onClick={newChat} title={t('ai.newChat')}>
+              <IcPlus size={12} />
+              {t('ai.newChat')}
             </Btn>
-          )}
+            <Btn variant="ghost" size="sm" onClick={deleteChat} title={t('ai.deleteChat')}>
+              {t('ai.deleteChat')}
+            </Btn>
+          </div>
+          <div className="ai-group-sep" />
+          {/* Demo 组 */}
+          <div className="ai-group">
+            <AiSelect
+              width={230}
+              label={`🎬 ${sampleDemo ? (sampleDemo.mapName ?? sampleDemo.fileName) : t('ai.selectDemo')}`}
+              value={selectedId}
+              options={demos.map((d) => ({
+                value: d.id,
+                label: `${d.mapName ?? '—'} · ${d.fileName}${d.hasVoice === true ? ' 🎙️' : ''}`
+              }))}
+              onChange={(v) => setSelectedId(v)}
+            />
+            {!hasKey && (
+              <Btn variant="ghost" size="sm" onClick={onGoSettings}>
+                {t('ai.configureKey')} →
+              </Btn>
+            )}
+          </div>
         </div>
       </div>
 

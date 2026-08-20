@@ -1258,6 +1258,30 @@ body {
   color: var(--red);
 }
 
+/* ─── AI 页工具条（分组） ──────────────────────────────────────────────────── */
+
+.ai-actions {
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.ai-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-group-sep {
+  width: 1px;
+  height: 22px;
+  background: var(--line-2);
+}
+
+.ai-group .root-select-btn {
+  height: 27px;
+  font-size: 12px;
+}
+
 .card .score {
   margin-left: auto;
   display: flex;
