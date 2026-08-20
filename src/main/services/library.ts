@@ -24,7 +24,7 @@ export interface LibraryService {
   removeRoot(root: string): Promise<void>
   setRoots(roots: string[]): Promise<void>
   rescan(): Promise<void>
-  remove(id: string): Promise<void>
+  remove(id: string, opts?: { deleteFile?: boolean }): Promise<void>
   parse(id: string): Promise<void>
   parseAll(): Promise<void>
   detectVoice(id: string): Promise<{ hasVoice: boolean; voiceSec: number }>
@@ -556,8 +556,8 @@ export function createLibraryService(
       void pump()
     },
 
-    /** 从资料库移除（仅移出索引与缓存，不删源文件；路径进忽略列表，不再自动入库） */
-    async remove(id: string) {
+    /** 从资料库移除（可同时删除源文件；路径进忽略列表，不再自动入库） */
+    async remove(id: string, opts?: { deleteFile?: boolean }) {
       const meta = store.index[id]
       if (!meta) return
       delete store.index[id]
@@ -565,14 +565,22 @@ export function createLibraryService(
       // 普通文件忽略其路径；zip 容器条目忽略其容器（整个 zip 不再入库）
       const ignoreKey = meta.containerPath ?? meta.path
       if (!ignored.includes(ignoreKey)) ignored.push(ignoreKey)
-      await Promise.all([
+      const jobs: Promise<void>[] = [
         saveIgnored(),
         persistIndex(),
-        fs.unlink(detailPath(id)).catch(() => {}),
-        meta.containerPath
-          ? fs.rm(join(zipCacheDir(), id), { recursive: true, force: true }).catch(() => {})
-          : Promise.resolve()
-      ])
+        fs.unlink(detailPath(id)).catch(() => {})
+      ]
+      if (opts?.deleteFile) {
+        if (meta.containerPath) {
+          // zip 容器条目：只删内部缓存副本，容器 zip 归用户所有，保留
+          jobs.push(fs.rm(join(zipCacheDir(), id), { recursive: true, force: true }).catch(() => {}))
+        } else {
+          jobs.push(fs.unlink(meta.path).catch(() => {}))
+        }
+      } else if (meta.containerPath) {
+        jobs.push(fs.rm(join(zipCacheDir(), id), { recursive: true, force: true }).catch(() => {}))
+      }
+      await Promise.all(jobs)
       broadcast()
     },
 

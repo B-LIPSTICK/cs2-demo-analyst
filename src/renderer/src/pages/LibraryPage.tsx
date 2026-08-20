@@ -28,6 +28,9 @@ function LibraryPageInner({
   const [favIds, setFavIds] = useState<Set<string>>(new Set())
   const [roots, setRoots] = useState<string[]>([])
   const [rootFilter, setRootFilter] = useState('')
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [removeModal, setRemoveModal] = useState<{ ids: string[] } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -77,34 +80,37 @@ function LibraryPageInner({
     }
   }
 
-  const removeDemo = async (id: string) => {
-    if (!window.confirm(t('library.removeConfirm'))) return
-    await window.api.library.remove(id)
-    setDemos((ds) => ds.filter((d) => d.id !== id))
+  /** 删除确认后执行（deleteFile=true 同时删源文件） */
+  const confirmRemove = async (ids: string[], deleteFile: boolean) => {
+    for (const id of ids) {
+      try {
+        await window.api.library.remove(id, deleteFile ? { deleteFile: true } : undefined)
+      } catch {
+        /* 单个失败继续 */
+      }
+    }
+    setDemos((ds) => ds.filter((d) => !ids.includes(d.id)))
+    setRemoveModal(null)
+    setSelectedIds(new Set())
+    setSelectMode(false)
     toast.push(t('library.removed'))
   }
 
-  // 语音检测事件回写
-  useEffect(() => {
-    const off = window.api.onEvent('voice:detected', (e) => {
-      setDemos((ds) =>
-        ds.map((d) => (d.id === e.id ? { ...d, hasVoice: e.hasVoice, voiceSec: e.voiceSec } : d))
-      )
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
     })
-    const offLib = window.api.onEvent('library:updated', (e) => setDemos(e.demos))
-    return () => {
-      off()
-      offLib()
-    }
-  }, [])
-
-  const addRoot = async () => {
-    const roots = await window.api.library.addRoot()
-    if (roots.length) {
-      toast.push(`+${roots.length} demos`)
-      load()
-    }
   }
+
+  const exitSelect = () => {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }
+
+  const pendingCount = demos.filter((d) => d.status === 'pending').length
 
   const filtered = useMemo(() => {
     let list = demos
@@ -135,54 +141,80 @@ function LibraryPageInner({
           <div className="sub">{t('library.subtitle')}</div>
         </div>
         <div className="actions">
-          {roots.length > 1 && (
-            <select
-              className="input select"
-              style={{ maxWidth: 220 }}
-              value={rootFilter}
-              onChange={(e) => setRootFilter(e.target.value)}
-              title={t('library.rootFilter')}
-            >
-              <option value="">{t('library.allRoots')}</option>
-              {roots.map((r) => (
-                <option key={r} value={r}>
-                  {r.split(/[\\/]/).filter(Boolean).at(-1) ?? r}
-                </option>
-              ))}
-            </select>
+          {selectMode ? (
+            <>
+              <span className="muted" style={{ fontSize: 12.5, fontWeight: 600 }}>
+                {t('library.selected').replace('{n}', String(selectedIds.size))}
+              </span>
+              <Btn
+                variant="danger"
+                disabled={selectedIds.size === 0}
+                onClick={() => setRemoveModal({ ids: [...selectedIds] })}
+              >
+                {t('library.deleteSelected')}
+              </Btn>
+              <Btn variant="ghost" onClick={exitSelect}>
+                {t('library.cancelSelect')}
+              </Btn>
+            </>
+          ) : (
+            <>
+              {roots.length > 1 && (
+                <select
+                  className="input select"
+                  style={{ maxWidth: 200 }}
+                  value={rootFilter}
+                  onChange={(e) => setRootFilter(e.target.value)}
+                  title={t('library.rootFilter')}
+                >
+                  <option value="">{t('library.allRoots')}</option>
+                  {roots.map((r) => (
+                    <option key={r} value={r}>
+                      {r.split(/[\\/]/).filter(Boolean).at(-1) ?? r}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <div className="row">
+                <IcSearch size={15} />
+                <input
+                  className="input"
+                  style={{ width: 180 }}
+                  placeholder={t('common.search')}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
+              <Btn variant="ghost" onClick={async () => {
+                await window.api.library.addRoot()
+                load()
+              }}>
+                <IcPlus size={13} />
+                {t('library.addRoot')}
+              </Btn>
+              <Btn variant="ghost" onClick={load}>
+                <IcRefresh size={13} />
+                {t('library.rescan')}
+              </Btn>
+              {pendingCount > 0 && (
+                <Btn
+                  variant="accent"
+                  onClick={async () => {
+                    await window.api.library.parseAll()
+                    toast.push(t('library.parseStart'))
+                  }}
+                >
+                  {t('library.parseAll')}（{pendingCount}）
+                </Btn>
+              )}
+              <Btn variant="ghost" onClick={() => window.api.favorites.reveal()}>
+                ★ {t('library.favFolder')}
+              </Btn>
+              <Btn variant="ghost" onClick={() => setSelectMode(true)}>
+                {t('library.select')}
+              </Btn>
+            </>
           )}
-          <div className="row">
-            <IcSearch size={15} />
-            <input
-              className="input"
-              style={{ width: 200 }}
-              placeholder={t('common.search')}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-          <Btn variant="ghost" onClick={addRoot}>
-            <IcPlus size={13} />
-            {t('library.addRoot')}
-          </Btn>
-          <Btn variant="ghost" onClick={load}>
-            <IcRefresh size={13} />
-            {t('library.rescan')}
-          </Btn>
-          {demos.some((d) => d.status === 'pending') && (
-            <Btn
-              variant="accent"
-              onClick={async () => {
-                await window.api.library.parseAll()
-                toast.push(t('library.parseStart'))
-              }}
-            >
-              {t('library.parseAll')}（{demos.filter((d) => d.status === 'pending').length}）
-            </Btn>
-          )}
-          <Btn variant="ghost" onClick={() => window.api.favorites.reveal()}>
-            ★ {t('library.favFolder')}
-          </Btn>
         </div>
       </div>
 
@@ -190,7 +222,14 @@ function LibraryPageInner({
         <Empty ghost="SCANNING" hint="…" />
       ) : filtered.length === 0 && demos.length === 0 ? (
         <Empty ghost="NO DEMOS" hint={t('library.emptyHint')}>
-          <Btn variant="ghost" onClick={addRoot} style={{ marginTop: 6 }}>
+          <Btn
+            variant="ghost"
+            onClick={async () => {
+              await window.api.library.addRoot()
+              load()
+            }}
+            style={{ marginTop: 6 }}
+          >
             <IcPlus size={13} />
             {t('library.addRoot')}
           </Btn>
@@ -205,9 +244,12 @@ function LibraryPageInner({
               demo={d}
               index={i}
               fav={favIds.has(d.id)}
+              selectMode={selectMode}
+              selected={selectedIds.has(d.id)}
               onOpen={() => onOpenDemo(d.id)}
+              onToggleSelect={() => toggleSelect(d.id)}
               onToggleFav={() => toggleFav(d.id)}
-              onRemove={() => removeDemo(d.id)}
+              onRemoveMenu={() => setRemoveModal({ ids: [d.id] })}
               onParse={() => {
                 window.api.library.parse(d.id)
                 toast.push(t('library.parseStart'))
@@ -222,6 +264,39 @@ function LibraryPageInner({
           {t('library.mmNoVoice')}
         </span>
       </div>
+
+      {/* 删除确认弹窗 */}
+      {removeModal && (
+        <div className="modal-overlay" onClick={() => setRemoveModal(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">{t('library.removeTitle')}</div>
+            <div className="modal-body">
+              {t('library.removeBody').replace('{n}', String(removeModal.ids.length))}
+            </div>
+            <div className="modal-actions">
+              <button
+                className="modal-choice"
+                onClick={() => confirmRemove(removeModal.ids, false)}
+              >
+                <span className="modal-choice-t">{t('library.removeOnly')}</span>
+                <span className="modal-choice-d">{t('library.removeOnlyHint')}</span>
+              </button>
+              <button
+                className="modal-choice danger"
+                onClick={() => confirmRemove(removeModal.ids, true)}
+              >
+                <span className="modal-choice-t">{t('library.removeWithFile')}</span>
+                <span className="modal-choice-d">{t('library.removeWithFileHint')}</span>
+              </button>
+            </div>
+            <div className="modal-cancel">
+              <Btn variant="ghost" size="sm" onClick={() => setRemoveModal(null)}>
+                {t('common.cancel')}
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -283,22 +358,37 @@ function DemoCard({
   demo,
   index,
   fav,
+  selectMode,
+  selected,
   onOpen,
+  onToggleSelect,
   onToggleFav,
-  onRemove,
+  onRemoveMenu,
   onParse
 }: {
   demo: DemoMeta
   index: number
   fav: boolean
+  selectMode: boolean
+  selected: boolean
   onOpen: () => void
+  onToggleSelect: () => void
   onToggleFav: () => void
-  onRemove: () => void
+  onRemoveMenu: () => void
   onParse: () => void
 }) {
   const t = useTKey()
   const toast = useToast()
+  const [menuOpen, setMenuOpen] = useState(false)
   const badge = mapBadge(demo.mapName)
+
+  // 点击外部关闭菜单
+  useEffect(() => {
+    if (!menuOpen) return
+    const close = () => setMenuOpen(false)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [menuOpen])
 
   const voiceTag = (() => {
     if (demo.hasVoice === true) {
@@ -331,32 +421,50 @@ function DemoCard({
 
   return (
     <article
-      className="card"
+      className={`card ${selected ? 'selected' : ''}`}
       style={{ ['--i' as string]: index } as React.CSSProperties}
-      onClick={onOpen}
+      onClick={selectMode ? onToggleSelect : onOpen}
     >
-      <div className="card-actions">
-        <button
-          className={`card-act ${fav ? 'on' : ''}`}
-          title={fav ? t('library.favOff') : t('library.fav')}
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleFav()
-          }}
-        >
-          {fav ? '★' : '☆'}
-        </button>
-        <button
-          className="card-act danger"
-          title={t('library.removeDemo')}
-          onClick={(e) => {
-            e.stopPropagation()
-            onRemove()
-          }}
-        >
-          ✕
-        </button>
-      </div>
+      {/* 选择模式：左上角勾选 */}
+      {selectMode && <span className={`card-check ${selected ? 'on' : ''}`}>{selected ? '✓' : ''}</span>}
+
+      {/* 单卡操作菜单（⋯） */}
+      {!selectMode && (
+        <div className="card-menu-wrap">
+          <button
+            className="card-menu-btn"
+            onClick={(e) => {
+              e.stopPropagation()
+              setMenuOpen((v) => !v)
+            }}
+          >
+            ⋯
+          </button>
+          {menuOpen && (
+            <div className="card-menu" onClick={(e) => e.stopPropagation()}>
+              <button
+                className="card-menu-item"
+                onClick={() => {
+                  onToggleFav()
+                  setMenuOpen(false)
+                }}
+              >
+                {fav ? `★ ${t('library.menuUnfav')}` : `☆ ${t('library.menuFav')}`}
+              </button>
+              <button
+                className="card-menu-item danger"
+                onClick={() => {
+                  onRemoveMenu()
+                  setMenuOpen(false)
+                }}
+              >
+                ✕ {t('library.menuRemove')}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="top">
         <span className={`map-badge ${badge.cls}`}>{badge.abbr}</span>
         <div style={{ minWidth: 0 }}>

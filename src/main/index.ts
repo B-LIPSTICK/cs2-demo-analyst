@@ -100,7 +100,9 @@ function registerIpc(): void {
   ipcMain.handle('library:addRoot', () => library.addRoot())
   ipcMain.handle('library:removeRoot', (_e, root: string) => library.removeRoot(root))
   ipcMain.handle('library:rescan', () => library.rescan())
-  ipcMain.handle('library:remove', (_e, id: string) => library.remove(id))
+  ipcMain.handle('library:remove', (_e, id: string, opts?: { deleteFile?: boolean }) =>
+    library.remove(id, opts)
+  )
   ipcMain.handle('library:parse', (_e, id: string) => library.parse(id))
   ipcMain.handle('library:parseAll', () => library.parseAll())
 

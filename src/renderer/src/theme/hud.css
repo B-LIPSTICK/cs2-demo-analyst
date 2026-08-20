@@ -1211,49 +1211,195 @@ body {
   z-index: 2;
 }
 
-/* 卡片操作按钮（收藏 / 移除） */
-.card-actions {
+/* 卡片操作：⋯ 菜单 + 选择模式勾选 */
+.card.selected {
+  border-color: rgba(10, 132, 255, 0.6);
+  box-shadow: 0 0 0 1px rgba(10, 132, 255, 0.25), var(--shadow-2);
+}
+
+.card-check {
   position: absolute;
   top: 10px;
-  right: 12px;
-  display: flex;
-  gap: 4px;
+  left: 12px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--glass-panel);
+  color: transparent;
+  font-size: 12px;
   z-index: 3;
-  opacity: 0;
-  transition: opacity 0.15s;
 }
 
-.card:hover .card-actions {
-  opacity: 1;
+.card-check.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
-.card-act {
-  width: 24px;
-  height: 24px;
+.card-menu-wrap {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 4;
+}
+
+.card-menu-btn {
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
   border: none;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-1);
-  font-size: 12px;
+  font-size: 14px;
+  line-height: 1;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, transform 0.12s;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.12s, color 0.12s;
 }
 
-.card-act:hover {
+.card:hover .card-menu-btn {
+  opacity: 1;
+}
+
+.card-menu-btn:hover {
   background: rgba(255, 255, 255, 0.16);
   color: var(--text-0);
-  transform: scale(1.08);
 }
 
-.card-act.on {
-  color: var(--amber);
+.card-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  padding: 5px;
+  background: var(--glass-toast);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  box-shadow: var(--shadow-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.card-act.danger:hover {
+.card-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-0);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.card-menu-item:hover {
+  background: var(--hover-bg);
+}
+
+.card-menu-item.danger {
+  color: #ff6b63;
+}
+
+.card-menu-item.danger:hover {
   background: var(--red-dim);
-  color: var(--red);
+}
+
+/* ─── 模态弹窗 ────────────────────────────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.modal {
+  width: 360px;
+  padding: 22px;
+  background: var(--glass-raised);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-2);
+}
+
+.modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.modal-body {
+  font-size: 12.5px;
+  color: var(--text-1);
+  margin-bottom: 16px;
+}
+
+.modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 11px 14px;
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-md);
+  background: var(--field-bg);
+  color: var(--text-0);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.14s, background 0.14s;
+}
+
+.modal-choice:hover {
+  border-color: var(--line-3);
+  background: var(--hover-bg);
+}
+
+.modal-choice.danger:hover {
+  border-color: rgba(255, 69, 58, 0.5);
+  background: var(--red-dim);
+}
+
+.modal-choice-t {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.modal-choice.danger .modal-choice-t {
+  color: #ff6b63;
+}
+
+.modal-choice-d {
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.modal-cancel {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
 }
 
 /* ─── 击杀记录 ────────────────────────────────────────────────────────────── */

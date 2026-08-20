@@ -294,7 +294,7 @@ export interface Api {
     addRoot: () => Promise<string[]>
     removeRoot: (root: string) => Promise<void>
     rescan: () => Promise<void>
-    remove: (id: string) => Promise<void>
+    remove: (id: string, opts?: { deleteFile?: boolean }) => Promise<void>
     parse: (id: string) => Promise<void>
     parseAll: () => Promise<void>
   }
