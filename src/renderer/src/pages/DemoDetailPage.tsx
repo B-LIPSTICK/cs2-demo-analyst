@@ -277,11 +277,25 @@ export function DemoDetailPage({
 
       {/* 语音 / 聊天概要 */}
       <div className="grid-2" style={{ marginTop: 16 }}>
-        <Panel hd={t('detail.voice')} dot={voice.length > 0}>          <div className="panel-bd">
+        <Panel hd={t('detail.voice')} dot={voice.length > 0}>
+          <div className="panel-bd">
             {voice.length === 0 ? (
-              <div className="muted" style={{ fontSize: 12 }}>
-                {t('detail.noVoice')} · {t('detail.voiceHint')}
-              </div>
+              meta.hasVoice === true ? (
+                <div style={{ fontSize: 12, lineHeight: 1.7 }}>
+                  <span className="muted">
+                    {t('detail.voiceDetected').replace('{s}', String(Math.round(voiceSecs)))}
+                  </span>
+                  <div style={{ marginTop: 8 }}>
+                    <Btn size="sm" variant="accent" onClick={onGoTranscript}>
+                      {t('library.transcribe')} →
+                    </Btn>
+                  </div>
+                </div>
+              ) : (
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {t('detail.noVoice')} · {t('detail.voiceHint')}
+                </div>
+              )
             ) : (
               <div style={{ maxHeight: 240, overflowY: 'auto' }}>
                 {voice.slice(0, 80).map((v, i) => (

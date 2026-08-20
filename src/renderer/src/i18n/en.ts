@@ -105,7 +105,7 @@ export const en: Record<keyof ZhDict, string> = {
   'library.removeOnly': 'Remove from library only',
   'library.removeOnlyHint': 'Source file stays on disk',
   'library.removeWithFile': 'Delete local files too',
-  'library.removeWithFileHint': 'Deletes the source .dem (zip demos: only the copy)',
+  'library.removeWithFileHint': 'Deletes the source file (zip demos: deletes the archive too)',
 
   'detail.hud.kills': 'KILLS',
   'detail.hud.deaths': 'DEATHS',
@@ -140,6 +140,7 @@ export const en: Record<keyof ZhDict, string> = {
   'detail.panelOn': 'Voice panel opened — big captions + speakers, voice switching at top-right',
   'detail.panelOff': 'Voice panel closed',
   'detail.noVoice': 'No voice detected in this demo',
+  'detail.voiceDetected': '{s}s of voice detected — not transcribed yet. Click "Transcribe" to get text',
   'detail.voiceHint': 'Third-party (FACEIT etc.) or locally recorded demos usually contain voice',
 
   'transcript.title': 'Voice Transcript',

@@ -522,29 +522,31 @@ export function createLibraryService(
       void pump()
     },
 
-    /** 从资料库移除（可同时删除源文件；路径进忽略列表，不再自动入库） */
+    /** 从资料库移除（deleteFile=true 时连源文件一起删；zip 容器条目会整容器移除并删除 zip 本体） */
     async remove(id: string, opts?: { deleteFile?: boolean }) {
       const meta = store.index[id]
       if (!meta) return
-      delete store.index[id]
-      store.details.delete(id)
-      // 普通文件忽略其路径；zip 容器条目忽略其容器（整个 zip 不再入库）
-      const ignoreKey = meta.containerPath ?? meta.path
-      if (!ignored.includes(ignoreKey)) ignored.push(ignoreKey)
-      const jobs: Promise<void>[] = [
-        saveIgnored(),
-        persistIndex(),
-        fs.unlink(detailPath(id)).catch(() => {})
-      ]
-      if (opts?.deleteFile) {
-        if (meta.containerPath) {
-          // zip 容器条目：只删内部缓存副本，容器 zip 归用户所有，保留
-          jobs.push(fs.rm(join(zipCacheDir(), id), { recursive: true, force: true }).catch(() => {}))
-        } else {
-          jobs.push(fs.unlink(meta.path).catch(() => {}))
+      const container = meta.containerPath
+      const isZip = Boolean(container)
+      // zip 容器：该容器下所有条目一起移除（源 zip 删除后它们都无法再读取）
+      const ids = isZip
+        ? Object.keys(store.index).filter((k) => store.index[k].containerPath === container)
+        : [id]
+      for (const did of ids) {
+        const m = store.index[did]
+        delete store.index[did]
+        store.details.delete(did)
+        void fs.unlink(detailPath(did)).catch(() => {})
+        if (m.containerPath) {
+          void fs.rm(join(zipCacheDir(), did), { recursive: true, force: true }).catch(() => {})
         }
-      } else if (meta.containerPath) {
-        jobs.push(fs.rm(join(zipCacheDir(), id), { recursive: true, force: true }).catch(() => {}))
+      }
+      const ignoreKey = container ?? meta.path
+      if (!ignored.includes(ignoreKey)) ignored.push(ignoreKey)
+      const jobs: Promise<void>[] = [saveIgnored(), persistIndex()]
+      if (opts?.deleteFile) {
+        // 连本地源文件一起删：普通 demo 删 .dem；zip 条目删容器 zip
+        jobs.push(container ? fs.unlink(container).catch(() => {}) : fs.unlink(meta.path).catch(() => {}))
       }
       await Promise.all(jobs)
       broadcast()

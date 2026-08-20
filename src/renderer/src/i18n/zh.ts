@@ -107,7 +107,7 @@ export const zh = {
   'library.removeOnly': '仅从资料库移除',
   'library.removeOnlyHint': '源文件保留在磁盘上',
   'library.removeWithFile': '同时删除本地文件',
-  'library.removeWithFileHint': '彻底删除源 .dem 文件（zip 内的 demo 只删副本）',
+  'library.removeWithFileHint': '彻底删除源文件（zip 内的 demo：连同压缩包一起删）',
 
   // 详情
   'detail.hud.kills': '击杀',
@@ -143,6 +143,7 @@ export const zh = {
   'detail.panelOn': '语音大屏已开启：大字字幕 + 说话者，右上角可切换语音段',
   'detail.panelOff': '语音大屏已关闭',
   'detail.noVoice': '该 Demo 未检测到语音',
+  'detail.voiceDetected': '检测到语音 {s} 秒，尚未转写：点击「开始转写」生成文字',
   'detail.voiceHint': '第三方平台（FACEIT 等）或本地录制的 demo 通常包含语音',
 
   // 转写
