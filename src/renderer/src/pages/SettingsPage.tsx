@@ -17,6 +17,8 @@ export function SettingsPage({ settings }: { settings: Settings }) {
   const [draft, setDraft] = useState<Settings>(settings)
   const [engStatus, setEngStatus] = useState<Record<string, boolean>>({})
   const [engProgress, setEngProgress] = useState<{ what: string; received: number; total: number } | null>(null)
+  const [aiModels, setAiModels] = useState<string[] | null>(null)
+  const [aiModelsLoading, setAiModelsLoading] = useState(false)
 
   useEffect(() => {
     window.api.engines.status().then(setEngStatus).catch(() => {})
@@ -60,6 +62,24 @@ export function SettingsPage({ settings }: { settings: Settings }) {
 
   const setAi = (patch: Partial<Settings['ai']>) => {
     set({ ai: { ...draft.ai, ...patch } })
+  }
+
+  const pullModels = async () => {
+    if (!draft.ai.apiKey) {
+      toast.push(t.t('settings.aiKeyFirst'), 'warn')
+      return
+    }
+    setAiModelsLoading(true)
+    try {
+      const list = await window.api.ai.listModels()
+      setAiModels(list)
+      toast.push(t.tf('settings.aiModelsFetched', { n: list.length }))
+    } catch (err) {
+      setAiModels(null)
+      toast.push(err instanceof Error ? err.message : String(err), 'err')
+    } finally {
+      setAiModelsLoading(false)
+    }
   }
 
   const setCs2 = (patch: Partial<Settings['cs2']>) => {
@@ -310,12 +330,33 @@ export function SettingsPage({ settings }: { settings: Settings }) {
             <div className="t">{t.t('settings.aiModel')}</div>
             <div className="d">{t.t('settings.aiModelHint')}</div>
           </div>
-          <input
-            className="input"
-            style={{ width: 300 }}
-            value={draft.ai.model}
-            onChange={(e) => setAi({ model: e.target.value })}
-          />
+          {aiModels ? (
+            <select
+              className="input select"
+              style={{ width: 280 }}
+              value={draft.ai.model}
+              onChange={(e) => setAi({ model: e.target.value })}
+            >
+              {!aiModels.includes(draft.ai.model) && (
+                <option value={draft.ai.model}>{draft.ai.model}</option>
+              )}
+              {aiModels.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              className="input"
+              style={{ width: 280 }}
+              value={draft.ai.model}
+              onChange={(e) => setAi({ model: e.target.value })}
+            />
+          )}
+          <Btn variant="ghost" size="sm" disabled={aiModelsLoading} onClick={pullModels}>
+            {aiModelsLoading ? '…' : aiModels ? t.t('common.refresh') : t.t('settings.aiPullModels')}
+          </Btn>
         </div>
       </Panel>
 

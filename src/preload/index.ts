@@ -33,7 +33,8 @@ const api: ApiWithEvents = {
   },
   ai: {
     ask: (id: string, question: string) => ipcRenderer.invoke('ai:ask', id, question),
-    cancel: () => ipcRenderer.invoke('ai:cancel')
+    cancel: () => ipcRenderer.invoke('ai:cancel'),
+    listModels: () => ipcRenderer.invoke('ai:listModels')
   },
   live: {
     getStatus: () => ipcRenderer.invoke('live:getStatus'),

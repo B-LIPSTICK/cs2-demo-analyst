@@ -119,6 +119,10 @@ function registerIpc(): void {
     return ai.ask(id, question, detail, s.ai, s.language)
   })
   ipcMain.handle('ai:cancel', () => ai.cancel())
+  ipcMain.handle('ai:listModels', async () => {
+    const s = await getSettings()
+    return ai.listModels({ baseUrl: s.ai.baseUrl, apiKey: s.ai.apiKey })
+  })
 
   // 实况 / 注入
   ipcMain.handle('live:getStatus', () => live.getStatus())

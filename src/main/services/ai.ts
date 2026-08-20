@@ -101,6 +101,59 @@ export class AiService {
     this.mockMode = on
   }
 
+  /** 拉取服务商提供的模型列表（GET /v1/models，OpenAI 兼容） */
+  async listModels(cfg: { baseUrl: string; apiKey: string }): Promise<string[]> {
+    if (this.mockMode) {
+      return [
+        'llama-3.3-70b-versatile',
+        'llama-3.1-8b-instant',
+        'gpt-4o-mini',
+        'deepseek-chat',
+        'qwen-plus',
+        'moonshot-v1-8k'
+      ]
+    }
+    if (!cfg.apiKey) throw new Error('请先填写 AI API Key')
+    const base = cfg.baseUrl.replace(/\/+$/, '')
+    const res = await fetch(`${base}/models`, {
+      headers: { Authorization: `Bearer ${cfg.apiKey}` }
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(
+        `API ${res.status}${res.status === 401 ? '（Key 无效）' : ''} ${text.slice(0, 120)}`
+      )
+    }
+    const j = (await res.json()) as { data?: { id?: string }[] }
+    const ids = (j.data ?? [])
+      .map((m) => m.id)
+      .filter((x): x is string => typeof x === 'string' && x.length > 0)
+    // 常用聊天模型置顶，其余按字母序
+    const preferred = [
+      'llama-3.3-70b-versatile',
+      'llama-3.1-8b-instant',
+      'gpt-4o',
+      'gpt-4o-mini',
+      'deepseek-chat',
+      'deepseek-reasoner',
+      'qwen-plus',
+      'qwen-max',
+      'moonshot-v1-8k',
+      'claude-3-5-sonnet-latest'
+    ]
+    ids.sort((a, b) => {
+      const pa = preferred.indexOf(a)
+      const pb = preferred.indexOf(b)
+      if (pa >= 0 || pb >= 0) {
+        if (pa < 0) return 1
+        if (pb < 0) return -1
+        return pa - pb
+      }
+      return a.localeCompare(b)
+    })
+    return ids
+  }
+
   cancel(): void {
     this.controller?.abort()
     this.controller = null

@@ -274,6 +274,7 @@ export interface Api {
   ai: {
     ask: (id: string, question: string) => Promise<{ started: boolean; error?: string }>
     cancel: () => Promise<void>
+    listModels: () => Promise<string[]>
   }
   live: {
     getStatus: () => Promise<LiveStatus>

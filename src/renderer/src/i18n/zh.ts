@@ -12,7 +12,7 @@ export const zh = {
   'status.on': 'ON',
 
   // 导航
-  'nav.library': '资料库',
+  'nav.library': 'DEMO',
   'nav.transcript': '转写',
   'nav.ai': 'AI 分析',
   'nav.live': '实况',
@@ -38,7 +38,7 @@ export const zh = {
   'common.notimpl': '该功能在后续阶段实现',
 
   // 资料库
-  'library.title': '资料库',
+  'library.title': 'DEMO',
   'library.subtitle': '本地 Demo 集合 · 自动扫描与解析',
   'library.addRoot': '添加目录',
   'library.rescan': '重新扫描',
@@ -185,7 +185,7 @@ export const zh = {
   'settings.themeDark': '深色',
   'settings.themeLight': '浅色',
   'settings.language': '界面语言',
-  'settings.library': '资料库目录',
+  'settings.library': 'DEMO 目录',
   'settings.libraryHint': '添加包含 .dem 文件的目录，应用会自动监视',
   'settings.asr': '语音转写引擎',
   'settings.asrEngine': '转写引擎',
@@ -206,7 +206,10 @@ export const zh = {
   'settings.aiBaseUrl': 'AI API 地址',
   'settings.aiBaseUrlHint': 'OpenAI 兼容接口；DeepSeek/通义/Moonshot 等均可填',
   'settings.aiModel': 'AI 模型',
-  'settings.aiModelHint': '默认 Groq llama-3.3-70b（免费）；可换任意模型名',
+  'settings.aiModelHint': '默认 Groq llama-3.3-70b（免费）；点「拉取模型」列出该服务商可用模型后下拉选择',
+  'settings.aiPullModels': '拉取模型',
+  'settings.aiKeyFirst': '请先填写 AI API Key',
+  'settings.aiModelsFetched': '已拉取 {n} 个模型',
   'settings.cs2': 'CS2 注入',
   'settings.cs2Path': 'CS2 安装路径',
   'settings.cs2Detect': '自动检测',
