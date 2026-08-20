@@ -262,6 +262,8 @@ export const zh = {
   'settings.cs2Detect': '自动检测',
   'settings.cs2Detected': '已定位 CS2 安装目录',
   'settings.cs2DetectFailed': '未找到 CS2 安装（Steam 未运行或未安装 CS2）',
+  'settings.cs2LaunchArgs': '自定义启动项',
+  'settings.cs2LaunchArgsHint': '空格分隔（如 -insecure -novid）。软件启动 CS2 时自动带上，-tools 会自动追加保证能注入',
   'settings.cs2Setup': '一键配置',
   'settings.cs2SetupHint': '写入 GSI 配置文件到游戏目录 · 以 -tools 模式启动 CS2（VConsole2 通道）',
   'settings.gsiInstall': '安装 GSI 配置',

@@ -1587,7 +1587,8 @@ body {
 
 .kill-row {
   display: grid;
-  grid-template-columns: 76px 1fr auto 1fr 58px;
+  /* 武器列固定宽度 → 受害者的名字列始终对齐 */
+  grid-template-columns: 76px 1fr 96px 1fr 58px;
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
@@ -1631,20 +1632,26 @@ body {
 .kill-row .wp {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  width: 100%;
   height: 22px;
-  padding: 0 10px;
-  font-size: 12px;
+  padding: 0 6px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--text-1);
   border: 1px solid var(--line-1);
   border-radius: 7px;
   background: var(--field-bg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .kill-row .hs {
   width: 12px;
   height: 12px;
+  flex: none;
   color: var(--red);
 }
 

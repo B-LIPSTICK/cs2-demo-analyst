@@ -627,9 +627,9 @@ function DemoCard({
         </div>
       </div>
 
-      {(demo.status === 'parsing' || (demo.status === 'pending' && progress !== undefined)) && (
+      {(demo.status === 'parsing' || demo.status === 'pending') && (
         <div className="status-cover">
-          {demo.status === 'parsing' || progress !== undefined ? (
+          {progress !== undefined || demo.status === 'parsing' ? (
             <Ring pct={Math.max(0.03, Math.min(0.99, progress ?? 0.03))} label={`${Math.round((progress ?? 0.03) * 100)}%`} />
           ) : (
             <Btn

@@ -273,9 +273,9 @@ export class LiveService {
   // ─── 启动器 ──────────────────────────────────────────────────────────────
 
   /** 以 -tools 模式启动 CS2（steam:// URL，args 经 steam 透传） */
-  launchCs2(toolsMode: boolean, playDemoPath?: string): { ok: boolean; url: string } {
-    const args: string[] = []
-    if (toolsMode) args.push('-tools')
+  launchCs2(toolsMode: boolean, playDemoPath?: string, extra: string[] = []): { ok: boolean; url: string } {
+    const args: string[] = [...extra]
+    if (toolsMode && !extra.includes('-tools')) args.push('-tools')
     if (playDemoPath) args.push(`+playdemo "${playDemoPath}"`)
     const argStr = args.length ? `//${encodeURIComponent(args.join(' '))}` : ''
     const url = `steam://run/730${argStr}`
@@ -283,9 +283,14 @@ export class LiveService {
   }
 
   /** 一键启动/播放 */
-  async launch(opts?: { toolsMode?: boolean; playDemoPath?: string }): Promise<LaunchResult> {
+  async launch(
+    opts?: { toolsMode?: boolean; playDemoPath?: string },
+    userArgs?: string
+  ): Promise<LaunchResult> {
     const toolsMode = opts?.toolsMode ?? true
     const demoPath = opts?.playDemoPath
+    // 用户自定义启动项（空格分隔），如 "-tools -insecure"
+    const extra: string[] = (userArgs ?? '').match(/\S+/g) ?? []
 
     // ① 已连接 VConsole（CS2 正在 -tools 模式运行）→ 直接注入 playdemo 指令，最稳
     if (demoPath && this.status.vconsoleConnected) {
@@ -319,8 +324,11 @@ export class LiveService {
       const exe = join(install, 'game', 'bin', 'win64', 'cs2.exe')
       try {
         await fs.access(exe)
-        const args: string[] = []
-        if (toolsMode) args.push('-tools')
+        const args: string[] = [...extra]
+        // 用户启动项里没有 -tools 且需要 tools 模式时自动补上（保证控制台可注入）
+        if (toolsMode && !extra.includes('-tools') && !extra.some((a) => a.startsWith('-tools'))) {
+          args.push('-tools')
+        }
         if (demoPath) args.push('+playdemo', demoPath)
         const child = spawn(exe, args, {
           cwd: dirname(exe),
@@ -336,8 +344,8 @@ export class LiveService {
       }
     }
 
-    // ③ 回退：steam:// URL（无法定位安装目录时）
-    const { url } = this.launchCs2(toolsMode, demoPath)
+    // ③ 回退：steam:// URL（无法定位安装目录时），合并用户启动项
+    const { url } = this.launchCs2(toolsMode, demoPath, extra)
     try {
       await shell.openExternal(url)
       return { ok: true, url }

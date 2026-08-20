@@ -114,7 +114,8 @@ export function DemoDetailPage({
                 size="sm"
                 variant="accent"
                 onClick={async () => {
-                  const r = await window.api.live.launch({ toolsMode: false, playDemoPath: meta.path })
+                  // 统一以 -tools 模式启动（用户自定义启动项自动带上），保证能注入跳转
+                  const r = await window.api.live.launch({ toolsMode: true, playDemoPath: meta.path })
                   if (r.ok) {
                     toast.push(r.injected ? t('detail.playInjected') : t('detail.playLaunched'))
                   } else toast.push(r.error ?? t('common.error'), 'warn')
@@ -352,9 +353,11 @@ function KillRow({
       <span className="wp">
         {kill.weapon}
         {kill.headshot && (
-          <svg className="hs" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2c1.6 2.5 1.6 4.5 0 6-1.6-1.5-1.6-3.5 0-6zm-7 9h6l-2-7 9 9-9 9 2-7H5z" />
-          </svg>
+          <span title="爆头" style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <svg className="hs" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2a8 8 0 0 0-8 8c0 2.5 1.2 4.7 3 6v3a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-3c1.8-1.3 3-3.5 3-6a8 8 0 0 0-8-8zm-3.5 7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM9 16c.8.8 1.9 1.3 3 1.3s2.2-.5 3-1.3c-.9.6-1.9.9-3 .9s-2.1-.3-3-.9z" />
+            </svg>
+          </span>
         )}
         {kill.throughSmoke && <span style={{ color: 'var(--text-2)' }}>SMK</span>}
       </span>

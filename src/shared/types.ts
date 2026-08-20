@@ -227,6 +227,8 @@ export interface Settings {
     vconsolePort: number
     gsiPort: number
     useToolsMode: boolean
+    /** 用户自定义启动项（空格分隔，如 "-tools -insecure"），软件启动 CS2 时自动带上 */
+    launchArgs?: string
   }
   overlay: {
     enabled: boolean
@@ -266,7 +268,8 @@ export const DEFAULT_SETTINGS: Settings = {
   cs2: {
     vconsolePort: 29000,
     gsiPort: 30070,
-    useToolsMode: true
+    useToolsMode: true,
+    launchArgs: ''
   },
   overlay: {
     enabled: false,

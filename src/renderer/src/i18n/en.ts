@@ -256,6 +256,8 @@ export const en: Record<keyof ZhDict, string> = {
   'settings.cs2Detect': 'Auto-detect',
   'settings.cs2Detected': 'CS2 install located',
   'settings.cs2DetectFailed': 'CS2 not found (Steam not running or CS2 not installed)',
+  'settings.cs2LaunchArgs': 'Custom launch args',
+  'settings.cs2LaunchArgsHint': 'Space separated (e.g. -insecure -novid). Added automatically when launching CS2; -tools is appended when needed for injection',
   'settings.cs2Setup': 'ONE-CLICK SETUP',
   'settings.cs2SetupHint': 'Write GSI config into the game folder · launch CS2 in -tools mode (VConsole2 channel)',
   'settings.gsiInstall': 'Install GSI config',

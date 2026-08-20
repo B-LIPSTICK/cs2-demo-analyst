@@ -358,6 +358,19 @@ export function SettingsPage({ settings }: { settings: Settings }) {
         </div>
         <div className="set-row">
           <div className="info">
+            <div className="t">{t.t('settings.cs2LaunchArgs')}</div>
+            <div className="d">{t.t('settings.cs2LaunchArgsHint')}</div>
+          </div>
+          <input
+            className="input"
+            style={{ width: 260 }}
+            placeholder="-tools -insecure"
+            value={draft.cs2.launchArgs ?? ''}
+            onChange={(e) => setCs2({ launchArgs: e.target.value })}
+          />
+        </div>
+        <div className="set-row">
+          <div className="info">
             <div className="t">{t.t('settings.cs2Setup')}</div>
             <div className="d">{t.t('settings.cs2SetupHint')}</div>
           </div>

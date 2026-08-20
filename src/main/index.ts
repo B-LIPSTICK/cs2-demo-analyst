@@ -163,9 +163,10 @@ function registerIpc(): void {
   ipcMain.handle('live:specNext', () => live.specNext())
   ipcMain.handle('live:specPrev', () => live.specPrev())
   ipcMain.handle('live:specGoto', (_e, userid: number) => live.specGoto(userid))
-  ipcMain.handle('live:launch', (_e, opts?: { toolsMode?: boolean; playDemoPath?: string }) =>
-    live.launch(opts)
-  )
+  ipcMain.handle('live:launch', async (_e, opts?: { toolsMode?: boolean; playDemoPath?: string }) => {
+    const s = await getSettings()
+    return live.launch(opts, s.cs2.launchArgs ?? '')
+  })
   ipcMain.handle('live:installGsi', () => live.installGsi())
   ipcMain.handle('live:locateInstall', () => live.locateInstall())
 
