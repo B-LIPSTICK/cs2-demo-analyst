@@ -59,6 +59,10 @@ function LibraryPageInner({
     const offLib = window.api.onEvent('library:updated', (e) => setDemos(e.demos))
     const offProg = window.api.onEvent('library:progress', (e) => {
       setProgress((p) => ({ ...p, [e.id]: typeof e.progress === 'number' ? e.progress : 0 }))
+      // pending → parsing（进度事件驱动，避免解析开始时的全列表广播）
+      setDemos((ds) =>
+        ds.map((d) => (d.id === e.id && d.status === 'pending' ? { ...d, status: 'parsing' as const } : d))
+      )
     })
     return () => {
       off()

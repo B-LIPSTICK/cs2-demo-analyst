@@ -282,7 +282,7 @@ export class LiveService {
     return { ok: true, url }
   }
 
-  /** 一键启动/播放（三层策略，越靠前越可靠） */
+  /** 一键启动/播放 */
   async launch(opts?: { toolsMode?: boolean; playDemoPath?: string }): Promise<LaunchResult> {
     const toolsMode = opts?.toolsMode ?? true
     const demoPath = opts?.playDemoPath
@@ -293,7 +293,27 @@ export class LiveService {
       if (sent) return { ok: true, url: '', injected: true }
     }
 
-    // ② 直接启动 cs2.exe（execFile 数组传参，路径带空格/中文都可靠；steam:// 对引号透传不稳）
+    // ①b CS2 已在运行但控制台未连：CS2 是单实例，直接启动会被吞掉参数（只启动不播放），
+    //     因此尝试自动连接 VConsole 后注入 playdemo；连不上则给出明确提示
+    if (demoPath) {
+      const running = await isCs2Running()
+      if (running && !this.status.vconsoleConnected) {
+        await this.connect()
+        await new Promise((r) => setTimeout(r, 1500))
+        if (this.status.vconsoleConnected) {
+          const sent = this.sendCommand(`playdemo ${demoPath}`)
+          if (sent) return { ok: true, url: '', injected: true }
+        }
+        return {
+          ok: false,
+          url: '',
+          error:
+            'CS2 正在运行，但控制台（VConsole）未连接，无法注入播放指令。\n请确认 CS2 以 -tools 模式启动，然后在「实况」页点「连接控制台」，再回来点「CS2 中播放」。'
+        }
+      }
+    }
+
+    // ② CS2 未运行 → 直接启动 cs2.exe（数组传参，路径带空格/中文都可靠；steam:// 对引号透传不稳）
     const install = await locateCs2Install()
     if (install) {
       const exe = join(install, 'game', 'bin', 'win64', 'cs2.exe')

@@ -151,7 +151,8 @@ export function createLibraryService(
   const doParse = async (meta: DemoMeta) => {
     meta.status = 'parsing'
     dbg(`doParse start ${meta.fileName}`)
-    broadcast()
+    // 开始时不广播（避免解析每个 demo 都全列表刷新一次）；
+    // 前端由 library:progress 事件驱动把该卡片置为「解析中」
     try {
       const result = await parseDemo(
         meta.path,
