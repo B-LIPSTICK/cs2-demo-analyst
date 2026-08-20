@@ -150,20 +150,6 @@ export function DemoDetailPage({
                 <IcTranscript size={12} />
                 {t('detail.voicePanel')}
               </Btn>
-              <Btn
-                size="sm"
-                onClick={async () => {
-                  try {
-                    const n = await window.api.voice.extract(id)
-                    toast.push(n > 0 ? `VOICE ×${n} · ${t('library.extractVoice')} ✓` : t('detail.noVoice'), n > 0 ? 'ok' : 'warn')
-                  } catch (err) {
-                    toast.push(err instanceof Error ? err.message : String(err), 'err')
-                  }
-                }}
-              >
-                <IcMic size={12} />
-                {t('library.extractVoice')}
-              </Btn>
               <Btn size="sm" variant="primary" onClick={() => onGoTranscript()}>
                 <IcTranscript size={12} />
                 {t('library.transcribe')}
@@ -210,6 +196,15 @@ export function DemoDetailPage({
           </div>
           <div className="muted" style={{ fontSize: 10.5, marginTop: 8 }}>
             {t('detail.sideNote')}
+          </div>
+
+          {/* 回合结果（CS:GO Tab 风格：结束方式 + 剩余存活） */}
+          <div style={{ marginTop: 14 }}>
+            <RoundResultGrid
+              rounds={rounds}
+              selectedRound={selectedRound === 'all' ? undefined : selectedRound}
+              onSelectRound={(r) => setSelectedRound((cur) => (cur === r ? 'all' : r))}
+            />
           </div>
 
           {/* 比分走势时间轴 */}
@@ -367,6 +362,65 @@ export function DemoDetailPage({
           onClose={() => setPlayer(null)}
         />
       )}
+    </div>
+  )
+}
+
+/** 回合结果面板：仿 CS:GO Tab 记分板——每回合结束方式（爆炸/拆除/击杀/超时）+ 剩余存活 */
+function RoundResultGrid({
+  rounds,
+  selectedRound,
+  onSelectRound
+}: {
+  rounds: RoundInfo[]
+  selectedRound?: number
+  onSelectRound: (roundNum: number) => void
+}) {
+  return (
+    <div className="round-grid">
+      {rounds.map((r) => {
+        // 该回合双方死亡数 → 剩余存活（按 5v5 估算；team 未知的击杀不统计）
+        const dT = r.kills.filter((k) => k.victimTeam === 'T').length
+        const dCT = r.kills.filter((k) => k.victimTeam === 'CT').length
+        const aliveT = Math.max(0, 5 - dT)
+        const aliveCT = Math.max(0, 5 - dCT)
+        const icon =
+          r.endType === 'bomb_exploded'
+            ? '💥'
+            : r.endType === 'bomb_defused'
+              ? '🛡️'
+              : r.endType === 'elimination'
+                ? '☠'
+                : r.endType === 'timeout'
+                  ? '⏱'
+                  : '—'
+        const endLabel =
+          r.endType === 'bomb_exploded'
+            ? '爆炸'
+            : r.endType === 'bomb_defused'
+              ? '拆除'
+              : r.endType === 'elimination'
+                ? '击杀'
+                : r.endType === 'timeout'
+                  ? '超时'
+                  : '结束'
+        return (
+          <div
+            key={r.roundNum}
+            className={`round-cell ${r.winner === 'T' ? 'win-t' : r.winner === 'CT' ? 'win-ct' : ''} ${
+              selectedRound === r.roundNum ? 'active' : ''
+            }`}
+            onClick={() => onSelectRound(r.roundNum)}
+            title={`R${r.roundNum} · ${r.winner === 'T' ? 'T' : r.winner === 'CT' ? 'CT' : '-'} 胜 · ${endLabel} · 存活 T${aliveT} CT${aliveCT}`}
+          >
+            <div className="rc-r">R{r.roundNum}</div>
+            <div className="rc-main">
+              <span className="rc-icon">{icon}</span>
+              <span className="rc-alive">{aliveT}v{aliveCT}</span>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
