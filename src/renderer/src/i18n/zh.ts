@@ -5,9 +5,9 @@ export const zh = {
   'titlebar.live': 'LIVE',
   'titlebar.version': 'v',
   'titlebar.themeToggle': '切换深色/浅色主题',
-  'status.cs2': 'CS2',
-  'status.vcon': 'VCON',
-  'status.gsi': 'GSI',
+  'status.cs2': '游戏',
+  'status.vcon': '控制台',
+  'status.gsi': '状态',
   'status.off': 'OFF',
   'status.on': 'ON',
 
@@ -15,7 +15,9 @@ export const zh = {
   'nav.library': 'DEMO',
   'nav.transcript': '转写',
   'nav.ai': 'AI 分析',
+  'nav.aiTag': 'AI',
   'nav.live': '实况',
+  'nav.liveTag': '注入',
   'nav.settings': '设置',
 
   // 通用
@@ -153,6 +155,9 @@ export const zh = {
   'live.status.connecting': '连接控制台…',
   'live.status.live': '已连接 · 可注入',
   'live.status.error': '连接异常',
+  'live.connected': '已连接',
+  'live.deck': '控制台',
+  'live.gsiState': '游戏状态',
   'live.connect': '连接控制台',
   'live.launch': '启动 CS2（-tools）',
   'live.launched': '已通过 Steam 启动 CS2（-tools 模式）',

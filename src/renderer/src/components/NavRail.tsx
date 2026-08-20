@@ -1,14 +1,14 @@
 import type { ReactNode } from 'react'
 import { IcLibrary, IcTranscript, IcLive, IcSettings, IcSpark } from './ui'
-import { useTKey } from '@/i18n'
+import { useTKey, type TKey } from '@/i18n'
 
 export type Page = 'library' | 'transcript' | 'live' | 'ai' | 'settings'
 
-const ITEMS: { id: Page; icon: (p: { size?: number }) => ReactNode; tag?: string }[] = [
+const ITEMS: { id: Page; icon: (p: { size?: number }) => ReactNode; tagKey?: TKey }[] = [
   { id: 'library', icon: (p) => <IcLibrary {...p} /> },
   { id: 'transcript', icon: (p) => <IcTranscript {...p} /> },
-  { id: 'ai', icon: (p) => <IcSpark {...p} />, tag: 'AI' },
-  { id: 'live', icon: (p) => <IcLive {...p} />, tag: 'INJECT' },
+  { id: 'ai', icon: (p) => <IcSpark {...p} />, tagKey: 'nav.aiTag' },
+  { id: 'live', icon: (p) => <IcLive {...p} />, tagKey: 'nav.liveTag' },
   { id: 'settings', icon: (p) => <IcSettings {...p} /> }
 ]
 
@@ -32,12 +32,12 @@ export function NavRail({
         >
           {it.icon({ size: 15 })}
           <span>{t(`nav.${it.id}`)}</span>
-          {it.tag && <span className="tag">{it.tag}</span>}
+          {it.tagKey && <span className="tag">{t(it.tagKey)}</span>}
         </div>
       ))}
       <div className="nav-foot">
         <div className="mini">
-          CS2 DEMO ANALYST
+          Demo Analyst
           <br />
           BUILD 0.1 · {version}
         </div>

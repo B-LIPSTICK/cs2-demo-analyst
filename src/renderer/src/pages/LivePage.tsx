@@ -93,7 +93,7 @@ export function LivePage() {
         </div>
         <div className="actions">
           <span className={`phase-pill ${live ? 'live' : ''}`}>
-            {live ? 'LIVE' : t('live.sim')}
+            {live ? t('live.connected') : t('live.sim')}
           </span>
         </div>
       </div>
@@ -137,7 +137,7 @@ export function LivePage() {
       </Panel>
 
       {/* 控制台 */}
-      <SectionHead idx={1}>{t('nav.live')} · DECK</SectionHead>
+      <SectionHead idx={1}>{t('nav.live')} · {t('live.deck')}</SectionHead>
       <Panel>
         <div className="panel-bd">
           <div className="deck">
@@ -246,7 +246,7 @@ export function LivePage() {
       </Panel>
 
       {/* GSI 状态 */}
-      <SectionHead idx={2}>GSI · STATE</SectionHead>
+      <SectionHead idx={2}>{t('live.gsiState')}</SectionHead>
       <Panel>
         <div className="panel-bd" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
           {(
