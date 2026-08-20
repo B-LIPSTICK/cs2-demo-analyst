@@ -100,6 +100,27 @@ function registerIpc(): void {
   ipcMain.handle('library:addRoot', () => library.addRoot())
   ipcMain.handle('library:removeRoot', (_e, root: string) => library.removeRoot(root))
   ipcMain.handle('library:rescan', () => library.rescan())
+  ipcMain.handle('library:remove', (_e, id: string) => library.remove(id))
+
+  // 收藏
+  ipcMain.handle('favorites:list', async () => {
+    const { favoritesList } = await import('./services/favorites')
+    return favoritesList()
+  })
+  ipcMain.handle('favorites:add', async (_e, id: string) => {
+    const { favoriteAdd } = await import('./services/favorites')
+    const meta = (await library.list()).find((m) => m.id === id)
+    if (!meta) throw new Error('demo not found')
+    return favoriteAdd(meta)
+  })
+  ipcMain.handle('favorites:remove', async (_e, id: string) => {
+    const { favoriteRemove } = await import('./services/favorites')
+    return favoriteRemove(id)
+  })
+  ipcMain.handle('favorites:reveal', async () => {
+    const { favoriteReveal } = await import('./services/favorites')
+    return favoriteReveal()
+  })
 
   // 语音
   ipcMain.handle('voice:detect', (_e, id: string) => library.detectVoice(id))
@@ -112,17 +133,20 @@ function registerIpc(): void {
   ipcMain.handle('asr:cancel', () => library.cancelTranscribe())
 
   // AI 分析
-  ipcMain.handle('ai:ask', async (_e, id: string, question: string) => {
+  ipcMain.handle('ai:ask', async (_e, id: string, question: string, history?: { role: 'user' | 'assistant'; text: string }[]) => {
     const detail = await library.detail(id)
     if (!detail) return { started: false, error: 'demo not found' }
     const s = await getSettings()
-    return ai.ask(id, question, detail, s.ai, s.language)
+    return ai.ask(id, question, detail, s.ai, s.language, history)
   })
   ipcMain.handle('ai:cancel', () => ai.cancel())
   ipcMain.handle('ai:listModels', async () => {
     const s = await getSettings()
     return ai.listModels({ baseUrl: s.ai.baseUrl, apiKey: s.ai.apiKey })
   })
+  ipcMain.handle('ai:listChats', () => ai.listChats())
+  ipcMain.handle('ai:saveChat', (_e, session) => ai.saveChat(session))
+  ipcMain.handle('ai:removeChat', (_e, id: string) => ai.removeChat(id))
 
   // 实况 / 注入
   ipcMain.handle('live:getStatus', () => live.getStatus())

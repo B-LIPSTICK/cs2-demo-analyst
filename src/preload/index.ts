@@ -20,7 +20,14 @@ const api: ApiWithEvents = {
     detail: (id: string) => ipcRenderer.invoke('library:detail', id),
     addRoot: () => ipcRenderer.invoke('library:addRoot'),
     removeRoot: (root: string) => ipcRenderer.invoke('library:removeRoot', root),
-    rescan: () => ipcRenderer.invoke('library:rescan')
+    rescan: () => ipcRenderer.invoke('library:rescan'),
+    remove: (id: string) => ipcRenderer.invoke('library:remove', id)
+  },
+  favorites: {
+    list: () => ipcRenderer.invoke('favorites:list'),
+    add: (id: string) => ipcRenderer.invoke('favorites:add', id),
+    remove: (id: string) => ipcRenderer.invoke('favorites:remove', id),
+    reveal: () => ipcRenderer.invoke('favorites:reveal')
   },
   voice: {
     detect: (id: string) => ipcRenderer.invoke('voice:detect', id),
@@ -32,9 +39,13 @@ const api: ApiWithEvents = {
     cancel: () => ipcRenderer.invoke('asr:cancel')
   },
   ai: {
-    ask: (id: string, question: string) => ipcRenderer.invoke('ai:ask', id, question),
+    ask: (id: string, question: string, history?: { role: 'user' | 'assistant'; text: string }[]) =>
+      ipcRenderer.invoke('ai:ask', id, question, history),
     cancel: () => ipcRenderer.invoke('ai:cancel'),
-    listModels: () => ipcRenderer.invoke('ai:listModels')
+    listModels: () => ipcRenderer.invoke('ai:listModels'),
+    listChats: () => ipcRenderer.invoke('ai:listChats'),
+    saveChat: (session) => ipcRenderer.invoke('ai:saveChat', session),
+    removeChat: (id: string) => ipcRenderer.invoke('ai:removeChat', id)
   },
   live: {
     getStatus: () => ipcRenderer.invoke('live:getStatus'),

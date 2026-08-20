@@ -1,8 +1,12 @@
 /**
  * AI 分析服务：把 demo 解析数据组装成上下文，调用 OpenAI 兼容 chat/completions
  * 流式返回；无 Key 或网络失败时给出可读错误；--ai-mock 模式本地生成回答（开发验证）。
+ * 附带对话会话（记忆）持久化：userData/ai-chats.json。
  */
-import type { ChatMessage, DemoDetail, KillEvent, VoiceSegment } from '@shared/types'
+import { app } from 'electron'
+import { promises as fs } from 'node:fs'
+import { join } from 'node:path'
+import type { AiChatMessage, AiChatSession, ChatMessage, DemoDetail, KillEvent, VoiceSegment } from '@shared/types'
 
 export interface AiCallbacks {
   delta: (demoId: string, chunk: string) => void
@@ -116,6 +120,46 @@ export class AiService {
     this.cb = cb
   }
 
+  // ─── 对话会话（记忆）持久化 ────────────────────────────────────────────────
+
+  private chatsPath(): string {
+    return join(app.getPath('userData'), 'ai-chats.json')
+  }
+
+  private async loadChats(): Promise<AiChatSession[]> {
+    try {
+      return JSON.parse(await fs.readFile(this.chatsPath(), 'utf-8')) as AiChatSession[]
+    } catch {
+      return []
+    }
+  }
+
+  private async persistChats(list: AiChatSession[]): Promise<void> {
+    const p = this.chatsPath()
+    await fs.mkdir(app.getPath('userData'), { recursive: true })
+    const tmp = p + '.tmp'
+    await fs.writeFile(tmp, JSON.stringify(list), 'utf-8')
+    await fs.rename(tmp, p)
+  }
+
+  async listChats(): Promise<AiChatSession[]> {
+    return this.loadChats()
+  }
+
+  async saveChat(session: AiChatSession): Promise<void> {
+    const list = await this.loadChats()
+    const idx = list.findIndex((s) => s.id === session.id)
+    const next = { ...session, updatedAt: Date.now() }
+    if (idx >= 0) list[idx] = next
+    else list.unshift(next)
+    await this.persistChats(list)
+  }
+
+  async removeChat(id: string): Promise<void> {
+    const list = await this.loadChats()
+    await this.persistChats(list.filter((s) => s.id !== id))
+  }
+
   setMock(on: boolean): void {
     this.mockMode = on
   }
@@ -180,13 +224,15 @@ export class AiService {
 
   /**
    * 发起一次分析。返回 { started }；内容经 delta/done/error 回调流式推送。
+   * history 为多轮对话记忆（最近若干条 user/assistant 消息）。
    */
   async ask(
     demoId: string,
     question: string,
     detail: DemoDetail,
     cfg: { baseUrl: string; apiKey: string; model: string },
-    language: 'zh' | 'en'
+    language: 'zh' | 'en',
+    history: AiChatMessage[] = []
   ): Promise<{ started: boolean; error?: string }> {
     if (this.mockMode) {
       this.askMock(demoId, question, detail)
@@ -216,9 +262,13 @@ export class AiService {
           temperature: 0.4,
           messages: [
             { role: 'system', content: SYSTEM_PROMPT },
+            // 多轮记忆：只回放最近 12 条，控制 token
+            ...history
+              .slice(-12)
+              .map((h) => ({ role: h.role === 'user' ? 'user' as const : 'assistant' as const, content: h.text })),
             {
               role: 'user',
-              content: `${langHint}\n\n以下是本场 demo 的数据：\n\n${context}\n\n问题：${question}`
+              content: `${langHint}\n\n以下是本场 demo 的数据（每轮都附上，供核对）：\n\n${context}\n\n${history.length ? '用户上轮的问题你已回答过，请在已有讨论基础上继续。' : ''}\n问题：${question}`
             }
           ]
         }),

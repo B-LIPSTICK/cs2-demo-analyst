@@ -122,6 +122,32 @@ export interface DemoDetail {
   lastTick: number
 }
 
+// ─── 收藏 ───────────────────────────────────────────────────────────────────
+
+export interface Favorite {
+  id: string
+  name: string
+  sourcePath: string
+  copyPath: string
+  addedAt: number
+}
+
+// ─── AI 对话会话（记忆） ────────────────────────────────────────────────────
+
+export interface AiChatMessage {
+  role: 'user' | 'assistant'
+  text: string
+}
+
+export interface AiChatSession {
+  id: string
+  title: string
+  demoId: string
+  createdAt: number
+  updatedAt: number
+  messages: AiChatMessage[]
+}
+
 // ─── 实况 / 注入 ───────────────────────────────────────────────────────────
 
 export type LiveState =
@@ -262,6 +288,13 @@ export interface Api {
     addRoot: () => Promise<string[]>
     removeRoot: (root: string) => Promise<void>
     rescan: () => Promise<void>
+    remove: (id: string) => Promise<void>
+  }
+  favorites: {
+    list: () => Promise<Favorite[]>
+    add: (id: string) => Promise<Favorite>
+    remove: (id: string) => Promise<void>
+    reveal: () => Promise<void>
   }
   voice: {
     detect: (id: string) => Promise<{ hasVoice: boolean; voiceSec: number }>
@@ -272,9 +305,16 @@ export interface Api {
     cancel: () => Promise<void>
   }
   ai: {
-    ask: (id: string, question: string) => Promise<{ started: boolean; error?: string }>
+    ask: (
+      id: string,
+      question: string,
+      history?: AiChatMessage[]
+    ) => Promise<{ started: boolean; error?: string }>
     cancel: () => Promise<void>
     listModels: () => Promise<string[]>
+    listChats: () => Promise<AiChatSession[]>
+    saveChat: (session: AiChatSession) => Promise<void>
+    removeChat: (id: string) => Promise<void>
   }
   live: {
     getStatus: () => Promise<LiveStatus>

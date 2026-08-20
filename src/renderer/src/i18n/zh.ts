@@ -74,6 +74,14 @@ export const zh = {
   'library.transcribeDone': '转写完成',
   'library.reveal': '打开所在文件夹',
   'library.mmNoVoice': '注：Valve 天梯 demo 不含语音数据',
+  'library.fav': '收藏',
+  'library.favFolder': '收藏夹',
+  'library.favOn': '已收藏：demo 副本已复制到 favorites 文件夹',
+  'library.favOff': '已取消收藏',
+  'library.favFailed': '收藏失败：{err}',
+  'library.removeDemo': '移除',
+  'library.removeConfirm': '确定把该 demo 从资料库移除吗？不会删除源文件。',
+  'library.removed': '已从资料库移除（不会删源文件，可重新扫描其它目录）',
 
   // 详情
   'detail.hud.kills': '击杀',
@@ -146,6 +154,10 @@ export const zh = {
   'ai.tag1': '数据基于本局解析：击杀 / 回合 / 语音转写 / 聊天',
   'ai.tag2': '答案中的时间与回合可点击跳转',
   'ai.tagVoice': '含语音转写数据',
+  'ai.chatTitle': '切换对话（记忆保留）',
+  'ai.newChat': '新对话',
+  'ai.deleteChat': '删除对话',
+  'ai.deleteChatConfirm': '确定删除这个对话吗？历史记录将一并删除。',
 
   // 实况
   'live.title': '实况注入',

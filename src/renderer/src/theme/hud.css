@@ -157,11 +157,7 @@ body,
 }
 
 body {
-  background:
-    radial-gradient(1100px 560px at 84% -12%, rgba(10, 132, 255, 0.14), transparent 60%),
-    radial-gradient(900px 520px at -8% 110%, rgba(94, 92, 230, 0.13), transparent 62%),
-    radial-gradient(700px 380px at 50% 120%, rgba(10, 132, 255, 0.07), transparent 65%),
-    var(--bg-0);
+  background: var(--bg-0);
   color: var(--text-0);
   font-family: var(--font-body);
   font-size: 13.5px;
@@ -172,11 +168,7 @@ body {
 }
 
 :root[data-theme='light'] body {
-  background:
-    radial-gradient(1100px 560px at 84% -12%, rgba(0, 122, 255, 0.12), transparent 60%),
-    radial-gradient(900px 520px at -8% 110%, rgba(94, 92, 230, 0.08), transparent 62%),
-    radial-gradient(700px 380px at 50% 120%, rgba(0, 122, 255, 0.05), transparent 65%),
-    var(--bg-0);
+  background: var(--bg-0);
 }
 
 ::selection {
@@ -220,6 +212,21 @@ body {
 .page-scroll {
   overflow-y: auto;
   min-height: 0;
+  /* 氛围背景跟随滚动内容移动 */
+  background:
+    radial-gradient(1100px 560px at 84% -12%, rgba(10, 132, 255, 0.14), transparent 60%),
+    radial-gradient(900px 520px at -8% 110%, rgba(94, 92, 230, 0.13), transparent 62%),
+    radial-gradient(700px 380px at 50% 120%, rgba(10, 132, 255, 0.07), transparent 65%),
+    var(--bg-0);
+  animation: aurora 26s ease-in-out infinite;
+}
+
+:root[data-theme='light'] .page-scroll {
+  background:
+    radial-gradient(1100px 560px at 84% -12%, rgba(0, 122, 255, 0.12), transparent 60%),
+    radial-gradient(900px 520px at -8% 110%, rgba(94, 92, 230, 0.08), transparent 62%),
+    radial-gradient(700px 380px at 50% 120%, rgba(0, 122, 255, 0.05), transparent 65%),
+    var(--bg-0);
 }
 
 .page {
@@ -1202,6 +1209,51 @@ body {
   backdrop-filter: blur(6px);
   border-radius: inherit;
   z-index: 2;
+}
+
+/* 卡片操作按钮（收藏 / 移除） */
+.card-actions {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: flex;
+  gap: 4px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.card:hover .card-actions {
+  opacity: 1;
+}
+
+.card-act {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-1);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, transform 0.12s;
+}
+
+.card-act:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--text-0);
+  transform: scale(1.08);
+}
+
+.card-act.on {
+  color: var(--amber);
+}
+
+.card-act.danger:hover {
+  background: var(--red-dim);
+  color: var(--red);
 }
 
 /* ─── 击杀记录 ────────────────────────────────────────────────────────────── */

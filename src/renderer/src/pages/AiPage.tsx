@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Btn, IcSend, IcSpark, IcStop, Panel, Tag, useToast } from '@/components/ui'
+import { Btn, IcPlus, IcSend, IcSpark, IcStop, Panel, Tag, useToast } from '@/components/ui'
 import { useTKey } from '@/i18n'
-import type { DemoDetail, DemoMeta, RoundInfo } from '@shared/types'
+import type { AiChatSession, DemoDetail, DemoMeta, RoundInfo } from '@shared/types'
 
 interface Msg {
   id: number
@@ -56,7 +56,7 @@ function renderInline(
   return out
 }
 
-/** Markdown-lite 行渲染（标题/列表/斜体注记/普通段） */
+/** Markdown-lite 行渲染 */
 function renderBlock(
   text: string,
   onJump: (tick: number) => void,
@@ -104,18 +104,42 @@ function renderBlock(
   )
 }
 
+function newSession(demoId: string): AiChatSession {
+  const now = Date.now()
+  return {
+    id: `chat-${now}-${Math.floor(Math.random() * 1e6)}`,
+    title: '新对话',
+    demoId,
+    createdAt: now,
+    updatedAt: now,
+    messages: []
+  }
+}
+
 export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
   const t = useTKey()
   const toast = useToast()
   const [demos, setDemos] = useState<DemoMeta[]>([])
   const [selectedId, setSelectedId] = useState('')
   const [detail, setDetail] = useState<DemoDetail | null>(null)
-  const [messages, setMessages] = useState<Msg[]>([])
+  const [sessions, setSessions] = useState<AiChatSession[]>([])
+  const [currentId, setCurrentId] = useState('')
   const [input, setInput] = useState('')
   const [asking, setAsking] = useState(false)
   const [hasKey, setHasKey] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const askingId = useRef('')
+
+  const current = sessions.find((s) => s.id === currentId) ?? null
+  const messages: Msg[] = useMemo(
+    () =>
+      (current?.messages ?? []).map((m, i) => ({
+        id: i,
+        role: m.role === 'user' ? 'user' : 'ai',
+        text: m.text,
+        done: true
+      })),
+    [current]
+  )
 
   useEffect(() => {
     window.api.library.list().then((list) => {
@@ -126,54 +150,84 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
       }
     })
     window.api.settings.get().then((s) => setHasKey(Boolean(s.ai?.apiKey)))
+    // 载入历史会话（记忆切换）
+    window.api.ai
+      .listChats()
+      .then((chats) => {
+        if (chats.length > 0) {
+          setSessions(chats)
+          setCurrentId(chats[0].id)
+        } else {
+          const s = newSession('')
+          setSessions([s])
+          setCurrentId(s.id)
+        }
+      })
+      .catch(() => {
+        const s = newSession('')
+        setSessions([s])
+        setCurrentId(s.id)
+      })
   }, [])
 
-  // 选中 demo → 拉详情（用于 R# → tick 映射）
+  // 选中 demo → 拉详情（R# → tick 映射），并同步当前会话 demoId
   useEffect(() => {
     if (!selectedId) return
     window.api.library.detail(selectedId).then(setDetail).catch(() => setDetail(null))
+    setSessions((ss) => ss.map((s) => (s.id === currentId ? { ...s, demoId: selectedId } : s)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId])
+
+  /** 保存当前会话（持久化记忆） */
+  const persistCurrent = (next: AiChatSession) => {
+    setSessions((ss) => ss.map((s) => (s.id === next.id ? next : s)))
+    window.api.ai.saveChat(next).catch(() => {})
+  }
 
   // AI 流式事件
   useEffect(() => {
     const offDelta = window.api.onEvent('ai:delta', (e) => {
       if (e.demoId !== selectedId) return
-      setMessages((ms) => {
-        const last = ms[ms.length - 1]
-        if (last && last.role === 'ai' && !last.done && !last.error) {
-          return [...ms.slice(0, -1), { ...last, text: last.text + e.chunk }]
-        }
-        return ms
-      })
+      setSessions((ss) =>
+        ss.map((s) => {
+          if (s.id !== currentId || s.messages.length === 0) return s
+          const msgs = [...s.messages]
+          const last = msgs[msgs.length - 1]
+          if (last.role !== 'assistant') return s
+          msgs[msgs.length - 1] = { ...last, text: last.text + e.chunk }
+          return { ...s, messages: msgs }
+        })
+      )
     })
+    const finish = (answer: string) => {
+      setAsking(false)
+      setSessions((ss) => {
+        const s = ss.find((x) => x.id === currentId)
+        if (!s) return ss
+        const msgs = [...s.messages]
+        const last = msgs[msgs.length - 1]
+        if (last.role === 'assistant') msgs[msgs.length - 1] = { ...last, text: answer || last.text }
+        else msgs.push({ role: 'assistant', text: answer })
+        const next = { ...s, messages: msgs, updatedAt: Date.now() }
+        window.api.ai.saveChat(next).catch(() => {})
+        return ss.map((x) => (x.id === next.id ? next : x))
+      })
+    }
     const offDone = window.api.onEvent('ai:done', (e) => {
       if (e.demoId !== selectedId) return
-      setAsking(false)
-      setMessages((ms) => {
-        const last = ms[ms.length - 1]
-        if (last && last.role === 'ai') {
-          return [...ms.slice(0, -1), { ...last, text: e.answer || last.text, done: true }]
-        }
-        return [...ms, { id: Date.now(), role: 'ai', text: e.answer, done: true }]
-      })
+      finish(e.answer)
     })
     const offError = window.api.onEvent('ai:error', (e) => {
       if (e.demoId !== selectedId) return
-      setAsking(false)
-      setMessages((ms) => {
-        const last = ms[ms.length - 1]
-        if (last && last.role === 'ai') {
-          return [...ms.slice(0, -1), { ...last, text: e.error, done: true, error: true }]
-        }
-        return [...ms, { id: Date.now(), role: 'ai', text: e.error, done: true, error: true }]
-      })
+      finish(e.error)
     })
     return () => {
       offDelta()
       offDone()
       offError()
     }
-  }, [selectedId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, currentId])
 
   // 自动滚到底
   useEffect(() => {
@@ -192,21 +246,54 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
 
   const ask = async (q: string) => {
     const question = q.trim()
-    if (!question || asking || !selectedId) return
-    const userMsg: Msg = { id: Date.now(), role: 'user', text: question, done: true }
-    const aiMsg: Msg = { id: Date.now() + 1, role: 'ai', text: '', done: false }
-    setMessages((ms) => [...ms, userMsg, aiMsg])
+    if (!question || asking || !selectedId || !current) return
+    const title = current.title === '新对话' ? question.slice(0, 18) : current.title
+    const next: AiChatSession = {
+      ...current,
+      title,
+      demoId: selectedId,
+      messages: [...current.messages, { role: 'user', text: question }, { role: 'assistant', text: '' }]
+    }
+    persistCurrent(next)
     setInput('')
     setAsking(true)
-    askingId.current = selectedId
-    const res = await window.api.ai.ask(selectedId, question)
+    const history = next.messages.slice(0, -2) // 历史（不含刚加的问题与空回答）
+    const res = await window.api.ai.ask(selectedId, question, history)
     if (!res.started) {
       setAsking(false)
-      setMessages((ms) => [
-        ...ms.slice(0, -1),
-        { ...aiMsg, text: res.error ?? 'failed', done: true, error: true }
-      ])
+      setSessions((ss) => {
+        const s = ss.find((x) => x.id === currentId)
+        if (!s) return ss
+        const msgs = [...s.messages]
+        msgs[msgs.length - 1] = { role: 'assistant', text: res.error ?? 'failed' }
+        const done = { ...s, messages: msgs, updatedAt: Date.now() }
+        window.api.ai.saveChat(done).catch(() => {})
+        return ss.map((x) => (x.id === done.id ? done : x))
+      })
     }
+  }
+
+  const newChat = () => {
+    if (asking) return
+    const s = newSession(selectedId)
+    setSessions((ss) => [s, ...ss])
+    setCurrentId(s.id)
+  }
+
+  const deleteChat = () => {
+    if (!current || asking) return
+    if (!window.confirm(t('ai.deleteChatConfirm'))) return
+    window.api.ai.removeChat(current.id).catch(() => {})
+    setSessions((ss) => {
+      const rest = ss.filter((s) => s.id !== current.id)
+      if (rest.length === 0) {
+        const s = newSession(selectedId)
+        setCurrentId(s.id)
+        return [s]
+      }
+      setCurrentId(rest[0].id)
+      return rest
+    })
   }
 
   const quickQs = QUICK_KEYS.map((k) => t(k))
@@ -224,7 +311,27 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
         <div className="actions">
           <select
             className="input select"
-            style={{ minWidth: 260 }}
+            style={{ minWidth: 220 }}
+            value={currentId}
+            onChange={(e) => setCurrentId(e.target.value)}
+            title={t('ai.chatTitle')}
+          >
+            {sessions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.title}
+              </option>
+            ))}
+          </select>
+          <Btn variant="ghost" size="sm" onClick={newChat} title={t('ai.newChat')}>
+            <IcPlus size={12} />
+            {t('ai.newChat')}
+          </Btn>
+          <Btn variant="ghost" size="sm" onClick={deleteChat} title={t('ai.deleteChat')}>
+            {t('ai.deleteChat')}
+          </Btn>
+          <select
+            className="input select"
+            style={{ minWidth: 220 }}
             value={selectedId}
             onChange={(e) => setSelectedId(e.target.value)}
           >
@@ -277,7 +384,9 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
                   ) : (
                     <>
                       {renderBlock(m.text, jump, rounds, rate)}
-                      {!m.done && <span className="ai-cursor" />}
+                      {asking && m.id === messages.length - 1 && m.text.length > 0 && (
+                        <span className="ai-cursor" />
+                      )}
                     </>
                   )}
                 </div>

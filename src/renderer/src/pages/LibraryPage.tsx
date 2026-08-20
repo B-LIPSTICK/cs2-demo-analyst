@@ -25,6 +25,7 @@ function LibraryPageInner({
   const [demos, setDemos] = useState<DemoMeta[]>([])
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [favIds, setFavIds] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -41,6 +42,40 @@ function LibraryPageInner({
   useEffect(() => {
     load()
   }, [load])
+
+  // 收藏列表
+  useEffect(() => {
+    window.api.favorites
+      .list()
+      .then((list) => setFavIds(new Set(list.map((f) => f.id))))
+      .catch(() => {})
+  }, [])
+
+  const toggleFav = async (id: string) => {
+    if (favIds.has(id)) {
+      await window.api.favorites.remove(id)
+      setFavIds((prev) => new Set([...prev].filter((x) => x !== id)))
+      toast.push(t('library.favOff'))
+    } else {
+      try {
+        await window.api.favorites.add(id)
+        setFavIds((prev) => new Set([...prev, id]))
+        toast.push(t('library.favOn'))
+      } catch (err) {
+        toast.push(
+          t('library.favFailed').replace('{err}', err instanceof Error ? err.message : String(err)),
+          'err'
+        )
+      }
+    }
+  }
+
+  const removeDemo = async (id: string) => {
+    if (!window.confirm(t('library.removeConfirm'))) return
+    await window.api.library.remove(id)
+    setDemos((ds) => ds.filter((d) => d.id !== id))
+    toast.push(t('library.removed'))
+  }
 
   // 语音检测事件回写
   useEffect(() => {
@@ -104,6 +139,9 @@ function LibraryPageInner({
             <IcRefresh size={13} />
             {t('library.rescan')}
           </Btn>
+          <Btn variant="ghost" onClick={() => window.api.favorites.reveal()}>
+            ★ {t('library.favFolder')}
+          </Btn>
         </div>
       </div>
 
@@ -121,7 +159,15 @@ function LibraryPageInner({
       ) : (
         <div className="card-grid">
           {filtered.map((d, i) => (
-            <DemoCard key={d.id} demo={d} index={i} onOpen={() => onOpenDemo(d.id)} />
+            <DemoCard
+              key={d.id}
+              demo={d}
+              index={i}
+              fav={favIds.has(d.id)}
+              onOpen={() => onOpenDemo(d.id)}
+              onToggleFav={() => toggleFav(d.id)}
+              onRemove={() => removeDemo(d.id)}
+            />
           ))}
         </div>
       )}
@@ -191,11 +237,17 @@ function mapBadge(mapName?: string): { cls: string; abbr: string } {
 function DemoCard({
   demo,
   index,
-  onOpen
+  fav,
+  onOpen,
+  onToggleFav,
+  onRemove
 }: {
   demo: DemoMeta
   index: number
+  fav: boolean
   onOpen: () => void
+  onToggleFav: () => void
+  onRemove: () => void
 }) {
   const t = useTKey()
   const toast = useToast()
@@ -236,6 +288,28 @@ function DemoCard({
       style={{ ['--i' as string]: index } as React.CSSProperties}
       onClick={onOpen}
     >
+      <div className="card-actions">
+        <button
+          className={`card-act ${fav ? 'on' : ''}`}
+          title={fav ? t('library.favOff') : t('library.fav')}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleFav()
+          }}
+        >
+          {fav ? '★' : '☆'}
+        </button>
+        <button
+          className="card-act danger"
+          title={t('library.removeDemo')}
+          onClick={(e) => {
+            e.stopPropagation()
+            onRemove()
+          }}
+        >
+          ✕
+        </button>
+      </div>
       <div className="top">
         <span className={`map-badge ${badge.cls}`}>{badge.abbr}</span>
         <div style={{ minWidth: 0 }}>

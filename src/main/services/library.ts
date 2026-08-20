@@ -23,6 +23,7 @@ export interface LibraryService {
   removeRoot(root: string): Promise<void>
   setRoots(roots: string[]): Promise<void>
   rescan(): Promise<void>
+  remove(id: string): Promise<void>
   detectVoice(id: string): Promise<{ hasVoice: boolean; voiceSec: number }>
   extractVoice(id: string): Promise<number>
   transcribe(id: string, opts?: { players?: string[] }): Promise<void>
@@ -86,6 +87,23 @@ export function createLibraryService(
   const libDir = () => join(app.getPath('userData'), 'library')
   const indexPath = () => join(libDir(), 'index.json')
   const detailPath = (id: string) => join(libDir(), `${id}.json`)
+  const ignoredPath = () => join(libDir(), 'ignored.json')
+
+  /** 用户手动从库移除的路径黑名单（删除后不会因扫描重新入库） */
+  let ignored: string[] = []
+  const loadIgnored = async () => {
+    try {
+      ignored = JSON.parse(await fs.readFile(ignoredPath(), 'utf-8')) as string[]
+    } catch {
+      ignored = []
+    }
+  }
+  const saveIgnored = async () => {
+    await fs.mkdir(libDir(), { recursive: true })
+    const tmp = ignoredPath() + '.tmp'
+    await fs.writeFile(tmp, JSON.stringify(ignored), 'utf-8')
+    await fs.rename(tmp, ignoredPath())
+  }
 
   const persistIndex = async () => {
     await fs.mkdir(libDir(), { recursive: true })
@@ -193,9 +211,12 @@ export function createLibraryService(
     try {
       const found: string[] = []
       await Promise.all(store.roots.map((r) => walk(r, found)))
+      // 过滤用户手动移除的路径
+      const ignoredSet = new Set(ignored)
+      const visible = found.filter((p) => !ignoredSet.has(p))
       dbg(`scan found ${found.length} demos in ${store.roots.length} roots`)
       const seen = new Set<string>()
-      for (const path of found) {
+      for (const path of visible) {
         let st
         try {
           st = await fs.stat(path)
@@ -252,6 +273,7 @@ export function createLibraryService(
       })
       w.on('add', (p) => {
         if (extname(p).toLowerCase() !== '.dem') return
+        if (ignored.includes(p)) return
         void fs.stat(p).then((st) => {
           const id = demoid(p, st.size, st.mtimeMs)
           if (store.index[id]) return
@@ -303,6 +325,7 @@ export function createLibraryService(
       async removeRoot() {},
       async setRoots() {},
       async rescan() {},
+      async remove() {},
       async detectVoice(id) {
         const meta = getMockLibrary().find((m) => m.id === id)
         return { hasVoice: Boolean(meta?.hasVoice), voiceSec: meta?.voiceSec ?? 0 }
@@ -327,6 +350,7 @@ export function createLibraryService(
         } catch {
           store.index = {}
         }
+        await loadIgnored()
         dbg(`init index loaded: ${Object.keys(store.index).length}`)
         // 校验缓存文件仍存在
         for (const id of Object.keys(store.index)) {
@@ -397,6 +421,21 @@ export function createLibraryService(
 
     async rescan() {
       void scan()
+    },
+
+    /** 从资料库移除（仅移出索引与缓存，不删源文件；路径进忽略列表，不再自动入库） */
+    async remove(id: string) {
+      const meta = store.index[id]
+      if (!meta) return
+      delete store.index[id]
+      store.details.delete(id)
+      if (!ignored.includes(meta.path)) ignored.push(meta.path)
+      await Promise.all([
+        saveIgnored(),
+        persistIndex(),
+        fs.unlink(detailPath(id)).catch(() => {})
+      ])
+      broadcast()
     },
 
     async detectVoice(id) {
