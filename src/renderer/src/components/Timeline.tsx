@@ -128,7 +128,7 @@ export function Timeline({
           ))
         )}
         <span className="ticks">
-          {fmtTick(firstTick, tickRate)} → {fmtTick(lastTick, tickRate)} @ {tickRate}T
+          {fmtTick(firstTick, tickRate)} → {fmtTick(lastTick, tickRate)}
         </span>
       </div>
     </div>

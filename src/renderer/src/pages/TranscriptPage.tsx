@@ -289,7 +289,7 @@ export function TranscriptPage({
               ) : (
                 <div style={{ maxHeight: 560, overflowY: 'auto', padding: '8px 0' }}>
                   {filteredVoice.map((v, i) => (
-                    <VoiceRow key={`${v.tick}-${i}-${i}`} seg={v} tickRate={detail.meta.tickRate ?? 64} onJump={jump} />
+                    <VoiceRow key={`${v.tick}-${i}-${i}`} seg={v} tickRate={detail.meta.tickRate ?? 64} onJump={jump} avatar={(detail.meta.players ?? []).find((p) => p.name === v.playerName)?.avatar} />
                   ))}
                 </div>
               )
@@ -298,7 +298,7 @@ export function TranscriptPage({
             ) : (
               <div style={{ maxHeight: 560, overflowY: 'auto', padding: '8px 0' }}>
                 {filteredChat.map((c, i) => (
-                  <ChatRow key={i} msg={c} tickRate={detail.meta.tickRate ?? 64} onJump={jump} />
+                  <ChatRow key={i} msg={c} tickRate={detail.meta.tickRate ?? 64} onJump={jump} avatar={(detail.meta.players ?? []).find((p) => p.name === c.playerName)?.avatar} />
                 ))}
               </div>
             )}
@@ -312,11 +312,13 @@ export function TranscriptPage({
 function VoiceRow({
   seg,
   tickRate,
-  onJump
+  onJump,
+  avatar
 }: {
   seg: VoiceSegment
   tickRate: number
   onJump: (tick: number) => void
+  avatar?: string
 }) {
   const t = useTKey()
   return (
@@ -328,7 +330,7 @@ function VoiceRow({
         </span>
       </span>
       <span className="who">
-        <Avatar name={seg.playerName} team={seg.team} size={18} />
+        <Avatar name={seg.playerName} team={seg.team} size={18} avatar={avatar} />
         <span className={`nm ${seg.team === 'T' ? 't' : seg.team === 'CT' ? 'ct' : ''}`}>
           {seg.playerName}
         </span>
@@ -345,17 +347,19 @@ function VoiceRow({
 function ChatRow({
   msg,
   tickRate,
-  onJump
+  onJump,
+  avatar
 }: {
   msg: ChatMessage
   tickRate: number
   onJump: (tick: number) => void
+  avatar?: string
 }) {
   return (
     <div className="tline">
       <span className="tm">{fmtTick(msg.tick, tickRate)}</span>
       <span className="who">
-        <Avatar name={msg.playerName} team="NONE" size={18} />
+        <Avatar name={msg.playerName} team="NONE" size={18} avatar={avatar} />
         <span className="nm">{msg.playerName}</span>
         <Tag tone={msg.channel === 'T' ? 't' : msg.channel === 'CT' ? 'ct' : 'ghost'}>
           {msg.channel}

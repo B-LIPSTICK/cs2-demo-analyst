@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Avatar,
   Btn,
@@ -18,7 +18,7 @@ import {
 } from '@/components/ui'
 import { Timeline } from '@/components/Timeline'
 import { useTKey } from '@/i18n'
-import type { DemoDetail, KillEvent, RoundInfo, TeamSide } from '@shared/types'
+import type { DemoDetail, KillEvent, PlayerInfo, RoundInfo, TeamSide } from '@shared/types'
 
 export function DemoDetailPage({
   id,
@@ -33,6 +33,7 @@ export function DemoDetailPage({
   const toast = useToast()
   const [detail, setDetail] = useState<DemoDetail | null>(null)
   const [selectedRound, setSelectedRound] = useState<number | 'all'>('all')
+  const [player, setPlayer] = useState<PlayerInfo | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -167,10 +168,12 @@ export function DemoDetailPage({
             </div>
           </div>
 
-          {/* 比分条 */}
-          <div className="flex" style={{ marginTop: 18, gap: 14, alignItems: 'center' }}>
+          {/* 比分条（按队伍名，T/CT 为当前阵营） */}
+          <div className="flex" style={{ marginTop: 18, gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
             <div className="flex gap-8" style={{ alignItems: 'center', minWidth: 0 }}>
-              <span className="tag t">{meta.teamT ?? 'T'}</span>
+              <span className="tag t">
+                {meta.teamT && meta.teamT !== 'T' ? meta.teamT : 'T 队'}
+              </span>
               <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 34, lineHeight: 1, color: 'var(--t)' }}>
                 {meta.scoreT}
               </span>
@@ -180,7 +183,9 @@ export function DemoDetailPage({
               <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 34, lineHeight: 1, color: 'var(--ct)' }}>
                 {meta.scoreCT}
               </span>
-              <span className="tag ct">{meta.teamCT ?? 'CT'}</span>
+              <span className="tag ct">
+                {meta.teamCT && meta.teamCT !== 'CT' ? meta.teamCT : 'CT 队'}
+              </span>
             </div>
             <div className="grow" />
             <div className="flex" style={{ gap: 26 }}>
@@ -196,6 +201,9 @@ export function DemoDetailPage({
                 </div>
               ))}
             </div>
+          </div>
+          <div className="muted" style={{ fontSize: 10.5, marginTop: 8 }}>
+            {t('detail.sideNote')}
           </div>
 
           {/* 时间轴 */}
@@ -264,11 +272,16 @@ export function DemoDetailPage({
               </thead>
               <tbody>
                 {(meta.players ?? []).map((p, i) => (
-                  <tr key={p.steamId}>
+                  <tr
+                    key={p.steamId}
+                    className="player-row"
+                    onClick={() => setPlayer(p)}
+                    title={t('detail.playerDetail')}
+                  >
                     <td className="num muted">{i + 1}</td>
                     <td>
                       <span className="flex gap-8" style={{ alignItems: 'center' }}>
-                        <Avatar name={p.name} team={p.team} size={18} />
+                        <Avatar name={p.name} team={p.team} size={20} avatar={p.avatar} />
                         <span className={`nm ${p.team === 'T' ? 't' : p.team === 'CT' ? 'ct' : ''}`}>{p.name}</span>
                       </span>
                     </td>
@@ -289,8 +302,7 @@ export function DemoDetailPage({
 
       {/* 语音 / 聊天概要 */}
       <div className="grid-2" style={{ marginTop: 16 }}>
-        <Panel hd={t('detail.voice')} dot={voice.length > 0}>
-          <div className="panel-bd">
+        <Panel hd={t('detail.voice')} dot={voice.length > 0}>          <div className="panel-bd">
             {voice.length === 0 ? (
               <div className="muted" style={{ fontSize: 12 }}>
                 {t('detail.noVoice')} · {t('detail.voiceHint')}
@@ -301,7 +313,12 @@ export function DemoDetailPage({
                   <div key={i} className="tline" onClick={() => jump(v.tick)}>
                     <span className="tm">{fmtTick(v.tick, meta.tickRate ?? 64)}</span>
                     <span className="who">
-                      <Avatar name={v.playerName} team={v.team} size={16} />
+                      <Avatar
+                        name={v.playerName}
+                        team={v.team}
+                        size={16}
+                        avatar={(meta.players ?? []).find((x) => x.name === v.playerName)?.avatar}
+                      />
                       <span className={`nm ${v.team === 'T' ? 't' : v.team === 'CT' ? 'ct' : ''}`}>{v.playerName}</span>
                     </span>
                     <span className="txt">{v.text}</span>
@@ -338,6 +355,17 @@ export function DemoDetailPage({
           </div>
         </Panel>
       </div>
+
+      {/* 选手详情弹窗 */}
+      {player && (
+        <PlayerModal
+          player={player}
+          kills={kills}
+          tickRate={meta.tickRate ?? 64}
+          onJump={jump}
+          onClose={() => setPlayer(null)}
+        />
+      )}
     </div>
   )
 }
@@ -351,7 +379,6 @@ function KillRow({
   tickRate: number
   onJump: (tick: number) => void
 }) {
-  const t = useTKey()
   return (
     <div className="kill-row" onClick={() => onJump(kill.tick)}>
       <span className="tk">{fmtTick(kill.tick, tickRate)}</span>
@@ -370,9 +397,109 @@ function KillRow({
       <span className={`nm ${kill.victimTeam === 'T' ? 't' : kill.victimTeam === 'CT' ? 'ct' : ''}`}>
         {kill.victimName ?? '—'}
       </span>
-      <span className="tk" style={{ textAlign: 'right' }}>
-        R{kill.roundNum} · {t('common.tick')}
-      </span>
+      <span className="rn">R{kill.roundNum}</span>
+    </div>
+  )
+}
+
+/** 选手详情弹窗：个人数据 + 武器击杀统计 + 击杀列表（可跳转） */
+function PlayerModal({
+  player,
+  kills,
+  tickRate,
+  onJump,
+  onClose
+}: {
+  player: PlayerInfo
+  kills: KillEvent[]
+  tickRate: number
+  onJump: (tick: number) => void
+  onClose: () => void
+}) {
+  const t = useTKey()
+  const myKills = useMemo(
+    () =>
+      kills.filter((k) =>
+        k.attackerSteamId ? k.attackerSteamId === player.steamId : k.attackerName === player.name
+      ),
+    [kills, player]
+  )
+  const byWeapon = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const k of myKills) map.set(k.weapon, (map.get(k.weapon) ?? 0) + 1)
+    return [...map.entries()].sort((a, b) => b[1] - a[1])
+  }, [myKills])
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal player-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="pm-head">
+          <Avatar name={player.name} team={player.team} size={46} avatar={player.avatar} />
+          <div style={{ minWidth: 0 }}>
+            <div className="pm-name">{player.name}</div>
+            <div className="pm-sub">
+              {player.team === 'T' ? 'T 队' : player.team === 'CT' ? 'CT 队' : '—'}
+            </div>
+          </div>
+          <div className="grow" />
+          <Btn variant="ghost" size="sm" onClick={onClose}>
+            ✕
+          </Btn>
+        </div>
+
+        <div className="pm-stats">
+          <div className="pm-stat">
+            <span>{t('detail.hud.kills')}</span>
+            <b>{player.kills}</b>
+          </div>
+          <div className="pm-stat">
+            <span>{t('detail.hud.deaths')}</span>
+            <b>{player.deaths}</b>
+          </div>
+          <div className="pm-stat">
+            <span>{t('detail.hud.hs')}</span>
+            <b>{player.hsp}%</b>
+          </div>
+          <div className="pm-stat">
+            <span>{t('detail.hud.mvp')}</span>
+            <b>{player.mvp}</b>
+          </div>
+        </div>
+
+        <div className="pm-section">{t('detail.playerWeapons')}</div>
+        <div className="pm-weapons">
+          {byWeapon.map(([w, n]) => (
+            <span key={w} className="pm-weapon">
+              <b>{n}</b> {w}
+            </span>
+          ))}
+          {byWeapon.length === 0 && <span className="muted">—</span>}
+        </div>
+
+        <div className="pm-section">
+          {t('detail.playerKills')}（{myKills.length}）
+        </div>
+        <div className="pm-kills">
+          {[...myKills]
+            .sort((a, b) => b.tick - a.tick)
+            .slice(0, 80)
+            .map((k, i) => (
+              <div
+                key={`${k.tick}-${i}`}
+                className="pm-kill"
+                onClick={() => {
+                  onJump(k.tick)
+                  onClose()
+                }}
+              >
+                <span className="tm">{fmtTick(k.tick, tickRate)}</span>
+                <span className="wp">{k.weapon}{k.headshot ? ' ☠' : ''}</span>
+                <span className="vic">{k.victimName ?? '—'}</span>
+                <span className="rn">R{k.roundNum}</span>
+              </div>
+            ))}
+        </div>
+      </div>
     </div>
   )
 }

@@ -1411,10 +1411,10 @@ body {
 
 .kill-row {
   display: grid;
-  grid-template-columns: 64px 1fr auto 1fr 92px;
+  grid-template-columns: 76px 1fr auto 1fr 58px;
   align-items: center;
-  gap: 9px;
-  padding: 7px 14px;
+  gap: 12px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--line-0);
   transition: background 0.1s;
   cursor: pointer;
@@ -1430,7 +1430,7 @@ body {
 
 .kill-row .tk {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
@@ -1438,7 +1438,7 @@ body {
 
 .kill-row .nm {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 14.5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1456,20 +1456,30 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 19px;
-  padding: 0 8px;
-  font-size: 10.5px;
-  font-weight: 500;
+  height: 22px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-1);
   border: 1px solid var(--line-1);
-  border-radius: 6px;
+  border-radius: 7px;
   background: var(--field-bg);
 }
 
 .kill-row .hs {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   color: var(--red);
+}
+
+.kill-row .rn {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* ─── 选手表 ──────────────────────────────────────────────────────────────── */
@@ -1507,6 +1517,159 @@ body {
   background: var(--row-hover);
 }
 
+/* 选手行可点击（打开选手详情） */
+.tbl tbody tr.player-row {
+  cursor: pointer;
+}
+
+.tbl tbody tr.player-row:hover {
+  background: var(--hover-bg);
+}
+
+/* ─── 选手详情弹窗 ────────────────────────────────────────────────────────── */
+
+.player-modal {
+  width: 420px;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.pm-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pm-name {
+  font-size: 17px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-sub {
+  font-size: 11.5px;
+  color: var(--text-2);
+  margin-top: 1px;
+}
+
+.pm-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 16px 0 4px;
+}
+
+.pm-stat {
+  padding: 10px 8px;
+  text-align: center;
+  background: var(--field-bg);
+  border: 1px solid var(--line-1);
+  border-radius: 10px;
+}
+
+.pm-stat span {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pm-stat b {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 19px;
+  margin-top: 3px;
+}
+
+.pm-section {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 14px 0 8px;
+}
+
+.pm-weapons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pm-weapon {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-1);
+  background: var(--field-bg);
+  border: 1px solid var(--line-1);
+  border-radius: 999px;
+}
+
+.pm-weapon b {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-0);
+}
+
+.pm-kills {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--line-0);
+  border-radius: 10px;
+}
+
+.pm-kill {
+  display: grid;
+  grid-template-columns: 64px 1fr 1fr 48px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--line-0);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.pm-kill:last-child {
+  border-bottom: none;
+}
+
+.pm-kill:hover {
+  background: var(--row-hover);
+}
+
+.pm-kill .tm {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
+.pm-kill .wp {
+  font-weight: 600;
+  color: var(--text-0);
+}
+
+.pm-kill .vic {
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-kill .rn {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent-strong);
+  text-align: right;
+}
+
 .tbl .num {
   font-family: var(--font-mono);
   font-weight: 600;
@@ -1524,102 +1687,104 @@ body {
   font-weight: 600;
 }
 
-/* ─── 时间轴 ──────────────────────────────────────────────────────────────── */
+/* ─── 时间轴（分层：回合块 / 击杀刻度 / 语音条 / 炸弹点） ─────────────────── */
 
 .timeline {
   position: relative;
-  padding: 22px 4px 30px;
+  padding: 24px 4px 30px;
   user-select: none;
 }
 
 .timeline .track {
   position: relative;
-  height: 38px;
-  border-top: 1px solid var(--line-2);
-  border-bottom: 1px solid var(--line-2);
-  border-radius: 8px;
+  height: 46px;
+  border-radius: 12px;
   background: var(--track-bg);
   overflow: hidden;
 }
 
+/* 回合块：胶囊状，上下留边距，胜负色温和 */
 .timeline .seg {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  border-right: 1px solid rgba(10, 10, 12, 0.6);
+  top: 6px;
+  bottom: 22px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: filter 0.12s;
+  transition: filter 0.12s, outline 0.12s;
 }
 
 .timeline .seg.win-t {
-  background: linear-gradient(180deg, rgba(229, 181, 103, 0.2), rgba(229, 181, 103, 0.05));
+  background: linear-gradient(180deg, rgba(229, 181, 103, 0.4), rgba(229, 181, 103, 0.12));
 }
 
 .timeline .seg.win-ct {
-  background: linear-gradient(180deg, rgba(107, 168, 229, 0.2), rgba(107, 168, 229, 0.05));
+  background: linear-gradient(180deg, rgba(107, 168, 229, 0.4), rgba(107, 168, 229, 0.12));
 }
 
 .timeline .seg:hover {
-  filter: brightness(1.4);
+  filter: brightness(1.35);
 }
 
 .timeline .seg.active {
-  outline: 1.5px solid var(--accent-strong);
-  outline-offset: -1.5px;
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -1px;
   z-index: 2;
 }
 
+/* 击杀：细刻度线（爆头为红色），不抢视觉 */
 .timeline .kill {
   position: absolute;
-  top: 50%;
-  width: 8px;
-  height: 8px;
-  background: var(--text-0);
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
+  top: 6px;
+  bottom: 22px;
+  width: 2px;
+  background: rgba(245, 245, 247, 0.55);
+  transform: translateX(-50%);
   cursor: pointer;
-  transition: background 0.12s, transform 0.12s;
+  transition: background 0.12s, width 0.12s;
   z-index: 3;
 }
 
 .timeline .kill:hover {
   background: var(--accent-strong);
-  transform: translate(-50%, -50%) scale(1.35);
+  width: 3px;
 }
 
 .timeline .kill.hs {
-  background: var(--red);
+  background: rgba(255, 69, 58, 0.85);
 }
 
+/* 语音：轨道底部的绿色细条 */
 .timeline .voice {
   position: absolute;
-  bottom: -3px;
-  height: 4px;
+  bottom: 6px;
+  height: 5px;
   background: var(--green);
   border-radius: 3px;
   cursor: pointer;
-  opacity: 0.9;
+  opacity: 0.75;
   transition: opacity 0.12s, height 0.12s;
 }
 
 .timeline .voice:hover {
   opacity: 1;
-  height: 6px;
-  bottom: -4px;
+  height: 7px;
 }
 
+/* 炸弹：小圆点，克制 */
 .timeline .bomb {
   position: absolute;
-  top: -5px;
-  width: 6px;
-  height: 6px;
+  top: 2px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--amber);
+  opacity: 0.9;
+  transform: translateX(-50%);
 }
 
 .timeline .rlabel {
   position: absolute;
-  top: calc(100% + 7px);
+  top: calc(100% + 5px);
   transform: translateX(-50%);
   font-family: var(--font-mono);
   font-size: 10px;
@@ -1630,16 +1795,18 @@ body {
 
 .timeline .rlabel.on {
   color: var(--accent-strong);
+  font-weight: 700;
 }
 
 .timeline .ticks {
   position: absolute;
-  top: 3px;
-  right: 4px;
+  top: 2px;
+  right: 6px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 500;
   color: var(--text-2);
+  opacity: 0.7;
   pointer-events: none;
 }
 
@@ -2091,6 +2258,122 @@ body {
   .grid-2,
   .grid-3 {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ─── 缩放/窄窗口适配：布局不窜行 ──────────────────────────────────────────── */
+
+@media (max-width: 1080px) {
+  .page {
+    padding: 26px 26px 48px;
+  }
+
+  .card-grid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+
+  .kill-row {
+    grid-template-columns: 70px 1fr auto 1fr 46px;
+    gap: 8px;
+    padding: 9px 12px;
+  }
+
+  .kill-row .nm {
+    font-size: 13.5px;
+  }
+
+  .tline {
+    grid-template-columns: 72px 110px 1fr 28px;
+    gap: 8px;
+    padding: 7px 12px;
+  }
+
+  .pm-kill {
+    grid-template-columns: 60px 1fr 1fr 44px;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 820px) {
+  .page-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .page-head .actions {
+    margin-left: 0;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .page-head .actions .input {
+    width: 100% !important;
+  }
+
+  .kill-row {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      'tk rn'
+      'atk wp'
+      'vic vic';
+    row-gap: 6px;
+  }
+
+  .kill-row .tk {
+    grid-area: tk;
+  }
+
+  .kill-row .rn {
+    grid-area: rn;
+  }
+
+  .kill-row .nm:first-of-type {
+    grid-area: atk;
+  }
+
+  .kill-row .wp {
+    grid-area: wp;
+    justify-self: start;
+  }
+
+  .kill-row .nm:last-of-type {
+    grid-area: vic;
+  }
+
+  .tline {
+    grid-template-columns: 66px 1fr;
+    grid-template-areas:
+      'tm who'
+      'txt txt';
+  }
+
+  .tline .tm {
+    grid-area: tm;
+  }
+
+  .tline .who {
+    grid-area: who;
+  }
+
+  .tline .txt {
+    grid-area: txt;
+  }
+
+  .tline .jump {
+    display: none;
+  }
+
+  .player-modal {
+    width: min(420px, 92vw);
+  }
+
+  .ai-chat {
+    padding: 14px 12px 6px;
+  }
+
+  .ai-bubble {
+    max-width: 88%;
   }
 }
 

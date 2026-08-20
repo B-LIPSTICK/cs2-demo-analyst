@@ -31,6 +31,7 @@ function LibraryPageInner({
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [removeModal, setRemoveModal] = useState<{ ids: string[] } | null>(null)
+  const [progress, setProgress] = useState<Record<string, number>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -47,6 +48,24 @@ function LibraryPageInner({
   useEffect(() => {
     load()
   }, [load])
+
+  // 事件回写：语音检测 / 库更新 / 解析进度
+  useEffect(() => {
+    const off = window.api.onEvent('voice:detected', (e) => {
+      setDemos((ds) =>
+        ds.map((d) => (d.id === e.id ? { ...d, hasVoice: e.hasVoice, voiceSec: e.voiceSec } : d))
+      )
+    })
+    const offLib = window.api.onEvent('library:updated', (e) => setDemos(e.demos))
+    const offProg = window.api.onEvent('library:progress', (e) => {
+      setProgress((p) => ({ ...p, [e.id]: typeof e.progress === 'number' ? e.progress : 0 }))
+    })
+    return () => {
+      off()
+      offLib()
+      offProg()
+    }
+  }, [])
 
   // 收藏列表
   useEffect(() => {
@@ -244,6 +263,7 @@ function LibraryPageInner({
               demo={d}
               index={i}
               fav={favIds.has(d.id)}
+              progress={progress[d.id]}
               selectMode={selectMode}
               selected={selectedIds.has(d.id)}
               onOpen={() => onOpenDemo(d.id)}
@@ -358,6 +378,7 @@ function DemoCard({
   demo,
   index,
   fav,
+  progress,
   selectMode,
   selected,
   onOpen,
@@ -369,6 +390,7 @@ function DemoCard({
   demo: DemoMeta
   index: number
   fav: boolean
+  progress?: number
   selectMode: boolean
   selected: boolean
   onOpen: () => void
@@ -508,7 +530,7 @@ function DemoCard({
       {(demo.status === 'parsing' || demo.status === 'pending') && (
         <div className="status-cover">
           {demo.status === 'parsing' ? (
-            <Ring pct={0.35} label={t('library.parsing')} />
+            <Ring pct={Math.max(0.03, Math.min(0.99, progress ?? 0.03))} label={`${Math.round((progress ?? 0.03) * 100)}%`} />
           ) : (
             <Btn
               size="sm"
