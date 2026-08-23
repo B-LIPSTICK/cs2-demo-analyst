@@ -50,11 +50,13 @@ export function DemoDetailPage({
     if (!ok) toast.push(t('common.jumpHint'), 'warn')
   }
 
-  /** 播放：普通模式 = CS2 内置播放器（-console +demoui +playdemo）；工具模式 = VConsole 注入 */
+  /** 播放：普通模式 = CS2 内置播放器（+exec cfg）；工具模式 = VConsole 注入；voiceHud = 游戏内语音 HUD */
   const playInCs2 = async () => {
     const s = await window.api.settings.get()
     const toolsMode = !!s.cs2?.useToolsMode
-    const r = await window.api.live.launch({ toolsMode, playDemoPath: meta.path })
+    const voiceHud = !toolsMode && !!s.cs2?.voiceHud
+    if (voiceHud) toast.push(t('detail.voiceHudPreparing'))
+    const r = await window.api.live.launch({ toolsMode, playDemoPath: meta.path, voiceHud })
     if (r.ok) {
       if (r.starting) toast.push(t('detail.playStarting'))
       else toast.push(r.injected ? t('detail.playInjected') : t('detail.playLaunched'))

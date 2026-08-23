@@ -1,5 +1,73 @@
 # progress.md — 会话日志
 
+## 本轮十三补9（★真机 HUD 显示 + UI 定型）✅ 待 git 提交
+- **★真机验证成功（诊断脚本 diag-play-hud.mjs 驱动）**: 游戏内 HUD 显示！日志定位最终 bug —— **Panorama Panel API 是 `BHasClass()` 不是 `HasClass()`**（TypeError 中断渲染）；修复后说话者胶囊出现。此错误同时证明 VPK/数据/JS 链路全通。
+- **参数顺序坑**: `steam -applaunch` 透传时 **`+exec` 必须放最后**（`-applaunch 730 -insecure -novid -console -consolelog dsh_hud.log +exec dsh-play.cfg`）；+exec 后置参数被吞（SwiftDemoUIPro 同款规则）。`-console` 让游戏内按 ~ 看 Panorama 错误。
+- **UI 迭代（用户反馈驱动）**: 黑底胶囊 → 右下角 → 紧凑小框 → **最终 = CS2 原生语音指示风格**：
+  - 左下角（margin-left 28px / margin-bottom 140px）、透明无背景框
+  - **方形头像 28px + 名字 18px**（比例协调，说话时头像微放大+白发光）
+  - **阵营色用 CS2 原生 CSS 变量 `color-T` / `color-CT`**（Swift 生产代码同款，非近似值）
+  - **从下往上排**: JS MoveChildBefore 把最新说话者置顶 → 最早说话者沉底
+  - 说完消失（行占位 opacity 显隐）→ 上方行不跳动；新说话者优先占空位
+- **最终静态 VPK**: 20204B/4 文件（vxml_c 3893 + vcss_c 3642 + vjs_c 11216 + data 1164）。
+- **回归**: typecheck ✓ / test-inject ✓ / test-static-vpk ✓ / test-session-vpk ✓ / test-hud-logic ✓ / simulate ✓。
+- **清理**: 一次性诊断脚本（vpkedit 对比/minidump/参考 VPK 部署等）已删；保留 diag-inject-matrix/diag-single-mode/diag-play-hud/diag-postverify-prep 作为回归工具。
+
+## 本轮十三补8（★VPK 格式根因破解：树结构 + otherMD5 位置）✅ 待真机验证 HUD
+- **★矩阵 v1 关键结果**: A=SUCCESS（Steam -applaunch 启动可用）、B=SUCCESS（注入行 OK）、C=CRASH（参考 VPK+手写 session 组合崩 53s）、D=NOLAUNCH（Steam 验证干扰，无效）。
+- **★Steam 验证循环机制破解**: 注入/恢复 gameinfo.gi + overrides VPK 变动 → Steam 检测官方文件哈希偏离 → 自动"验证本地文件"（移走 gameinfo.gi、73GB 全量校验）→ 验证期间 CS2 起不来 → 测试 NOLAUNCH。这是 Steam 自愈机制，SwiftDemoUIPro 同样触发（会话短不阻塞）。对策: waitSteamIdle 门控（gameinfo.gi 存在 + downloading/730 消失 + 稳定 30s）+ 单模式快速验证窗口。
+- **★VPK 格式根因（逐字节逆向 swift-ref.vpk）**:
+  1. **树结构**: `[ext\0] [dir\0] (name\0 + crc u32 + preload u16 + archive u16 + offset u32 + size u32 + 0xffff u16)* [\0空name=dir结束] [\0空dir=ext结束] ... [\0空ext=树结束]`；同 ext 同 dir 共享组头；**无 4 字节对齐**。我们旧实现: 每条目独立组头 + 缺空分隔 + 有对齐 → CS2 树解析错乱崩溃。
+  2. **★otherMD5 区在文件末尾**（数据区之后）: tree MD5 + MD5("") + 16B 零（参考 VPK 尾 48B 验证一致）。我们旧实现放在数据区之前 → CS2 把 48B MD5 当数据读 → 所有文件内容错位 → vxml_c 头解析失败崩溃。
+- **修复**: vpk.ts buildVpk + build-panorama.mjs inlineBuildVpk 重写（分组树 + 空分隔 + 末尾 otherMD5）；静态 VPK 重建 19438B/4 文件；vpk-debug.mjs 三层解析验证（树结束=声称值、offset 链连续、组头共享）。
+- **★真机矩阵全绿**: A/B/C/D/E/F 全部 SUCCESS（90s+ 存活 0 minidump）—— 手写静态 VPK + 手写会话 VPK（97KB 真实语音索引）+ 组合部署均稳定。
+- **应用改动**: live.ts voiceHud 模式改 **steam.exe -applaunch 730 -insecure -novid +exec dsh-play.cfg**（SwiftDemoUIPro 同款，注入状态必须 Steam 启动）+ locateSteamExe()（注册表 SteamPath + 兜底路径）；普通模式保持直接 spawn。
+- **回归**: test-inject ✓ / test-static-vpk ✓（v2 布局）/ test-session-vpk ✓ / test-hud-logic ✓ / simulate-voicehud-session ✓（全链路）/ typecheck ✓。
+- **待用户真机验证**: 应用内「CS2 中播放」+ 语音 HUD 开关 → CS2 播放 demo → 游戏内说话者胶囊显示。
+
+## 本轮十三补7（注入失败根因定位：Steam 启动矩阵）⏳ 待用户跑脚本
+- **问题**: 注入状态（gameinfo SearchPath 行 + overrides VPK）直接 spawn cs2.exe → 立即 "Encountered error" 退出（code=1, minidump, 异常 code=0x0）。已排除: VPK v1→v2 格式（resourcecompiler 接受）、VPK 内容（最小占位也失败）、手写 vs 参考 VPK（SwiftDemoUIPro 生产版同样失败）、cwd、-insecure、spawn 选项。
+- **★SwiftDemoUIPro 源码逐字节对比（research/SwiftDemoUIPro/launcher/src/Cs2Manager.cpp:719-786）**: 注入行格式 `Game\tcsgo/overrides/<name>.vpk`、缩进取 `Game csgo` 行 `^(\s*)`、插入到第一个 `Game csgo` 行前（session 行在 static 前）、换行检测 CRLF/LF join 还原、QSaveFile 原子写 —— **与我们的 injector.ts 完全一致**（当前 gameinfo.gi: UTF-8 BOM + LF×349 + 3Tab 缩进，注入器无损）。→ gameinfo 注入行逻辑无差异。
+- **剩余变量**: 启动方式（Swift=steam.exe -applaunch 730 -insecure；我们=直接 spawn cs2.exe；完美=直接 spawn 无注入）+ VPK 加载本身。
+- **scripts/diag-inject-matrix.mjs（全自动 4 模式矩阵，~6min）**: A=无注入基线 / B=仅注入行无 VPK / C=行+参考 VPK(Swift 生产版) / D=行+手写 VPK，全部 steam.exe -applaunch 730 -insecure -novid -consolelog dsh_hud.log 启动，60s 监控（出现时间/存活时长/新 minidump/consolelog 尾部），自动 kill+清理。
+- 判定: A 失败→Steam 启动本机不可用；B 失败→注入行问题；C 失败→参考 VPK 加载问题；D 失败→手写 VPK 产物问题；C/D 成功→问题在直接 spawn 启动方式，应用改 Steam -applaunch。
+
+## 本轮十三补6（全链路模拟会话）✅
+- **scripts/simulate-voicehud-session.mjs**: 完整模拟播放会话（不启动 CS2）——语音索引（92152 demo: 25676 包/7 说话者/**1.2s**）→ 会话 VPK（97KB）→ 静态 VPK → gameinfo.gi 注入（两行 SearchPath 正确）→ 播放 cfg 打印 → 恢复无残留。**全链路通过**。
+- 至此实现侧全部收敛：实现/自测/审查/打包/文档/模拟全通过；唯一剩余 = 用户真机验证（CS2 内 HUD 显示）。## 本轮十三补5（HUD 逻辑单测 + JS 审查修复 + 重打包）✅
+- **HUD 纯逻辑单测**（scripts/test-hud-logic.mjs）: 二分查找/说话者判定窗口/多人排序/边界 18 断言全过（与 dsh_voice.js 同步维护）。
+- **JS 审查修复 4 处**: ①渲染签名加玩家表摘要（名字延迟解析可刷新）；②玩家表刷新拆到 750ms 低频轮询（50ms 轮询只算说话者，减性能开销）；③item.avatar null 防御（条件表达式不再抛错）；④item.name/meta null 防御。
+- 静态 VPK 重编译（19397B/4 条目 CRC OK）+ build ✅ + 重打包 zip 146.9MB。
+- 待用户真机验证。## 本轮十三补4（失败回滚 + GUIDE 更新 + 重打包）✅
+- **injector.install 失败回滚**: gameinfo.gi 读取/写入失败时删除本次已写的 VPK（防半注入残留）。
+- **GUIDE.md 第 4 步重写**: 普通模式播放（推荐）→ 游戏内语音 HUD（VPK 注入说明）→ 工具模式（跳转控制）；清理"游戏内悬浮层"旧表述。
+- 注入回归测试通过（18672B 静态 VPK）+ typecheck ✅ + build ✅ + 重打包 zip 146.9MB。
+- 待用户真机验证。## 本轮十三补3（HUD JS 健壮性增强 + vjs_c 格式对比验证）✅
+- **vjs_c 格式对比**: resourcecompiler 编译产物带非空 RED2（编译字节码）；手写格式（RED2 空 + DATA 原文 JS）为 SwiftDemoUIPro 生产验证的**数据文件**形态 → 设计确认：逻辑 JS 走编译器（静态 VPK）、数据 JS 走手写（会话 VPK）。
+- **HUD JS 增强**: ①说话者行改 XML snippet 实例化（BLoadLayoutSnippet，CSGOAvatarImage 由模板创建——消除 JS 直接创建该面板类型的风险）；②slot 解析 fallback 链（GetPlayerSlot → src.slot/player_slot → GetPlayerStatsJSO → GetPlayerXuidStringFromPlayerSlot 扫描）。
+- 静态 VPK 重新编译（18672B/4 条目 CRC OK）+ typecheck ✅ + build ✅。
+- 待用户真机验证。## 本轮十三补2（静态 VPK 验证 + 打包）✅
+- **静态 VPK 结构验证通过**（scripts/test-static-vpk.mjs）: 4 条目（vxml_c/vcss_c/vjs_c×2）、路径正确、CRC 全 OK、数据偏移连续。
+- **解析器 bug 记录**: VPK v1 目录树**每个条目以 0xffff 结束**（非仅最后）；自研解析器原先遇 0xffff 即 break → 只读到 1 条目（误报）。已修正 test-static-vpk/test-session-vpk。
+- **dist:zip 打包验证**: electron-builder --dir + extraResources（assets/panorama → resources/panorama）；待验证 zip 内含 dsh_voice_override.vpk。
+- 待用户真机验证（设置开语音 HUD → 播放 → CS2 内说话者显示）。## 本轮十三补（残留清理 + README）✅
+- **启动残留清理**（live.ts cleanupStaleInjection）: 应用启动时若 gameinfo.gi 含注入行且 CS2 未运行 → 自动恢复（覆盖"播放中途关闭应用"场景，恢复定时器随进程消失的漏洞）+ 清理残留 dsh-play.cfg。
+- **README 更新**: 功能表「游戏内悬浮层」→「游戏内语音 HUD」；跳转标注需工具模式；"不改游戏文件"表述修正（可选注入退出自动恢复）；快速开始更新。
+- typecheck ✅ build ✅；注入器回归测试全通过（注入/顺序/幂等/恢复一致/清理/备份）。
+- 待用户真机验证（设置开语音 HUD → 播放 → CS2 内说话者显示）。## 本轮十三（游戏内语音 HUD：VPK 注入实现）✅ 待真机验证
+- **方案定稿**（findings.md §19）: 普通模式播放 + VPK 注入 Panorama（SwiftDemoUIPro 同款机制，全部自研实现）。
+- **实现完成**:
+  - `services/vpk.ts`: VPK v1 多文件 writer + vjs_c 资源生成 + crc32（纯字节，已用自解析验证: sig/树/CRC/数据区与 Rust 参考一致）。
+  - `services/voiceIndex.ts`: deadem 提取 SVC_VOICE_DATA → {tick, entity→slot, xuid}（实测 92152 demo: 25676 包/7 说话者/0 malformed）。
+  - `services/injector.ts`: gameinfo.gi 备份/注入/恢复（保留缩进/换行/BOM）+ VPK 部署；**端到端测试通过**（注入 2 行 SearchPath 顺序正确、幂等、恢复后与原文完全一致、VPK 清理、备份保留）。
+  - `assets/panorama/`: huddemocontroller.xml（Valve 原生控件骨架 + DshVoice* 面板）、dsh_voice.css/js/data.js（自研说话者 HUD：50ms 轮询 GetDemoControllerState().nTick + pulsesBySlot 二分 + GameStateAPI 玩家信息）。
+  - `scripts/build-panorama.mjs`: resourcecompiler 编译（-game/-i/-f/-nop4/-v）→ 静态 VPK 入库（assets/panorama/dsh_voice_override.vpk 18KB/4 文件，vxml_c/vcss_c/vjs_c 条目名已验证）。
+  - `live.ts`: 普通模式播放支持 voiceHud —— 提取语音 → 会话 VPK → 注入 → `-insecure -novid +exec dsh-play.cfg`（cfg: demo_ui_mode 2 + cl_demo_predict 0 + tv_listen_voice_indices -1/-h -1 + playdemo）→ CS2 退出自动恢复（scheduleSessionCleanup）。
+  - 设置页「游戏内语音 HUD」开关（工具模式禁用）+ i18n 中英 + Toggle disabled 支持。
+- 测试脚本: scripts/test-session-vpk.mjs / test-inject.mjs / dump-voice-msg.mjs（保留作回归）。
+- typecheck ✅ build ✅；**待用户真机验证**: 设置开语音 HUD → 详情页播放 → CS2 左下角显示说话者（名字+阵营色+声波）。
+- 风险记录: huddemocontroller 覆盖随游戏更新需同步; -insecure 仅播放会话（与完美/5E 一致）。
+
 ## 本轮十二（★视角卡死最终根因：+cl_demo_predict 0）✅ 待用户实机确认
 - **复现**: 应用内（完美式 +exec dsh-play.cfg）播放 92152（8/23 新 demo，与完美平台文件 SHA1 一致）→ 时间走但镜头不动; 同一 demo 完美平台播放正常 → 差异只在启动参数。
 - **★单变量验证 v10（+cl_demo_predict 0）→ 视角正常（用户实测）**。v9 之前"正常"是因为播的 demo 不同（92086）—— 该 demo 导播数据本身正常，掩盖了参数问题。

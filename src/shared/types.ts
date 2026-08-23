@@ -241,6 +241,8 @@ export interface Settings {
     playMode?: 'auto' | 'fullscreen' | 'borderless' | 'windowed'
     /** 播放分辨率（宽x高，如 "1920x1080"）；'auto'=跟随用户当前配置 */
     playResolution?: string
+    /** 游戏内语音 HUD：VPK 注入 Panorama，普通模式播放时在 CS2 画面内显示说话者 */
+    voiceHud?: boolean
   }
   overlay: {
     enabled: boolean
@@ -283,7 +285,8 @@ export const DEFAULT_SETTINGS: Settings = {
     useToolsMode: true,
     launchArgs: '',
     playMode: 'auto',
-    playResolution: 'auto'
+    playResolution: 'auto',
+    voiceHud: false
   },
   overlay: {
     enabled: false,
@@ -359,7 +362,7 @@ export interface Api {
     specNext: () => Promise<boolean>
     specPrev: () => Promise<boolean>
     specGoto: (userid: number) => Promise<boolean>
-    launch: (opts?: { toolsMode?: boolean; playDemoPath?: string }) => Promise<LaunchResult>
+    launch: (opts?: { toolsMode?: boolean; playDemoPath?: string; voiceHud?: boolean }) => Promise<LaunchResult>
     installGsi: () => Promise<string | null>
     locateInstall: () => Promise<string | null>
   }

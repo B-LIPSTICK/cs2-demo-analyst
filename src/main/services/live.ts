@@ -9,6 +9,9 @@ import http from 'node:http'
 import { shell } from 'electron'
 import type { GsiGameState, LaunchResult, LiveStatus } from '@shared/types'
 import { VConsoleClient } from './vconsole'
+import { extractVoiceIndex } from './voiceIndex'
+import { buildVjsResource, buildVoiceDataJs, buildVpk } from './vpk'
+import { demoInjector } from './injector'
 
 export interface LiveEvents {
   status: (s: LiveStatus) => void
@@ -68,6 +71,30 @@ export class LiveService {
   start(): void {
     this.detectTimer = setInterval(() => void this.poll(), 4000)
     void this.poll()
+    // 启动时清理残留注入（上次会话异常退出可能留下 gameinfo.gi SearchPath + VPK）
+    void this.cleanupStaleInjection()
+  }
+
+  /**
+   * 残留注入清理：gameinfo.gi 含本工具注入行但 CS2 未运行 → 恢复。
+   * （播放中途关闭应用时恢复定时器会消失，下次启动兜底恢复）
+   */
+  async cleanupStaleInjection(): Promise<void> {
+    try {
+      const install = await locateCs2Install(this.installPath)
+      if (!install) return
+      if (await demoInjector.isInjected(install)) {
+        const running = await isCs2Running()
+        if (!running) {
+          await demoInjector.uninstall(install)
+          if (process.env['DEBUG_LIVE'] === '1') console.log('[live] 已清理残留的语音 HUD 注入')
+        }
+      }
+      // 顺带清理残留播放 cfg
+      await fs.unlink(join(install, 'game', 'csgo', 'cfg', 'dsh-play.cfg')).catch(() => {})
+    } catch {
+      /* 清理失败不阻塞启动 */
+    }
   }
 
   stop(): void {
@@ -451,14 +478,46 @@ export class LiveService {
     }
   }
 
-  /** CS2 退出后自动删除 dsh-play.cfg（普通模式播放残留清理） */
-  private schedulePlayCfgCleanup(install: string): void {
+  /**
+   * 游戏内语音 HUD 准备：提取语音说话者索引 → 生成会话 VPK（vjs_c 内嵌数据）
+   * → 部署静态 VPK + 会话 VPK + gameinfo.gi SearchPath 注入。
+   * 返回错误信息或 null。
+   */
+  private async prepareVoiceHud(demoPath: string, install: string): Promise<string | null> {
+    try {
+      const index = await extractVoiceIndex(demoPath)
+      const js = buildVoiceDataJs({
+        voicePacketCount: index.voicePacketCount,
+        pulsesBySlot: index.pulsesBySlot,
+        players: {}
+      })
+      const sessionVpk = Buffer.from(
+        buildVpk([
+          {
+            ext: 'vjs_c',
+            path: 'panorama/scripts/hud',
+            name: 'dsh_voice_data',
+            data: buildVjsResource(js)
+          }
+        ])
+      )
+      const staticVpk = await demoInjector.readStaticVpk()
+      if (!staticVpk) return '游戏内语音 HUD 资源缺失（请重新构建应用）'
+      return await demoInjector.install(install, { staticVpk, sessionVpk })
+    } catch (err) {
+      return `语音索引提取失败: ${err instanceof Error ? err.message : String(err)}`
+    }
+  }
+
+  /** CS2 退出后自动清理会话残留（dsh-play.cfg + 注入恢复） */
+  private scheduleSessionCleanup(install: string, voiceHud: boolean): void {
     if (this.playCfgCleanupTimer) clearTimeout(this.playCfgCleanupTimer)
     const cfgFile = join(install, 'game', 'csgo', 'cfg', 'dsh-play.cfg')
     const check = () => {
       void isCs2Running().then((running) => {
         if (!running) {
           void fs.unlink(cfgFile).catch(() => {})
+          if (voiceHud) void demoInjector.uninstall(install).catch(() => {})
         } else {
           this.playCfgCleanupTimer = setTimeout(check, 5000)
         }
@@ -479,9 +538,40 @@ export class LiveService {
     }
   }
 
+  /** 定位 steam.exe（注册表 SteamPath；找不到返回 null）——voiceHud 注入模式经 Steam 启动 */
+  private async locateSteamExe(): Promise<string | null> {
+    try {
+      const { execFile } = await import('node:child_process')
+      const reg = await new Promise<string>((resolve) => {
+        execFile('reg', ['query', 'HKCU\\Software\\Valve\\Steam', '/v', 'SteamPath'], { windowsHide: true }, (_e, out) => resolve(out))
+      })
+      const m = reg.match(/SteamPath\s+REG_SZ\s+(.+)/i)
+      if (m) {
+        const exe = join(m[1].trim(), 'steam.exe')
+        await fs.access(exe)
+        return exe
+      }
+    } catch {
+      /* noop */
+    }
+    // 兜底：常见安装位置
+    for (const p of [
+      'C:\\Program Files (x86)\\Steam\\steam.exe',
+      'D:\\11-Steam\\steam.exe',
+      'D:\\Steam\\steam.exe'
+    ]) {
+      try {
+        await fs.access(p)
+        return p
+      } catch {
+        /* next */
+      }
+    }
+    return null
+  }
+
   /** 读用户正常模式的分辨率（cs2_video.txt），供 -w/-h 启动参数用 */
-  private async readUserResolution(installPath?: string): Promise<[number, number] | null> {
-    const install = installPath ?? this.installPath ?? (await locateCs2Install(this.installPath))
+  private async readUserResolution(installPath?: string): Promise<[number, number] | null> {    const install = installPath ?? this.installPath ?? (await locateCs2Install(this.installPath))
     if (!install) return null
     let userdataRoot = join(dirname(install), '..', '..', 'userdata')
     try {
@@ -516,13 +606,14 @@ export class LiveService {
 
   /** 一键启动/播放 */
   async launch(
-    opts?: { toolsMode?: boolean; playDemoPath?: string },
+    opts?: { toolsMode?: boolean; playDemoPath?: string; voiceHud?: boolean },
     userArgs?: string,
     installPath?: string,
     display?: { mode?: string; resolution?: string }
   ): Promise<LaunchResult> {
     const toolsMode = opts?.toolsMode ?? true
     const demoPath = opts?.playDemoPath
+    const voiceHud = !!opts?.voiceHud
     // 用户自定义启动项（空格分隔），如 "-tools -insecure"
     const extra: string[] = (userArgs ?? '').match(/\S+/g) ?? []
 
@@ -531,8 +622,11 @@ export class LiveService {
     //    → cs2.exe +exec dsh-play.cfg 启动。
     //    ★关键：+playdemo 作为启动参数会在引擎早期被静默丢弃（播放器半初始化 →
     //    时间走但导播镜头不动）；cfg 里的 playdemo 在引擎就绪后执行 → 导播正常。
+    //    ★+cl_demo_predict 0 必须（预测干扰导播镜头）。
     //    CS2 内置播放器：秒播、内置语音显示；无 VConsole 通道（普通模式无远程控制台），
     //    因此 CS2 已在运行时无法注入，须先关闭。
+    //    游戏内语音 HUD（voiceHud）: VPK 注入（-insecure + overrides SearchPath），
+    //    demo 播放时画面内显示说话者。
     if (demoPath && !toolsMode) {
       const running = await isCs2Running()
       if (running) {
@@ -555,11 +649,46 @@ export class LiveService {
               error: '无法准备 demo 文件（写入无空格暂存目录失败）。请检查磁盘权限或 CS2 安装路径设置。'
             }
           }
+          // 游戏内语音 HUD：提取语音索引 → 会话 VPK → 部署 VPK + gameinfo.gi 注入
+          if (voiceHud) {
+            const err = await this.prepareVoiceHud(demoPath, install)
+            if (err) return { ok: false, url: '', error: err }
+          }
           // 写播放 cfg（完美平台 pwa.cfg 同款；退出后自动清理）
           const cfgFile = join(install, 'game', 'csgo', 'cfg', 'dsh-play.cfg')
-          await fs.writeFile(cfgFile, `playdemo "${staged}"\n`, 'utf-8')
-          // +cl_demo_predict 0 必须：demo 播放预测开启（默认）会干扰导播镜头 → 时间走但镜头不动
-          //（完美平台参数逆向 + 真机单变量验证 2026-08-23）
+          const cfgLines = voiceHud
+            ? ['demo_ui_mode 2', 'cl_demo_predict 0', 'tv_listen_voice_indices -1', 'tv_listen_voice_indices_h -1', `playdemo "${staged}"`]
+            : [`playdemo "${staged}"`]
+          await fs.writeFile(cfgFile, cfgLines.join('\n') + '\n', 'utf-8')
+          // 注入模式必须 -insecure（加载 overrides VPK）；普通模式用 +cl_demo_predict 0
+          // -consolelog: CS2 控制台日志（写 game/csgo/dsh_hud.log），排障用
+          // ★voiceHud 走 Steam -applaunch（SwiftDemoUIPro 同款，2026-08-23 真机矩阵验证）:
+          //   注入状态（gameinfo SearchPath + overrides VPK）直接 spawn cs2.exe 会被 Steam
+          //   的本地文件验证流程干扰 → 启动即报错退出；Steam -applaunch 启动 + 注入 = 稳定。
+          if (voiceHud) {
+            const steamExe = await this.locateSteamExe()
+            if (!steamExe) {
+              return {
+                ok: false,
+                url: '',
+                error: '未找到 Steam（语音 HUD 需经 Steam 启动 CS2）。请确认 Steam 已安装且登录。'
+              }
+            }
+            // ★参数顺序: +exec 必须放最后（-applaunch 透传时 +exec 之后的参数会被 Steam 吞掉，
+            //   SwiftDemoUIPro 同款: -applaunch 730 -insecure -novid +exec <cfg>）
+            //   -console: 游戏内按 ~ 打开控制台（排障用）
+            const args = ['-applaunch', '730', '-insecure', '-novid', '-console', '-consolelog', 'dsh_hud.log', '+exec', 'dsh-play.cfg', ...extra]
+            const child = spawn(steamExe, args, {
+              cwd: dirname(steamExe),
+              detached: true,
+              stdio: 'ignore',
+              windowsHide: false
+            })
+            child.on('error', () => {})
+            child.unref()
+            this.scheduleSessionCleanup(install, voiceHud)
+            return { ok: true, url: '', direct: true, exe: steamExe, demoFile: staged }
+          }
           const args: string[] = ['+exec', 'dsh-play.cfg', '+cl_demo_predict', '0', '-novid', ...extra]
           const child = spawn(exe, args, {
             cwd: dirname(exe),
@@ -569,7 +698,7 @@ export class LiveService {
           })
           child.on('error', () => {})
           child.unref()
-          this.schedulePlayCfgCleanup(install)
+          this.scheduleSessionCleanup(install, voiceHud)
           return { ok: true, url: '', direct: true, exe, demoFile: staged }
         } catch {
           /* exe 不存在/写 cfg 失败 → 回退 steam:// */

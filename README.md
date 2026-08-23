@@ -6,7 +6,7 @@
 
 CS2 Demo Analyst 帮助你像看职业比赛一样复盘自己的录像：**地图/比分/回合/击杀/选手数据自动解析**，**游戏内语音转成可搜索的文字**，还能在播放 demo 时**一键跳转到任意回合、击杀或语音时刻**。
 
-这是一款作者长期自用的 CS2 复盘工具，现已开源：**不改游戏文件、不替换 CS2 播放器**，Windows 桌面绿色便携版（零安装）。
+这是一款作者长期自用的 CS2 复盘工具，现已开源：**不替换 CS2 播放器**，Windows 桌面绿色便携版（零安装）。可选「游戏内语音 HUD」会临时注入 VPK 并在退出后自动恢复，不影响正常游戏。
 
 ## ✨ 功能
 
@@ -16,10 +16,10 @@ CS2 Demo Analyst 帮助你像看职业比赛一样复盘自己的录像：**地�
 | 📊 自动分析 | 地图、比分、回合时间轴、击杀记录（武器/爆头/穿烟）、选手 K/D/HS/MVP |
 | 🎙️ 语音检测 | 自动标记哪些 demo 含录制语音（FACEIT / 完美平台 / 本地录制通常有） |
 | 📝 语音转写 | 每位玩家语音 → 带时间戳文字，与回合对齐；文字聊天同屏；一键导出 |
-| 🎯 一键跳转 | 点击转写行 / 击杀 / 回合 → 向正在播放的 CS2 注入 `demo_gototick` 等指令 |
+| 🎯 一键跳转 | 点击转写行 / 击杀 / 回合 → 向正在播放的 CS2 注入 `demo_gototick` 等指令（需工具模式 `-tools`；普通模式为内置播放器，无跳转） |
 | 🤖 AI 分析 | 自己配置 Key 与模型（OpenAI 兼容），用自然语言问这局：找高光、找破防、找转折，答案时间点可点击跳转 |
 | 🖥️ 实况注入 | 检测 cs2.exe，VConsole2（`-tools`）读写控制台；GSI 读取当前回合/比分/炸弹 |
-| 🎮 游戏内悬浮层 | 透明置顶 HUD：说话者头像 + 声波动画 + 转写字幕（仅语音，无观战信息干扰） |
+| 🎮 游戏内语音 HUD | 普通模式播放 demo 时，CS2 画面内直接显示说话者（名字+阵营色+声波），数据来自 demo 语音消息，暂停/跳转/倍速实时同步；VPK 注入，退出后自动恢复 |
 | 🎨 苹果风界面 | macOS 风格毛玻璃面板、iOS 蓝强调色、红绿灯窗口按钮、SF 系系统字体，深色/浅色双主题，中英双语 |
 
 ## 📸 界面
@@ -28,16 +28,16 @@ CS2 Demo Analyst 帮助你像看职业比赛一样复盘自己的录像：**地�
 | --- | --- | --- |
 | ![资料库](docs/screenshots/apple-library.png) | ![详情](docs/screenshots/apple-detail.png) | ![转写](docs/screenshots/apple-transcript.png) |
 
-| 实况注入 | 游戏内悬浮层 | 语音大屏 |
+| 实况注入 | 语音转写 | AI 分析 |
 | --- | --- | --- |
-| ![实况](docs/screenshots/apple-live.png) | ![悬浮层](docs/screenshots/apple-overlay.png) | ![大屏](docs/screenshots/apple-fullpanel.png) |
+| ![实况](docs/screenshots/apple-live.png) | ![转写](docs/screenshots/apple-transcript.png) | ![AI](docs/screenshots/apple-ai.png) |
 
 ## 🚀 快速开始（Windows 绿色便携版）
 
 1. 下载 `CS2-Demo-Analyst-<version>-win64-portable.zip`
 2. 解压到任意目录，双击 `CS2 Demo Analyst.exe` 运行（免安装）
 3. 「添加目录」选择你的 demo 文件夹，自动扫描解析
-4. 游戏内悬浮层 Overlay、CS2 进程挂接与一键注入均为桌面版内置功能
+4. 详情页「CS2 中播放」→ 普通模式内置播放器秒播；设置页开启「游戏内语音 HUD」后播放时 CS2 画面内显示说话者
 
 > 小白从 0 到会的完整配置教程见 [docs/GUIDE.md](docs/GUIDE.md)（云端转写一键 Key、本地引擎下载、实况注入等）。
 

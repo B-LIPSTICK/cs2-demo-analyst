@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Btn, IcFolder, IcPlus, IcRefresh, Panel, SectionHead, Tag, useToast } from '@/components/ui'
+import { Btn, IcFolder, IcPlus, IcRefresh, Panel, SectionHead, Tag, Toggle, useToast } from '@/components/ui'
 import { useT, type Lang } from '@/i18n'
 import type { Settings } from '@shared/types'
 
@@ -498,6 +498,17 @@ export function SettingsPage({ settings }: { settings: Settings }) {
               {t.t('settings.playModeTools')}
             </span>
           </div>
+        </div>
+        <div className="set-row">
+          <div className="info">
+            <div className="t">{t.t('settings.voiceHud')}</div>
+            <div className="d">{t.t('settings.voiceHudHint')}</div>
+          </div>
+          <Toggle
+            on={!!draft.cs2.voiceHud}
+            onChange={(v) => setCs2({ voiceHud: v })}
+            disabled={draft.cs2.useToolsMode}
+          />
         </div>
       </Panel>
 

@@ -289,13 +289,22 @@ export function Ring({ pct, size = 46, label }: { pct: number; size?: number; la
 
 // ─── 开关 ───────────────────────────────────────────────────────────────────
 
-export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+export function Toggle({
+  on,
+  onChange,
+  disabled
+}: {
+  on: boolean
+  onChange: (v: boolean) => void
+  disabled?: boolean
+}) {
   return (
     <button
       type="button"
-      className={`switch ${on ? 'on' : ''}`}
-      onClick={() => onChange(!on)}
+      className={`switch ${on ? 'on' : ''} ${disabled ? 'disabled' : ''}`}
+      onClick={() => !disabled && onChange(!on)}
       aria-pressed={on}
+      disabled={disabled}
     />
   )
 }

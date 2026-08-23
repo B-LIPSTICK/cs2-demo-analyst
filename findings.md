@@ -140,6 +140,45 @@
 - **★最终方案（应用已实施）**: 普通模式 = 写 `game/csgo/cfg/dsh-play.cfg`（`playdemo "<盘根 dsh-demo 暂存路径>"`）→ `spawn(cs2.exe, ['+exec','dsh-play.cfg','+cl_demo_predict','0','-novid',...])`; CS2 退出后删 cfg。不需要 -console/+demoui/-insecure。
 - **附带**: CS2 控制台日志参数 = `-consolelog <file>`（写到 game/csgo/），`con_logfile` cvar 在 CS2 无效; 完美平台每个 steamid/天一个 pwa_*.log 保留在 game/csgo/。
 
+## 19. 游戏内语音 HUD（VPK 注入 Panorama）设计方案（2026-08-23 定稿）
+
+- **目标**: 普通模式播放 demo 时，CS2 游戏画面内显示说话者 HUD（名字+阵营色+声波），数据来自 demo 语音消息（实时 tick 同步，暂停/跳转/倍速对齐）。
+- **参考**: SwiftDemoUIPro（research/SwiftDemoUIPro，仅参考机制/格式，不抄代码）：
+  - 注入 = 覆盖 `panorama/layout/hud/huddemocontroller.vxml_c`（demo 播放时才加载的布局，覆盖面最小），布局内保留原生控件 ID/结构（Root/Settings/Contents/SliderRow/ControlRow/PlayButton… 为游戏接口事实），附加自己的面板。
+  - gameinfo.gi SearchPaths 在 `Game csgo` 行前插入（缩进/换行/编码保留）: `Game\tcsgo/overrides/<会话vpk>`（最前=最高优先级）+ `Game\tcsgo/overrides/<静态vpk>`；首次备份 `.restore.bak`；恢复=精确删自己的行；CS2 运行中拒绝清理。
+  - 静态 VPK（布局/样式/脚本，构建时编译）→ `game/csgo/overrides/`；会话 VPK（语音数据，每次播放生成）→ 同目录。
+  - 启动: `-insecure -novid +exec <cfg>`；cfg 内容: `demo_ui_mode 2` + `cl_demo_predict 0` + `playdemo "<相对/无空格路径>"`。
+  - **编译**: resourcecompiler.exe（CS2 自带，本机 game/bin/win64/ 存在）: `-game <cs2>/game/csgo -i <file.vxml|.vcss|.vjs> -f -nop4 -v`；输入放 `content/csgo_addons/<addon>/panorama/`（需 preprocessor_config.txt PanzipCfg 空块），输出 `game/csgo_addons/<addon>/` 同名 `.vxml_c/.vcss_c/.vjs_c`。
+  - **vjs_c 资源格式**（会话 VPK 用，纯字节生成，Rust 实现=格式文档）: `[u32 fileSize][u32 0x0004000c][u32 8][u32 2]["RED2"][u32 28][u32 0]["DATA"][u32 16][u32 srcLen]` 填充到 48 字节 + JS UTF-8，fileSize 回填。
+  - **VPK v2 格式（CS2 overrides 必需）**: 见 §20（树分组结构 + otherMD5 在文件末尾; v1 会被 CS2 报 "VPK directory corrupt"）。
+  - 游戏内同步: Panorama JS 每 ~50ms 轮询 `GetDemoControllerState().nTick`（demo 控制器 API，实时 tick）+ 内嵌 pulsesBySlot（slot→[tick]）二分查找 + holdTicks 显示保持；玩家信息用 GameStateAPI（GetPlayerName/GetPlayerTeamName/PopulateFromSteamID）。
+- **本机验证**（deadem 解码 SVC_VOICE_DATA）: data = {audio:{voiceLevel,format OPUS,…}, xuid(4), entity(8), clientDeprecated(2=-1)} —— **entity 即说话者实体（slot+1），xuid 即说话者 SteamID，voiceLevel 可做声波**。25676 条/7 说话者（92152 demo）。
+- **我们的实现**（全部自研）:
+  - `services/vpk.ts`: VPK v2 多文件 writer（§20 格式）+ vjs_c 构建器 + crc32（纯 JS 字节生成）。
+  - `services/voiceIndex.ts`: deadem 提取 SVC_VOICE_DATA → {tick, entity, xuid} → pulsesBySlot（slot=entity-1，去重相邻）+ 玩家表（xuid→slot）。
+  - `services/injector.ts`: gameinfo.gi 备份/注入/恢复 + 静态/会话 VPK 部署 + 退出清理（CS2 运行中拒绝）。
+  - Panorama 面板（assets/panorama/ 自写）: huddemocontroller 覆盖（原生控件骨架+我们的说话者 HUD 胶囊：名字+阵营色+声波），HUD JS 轮询 nTick + pulses 渲染。
+  - 构建脚本: resourcecompiler 编译 → 静态 VPK 资产入库；运行时仅写文件。
+  - 播放链路: 详情页「CS2 中播放」+「游戏内语音 HUD」开关（设置）→ 提取语音（快）→ 注入 → **steam.exe -applaunch 730 -insecure -novid +exec dsh-play.cfg**（cfg 含 cl_demo_predict 0 + playdemo；注入模式必须 Steam 启动，见 §20）→ 退出恢复。
+- **风险**: huddemocontroller 布局随游戏更新变化需同步（SwiftDemoUIPro 同款风险，用户已知）; -insecure 会话不可用于排位（仅播放用，与完美/5E 一致）。
+
+## 20. ★VPK v2 格式最终破解（2026-08-23，注入崩溃根因）✅
+
+- **问题**: 注入状态（gameinfo 行 + overrides VPK）下 CS2 启动即报 "Encountered error" 退出（code=1, minidump 异常 code=0x0）。直接 spawn cs2.exe 必现；resourcecompiler 校验通过但 CS2 崩。
+- **★变量分离矩阵（scripts/diag-inject-matrix.mjs，Steam -applaunch 启动 + 60s 监控）**:
+  - A 无注入 SUCCESS / B 仅行 SUCCESS（注入行格式无问题）/ C 参考 VPK+session SUCCESS / D 手写 VPK **CRASH 14s** → 元凶 = 手写 VPK 格式。
+- **★树结构（逐字节逆向 SwiftDemoUIPro 生产 VPK swift-ref.vpk，VPKEdit 校验通过）**:
+  ```
+  [ext\0] [dir\0] (name\0 + crc u32 + preload u16 + archive u16 + offset u32 + size u32 + 0xffff u16)*
+  [\0 空name = dir 结束] [\0 空dir = ext 结束] ... [\0 空ext = 树结束]
+  ```
+  要点: ①同 ext 同 dir 文件**共享组头**（vjs_c 组 2 文件连续 name）；②**无 4 字节对齐**（vjs_c 组 105B 不对齐）；③树结束位置必须精确 = treeSize。
+- **★otherMD5 区在文件末尾**（数据区之后）: `treeMD5(16) + MD5("")(16) + 16B 零`（参考 VPK 尾 48B 验证一致）。**放在数据区之前 → CS2 把 48B MD5 当数据读 → 全部文件内容错位 → vxml_c 头解析失败崩溃**。
+- **★启动方式**: 注入状态**必须 Steam -applaunch 730**（SwiftDemoUIPro 同款）; 直接 spawn cs2.exe 会被 Steam 本地文件验证流程干扰 → 启动即崩。普通模式（无注入）直接 spawn +exec cfg 仍可用。
+- **★Steam 验证循环机制**: 注入/恢复 gameinfo.gi + overrides VPK 变动 → Steam 检测官方文件哈希偏离 → 自动"验证本地文件"（移走 gameinfo.gi、73GB 全量校验）→ 验证期间 CS2 无法启动 → 测试 NOLAUNCH。无害、SwiftDemoUIPro 同样触发（会话短不阻塞）。对策: 测试脚本 waitSteamIdle 门控（gameinfo.gi 存在 + downloading/730 消失 + 稳定 30s）+ 单模式快速验证。
+- **修复**: vpk.ts buildVpk / build-panorama.mjs 重写树生成（分组 + 空分隔 + 末尾 otherMD5）; 验证工具 scripts/vpk-debug.mjs（三层 ext→dir→name 解析，树结束=声称值、offset 链连续、组头共享）。
+- **★真机矩阵全绿（2026-08-23）**: A/B/C/D/E/F 全部 SUCCESS（90s+ 存活 0 minidump）—— 手写静态 VPK + 手写会话 VPK（97KB 真实语音索引）+ 组合部署均稳定。
+
 ## 15. 打包（离线可行，包体压缩）
 
 - **网络依赖**：electron-builder 默认要下载 electron zip（GitHub 直连在无代理环境 ETIMEDOUT）。解法：`electron-builder.yml` 配 `electronDist: node_modules/electron/dist`（本地 npm 安装的 dist 直接复用），winCodeSign/signtool 用本地缓存 → 离线可打包。
