@@ -19,6 +19,8 @@ export interface LibraryService {
   init(): Promise<void>
   list(): Promise<DemoMeta[]>
   detail(id: string): Promise<DemoDetail | null>
+  /** 等待详情就绪（解析中自动等待/重解析），超时或失败返回 null */
+  waitDetail(id: string, timeoutMs?: number): Promise<DemoDetail | null>
   addRoot(): Promise<string[]>
   removeRoot(root: string): Promise<void>
   setRoots(roots: string[]): Promise<void>
@@ -85,6 +87,18 @@ export function createLibraryService(
     parsing: false
   }
 
+  /** 转写/分割/AI 等待详情就绪失败时的友好提示（区分不存在/解析失败/未完成） */
+  const notReadyMsg = (id: string): string => {
+    const meta = store.index[id]
+    if (!meta) return 'demo not found'
+    if (meta.status === 'error') return '该 demo 解析失败，无法转写（可在详情页尝试重新解析）'
+    return '该 demo 尚未解析完成，请稍候再试'
+  }
+
+  // 解析器版本：解析逻辑变更（如击杀阵营实时跟踪）时 +1，旧详情缓存自动失效重解析
+  // v4: 保留隐式首回合（CS2 首回合无 round_prestart，此前手枪局整局丢失）
+  const PARSER_VERSION = 4
+
   const libDir = () => join(app.getPath('userData'), 'library')
   const indexPath = () => join(libDir(), 'index.json')
   const detailPath = (id: string) => join(libDir(), `${id}.json`)
@@ -111,7 +125,7 @@ export function createLibraryService(
   }
 
   const persistDetail = async (detail: DemoDetail) => {
-    await safePersist(detailPath(detail.meta.id), detail)
+    await safePersist(detailPath(detail.meta.id), { ...detail, parserVersion: PARSER_VERSION })
   }
 
   /** 原子写 + 容错：rename 覆盖失败（Windows 占用/杀软）时先删目标再重试 */
@@ -187,7 +201,8 @@ export function createLibraryService(
         chat: result.chat,
         voice: prevDetail?.voice ?? [],
         firstTick: result.firstTick,
-        lastTick: result.lastTick
+        lastTick: result.lastTick,
+        parserVersion: PARSER_VERSION
       })
       await persistDetail(store.details.get(meta.id)!).catch((err) => {
         dbg(`persistDetail failed ${meta.id}: ${err instanceof Error ? err.message : String(err)}`)
@@ -388,6 +403,9 @@ export function createLibraryService(
       async detail(id) {
         return getMockDetail(id)
       },
+      async waitDetail(id) {
+        return getMockDetail(id)
+      },
       async addRoot() {
         return []
       },
@@ -484,15 +502,34 @@ export function createLibraryService(
 
     async detail(id) {
       const cached = store.details.get(id)
-      if (cached) return cached
+      if (cached && cached.parserVersion === PARSER_VERSION) return cached
       try {
         const raw = await fs.readFile(detailPath(id), 'utf-8')
         const detail = JSON.parse(raw) as DemoDetail
+        // 解析器版本不匹配（缓存是旧版解析结果）→ 视为无缓存，触发重新解析
+        if (detail.parserVersion !== PARSER_VERSION) return null
         store.details.set(id, detail)
         return detail
       } catch {
         return null
       }
+    },
+
+    /** 等待 demo 详情就绪（转写/分割/AI 对话共用）：
+     *  解析中/待解析 → 轮询等待解析队列完成；ready 但缓存缺失（版本不匹配/被清理）→ 自动触发重解析。
+     *  返回 null = demo 不存在 / 解析失败 / 超时 */
+    async waitDetail(id: string, timeoutMs = 180000): Promise<DemoDetail | null> {
+      const meta = store.index[id]
+      if (!meta) return null
+      const deadline = Date.now() + timeoutMs
+      while (Date.now() < deadline) {
+        const d = await this.detail(id)
+        if (d) return d
+        if (meta.status === 'error') return null // 解析失败不再等
+        if (meta.status === 'ready') await this.parse(id) // 缓存缺失 → 重解析
+        await new Promise((r) => setTimeout(r, 500))
+      }
+      return null
     },
 
     async addRoot() {
@@ -528,8 +565,14 @@ export function createLibraryService(
     async parse(id: string, force = false) {
       const meta = store.index[id]
       if (!meta || meta.status === 'parsing') return
-      if (meta.status === 'ready' && !force) return
-      if (force) {
+      // detail 缓存版本不匹配（解析器升级）→ 即使 meta.status=ready 也重新解析
+      let stale = false
+      if (meta.status === 'ready') {
+        const cached = store.details.get(id)
+        if (!cached || cached.parserVersion !== PARSER_VERSION) stale = true
+      }
+      if (meta.status === 'ready' && !force && !stale) return
+      if (stale || force) {
         meta.status = 'pending'
         meta.error = undefined
       }
@@ -540,7 +583,17 @@ export function createLibraryService(
     /** 手动解析全部待解析 demo */
     async parseAll() {
       for (const meta of Object.values(store.index)) {
-        if (meta.status === 'ready' || meta.status === 'parsing') continue
+        if (meta.status === 'parsing') continue
+        let stale = false
+        if (meta.status === 'ready') {
+          const cached = store.details.get(meta.id)
+          if (!cached || cached.parserVersion !== PARSER_VERSION) stale = true
+        }
+        if (meta.status === 'ready' && !stale) continue
+        if (stale) {
+          meta.status = 'pending'
+          meta.error = undefined
+        }
         if (!store.queue.some((q) => q.id === meta.id)) store.queue.push(meta)
       }
       void pump()
@@ -585,8 +638,8 @@ export function createLibraryService(
     },
 
     async extractVoice(id: string) {
-      const detail = await this.detail(id)
-      if (!detail) throw new Error('demo not found')
+      const detail = await this.waitDetail(id)
+      if (!detail) throw new Error(notReadyMsg(id))
       const items = await asrExtract(
         detail,
         {
@@ -600,8 +653,8 @@ export function createLibraryService(
     },
 
     async splitVoice(id: string) {
-      const detail = await this.detail(id)
-      if (!detail) throw new Error('demo not found')
+      const detail = await this.waitDetail(id)
+      if (!detail) throw new Error(notReadyMsg(id))
       const segments = await asrSplit(
         detail,
         {
@@ -646,8 +699,8 @@ export function createLibraryService(
     },
 
     async transcribe(id: string, opts?: { players?: string[] }) {
-      const detail = await this.detail(id)
-      if (!detail) throw new Error('demo not found')
+      const detail = await this.waitDetail(id)
+      if (!detail) throw new Error(notReadyMsg(id))
       transcribeSignal = new AbortController()
       const settings = await getSettings()
       const segments = await transcribeDemo(
@@ -658,6 +711,7 @@ export function createLibraryService(
           cloudBaseUrl: settings.asr.cloudBaseUrl,
           cloudApiKey: settings.asr.cloudApiKey,
           cloudModel: settings.asr.cloudModel,
+          language: settings.asr.language,
           players: opts?.players
         },
         {

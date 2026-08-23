@@ -98,7 +98,10 @@ export async function detectSpeech(wavPath: string): Promise<SpeechChunk[]> {
 /**
  * 把多个语音片段拼接成紧凑 WAV，返回 {path, offsets}。
  * offsets[i] = 第 i 段在原始轨道的起始秒。
+ * ★段间插入 0.3s 静音：whisper 对无缝拼接的音频段边界识别差（易把上一句延续到下一段，
+ *  造成"同一句话转写两次/错位"）；静音分隔让 whisper 输出与 VAD 段一一对应。
  */
+const COMPACT_PAD_SEC = 0.3
 export async function buildCompactWav(
   wavPath: string,
   chunks: SpeechChunk[]
@@ -112,10 +115,15 @@ export async function buildCompactWav(
   const parts: Buffer[] = []
   const offsets: number[] = []
   let totalBytes = 0
+  const padBuf = Buffer.alloc(Math.floor(COMPACT_PAD_SEC * bytesPerSec)) // 静音
   for (const c of chunks) {
     const from = dataStart + Math.floor(c.start * bytesPerSec)
     const to = dataStart + Math.floor(c.end * bytesPerSec)
     if (to > from && from < buf.length) {
+      if (parts.length > 0) {
+        parts.push(padBuf)
+        totalBytes += padBuf.length
+      }
       parts.push(buf.subarray(from, Math.min(to, buf.length)))
       totalBytes += Math.min(to, buf.length) - from
       offsets.push(c.start)
@@ -138,22 +146,22 @@ export async function buildCompactWav(
   return { path: compactPath, offsets }
 }
 
-/** 把紧凑文件里的段时间映射回原始轨道时间 */
+/** 把紧凑文件里的段时间映射回原始轨道时间（与 buildCompactWav 的段间静音对齐） */
 export function mapCompactSegments(
   segs: { start: number; end: number; text: string }[],
   chunks: SpeechChunk[],
   offsets: number[]
 ): { start: number; end: number; text: string }[] {
   let chunkIdx = 0
-  let consumed = 0 // 已消费的紧凑时间
+  let consumed = 0 // 已消费的紧凑时间（含段间静音）
   const out: { start: number; end: number; text: string }[] = []
   for (const s of segs) {
     // 前进到 s.start 所属片段
     while (
       chunkIdx < chunks.length - 1 &&
-      consumed + (chunks[chunkIdx].end - chunks[chunkIdx].start) < s.start + 0.05
+      consumed + (chunks[chunkIdx].end - chunks[chunkIdx].start) + COMPACT_PAD_SEC < s.start + 0.05
     ) {
-      consumed += chunks[chunkIdx].end - chunks[chunkIdx].start
+      consumed += chunks[chunkIdx].end - chunks[chunkIdx].start + COMPACT_PAD_SEC
       chunkIdx++
     }
     const base = offsets[chunkIdx] ?? chunks[chunkIdx]?.start ?? 0
@@ -325,18 +333,24 @@ export async function sliceVoiceWav(
  * 重写为规范 16-bit PCM。
  */
 export async function normalizeWav(filePath: string): Promise<void> {
-  let buf: Buffer
+  // 只读 44 字节头判断格式：16bit 直接返回（缓存复用时避免全量读 100MB+ 文件）
+  let head: Buffer
   try {
-    buf = await fs.readFile(filePath)
+    const fh = await fs.open(filePath, 'r')
+    head = Buffer.alloc(44)
+    await fh.read(head, 0, 44, 0)
+    await fh.close()
   } catch {
     return
   }
-  if (buf.length < 44 || buf.toString('ascii', 0, 4) !== 'RIFF') return
-  const fmtCode = buf.readUInt16LE(20)
-  const channels = buf.readUInt16LE(22)
-  const rate = buf.readUInt32LE(24)
-  const bits = buf.readUInt16LE(34)
+  if (head.toString('ascii', 0, 4) !== 'RIFF' || head.toString('ascii', 8, 12) !== 'WAVE') return
+  const fmtCode = head.readUInt16LE(20)
+  const channels = head.readUInt16LE(22)
+  const rate = head.readUInt32LE(24)
+  const bits = head.readUInt16LE(34)
   if (!(fmtCode === 1 && bits === 32)) return // 仅处理受影响的输出
+
+  const buf = await fs.readFile(filePath)
 
   // 解析 RIFF 块定位 data
   let dataStart = -1
@@ -385,7 +399,9 @@ export async function normalizeWav(filePath: string): Promise<void> {
   console.log(`[asr] normalized wav ${basename(filePath)} (csgove 32bit -> 16bit high-word)`)
 }
 
-/** 提取 demo 内全部玩家语音（split-full：全时长带静音，时间轴与 demo 对齐） */
+/** 提取 demo 内全部玩家语音（split-full：全时长带静音，时间轴与 demo 对齐）。
+ *  ★缓存复用：voices/<demoId>/ 已有非空 WAV 且比 demo 文件新 → 跳过 csgove 直接复用
+ *  （分割 → 转写不重复提取；demo 文件更新后自动重提）。 */
 export async function extractVoice(
   detail: DemoDetail,
   events: AsrEvents,
@@ -393,21 +409,51 @@ export async function extractVoice(
 ): Promise<WavItem[]> {
   const demo = detail.meta
   const outDir = voicesDir(demo.id)
-  await fs.rm(outDir, { recursive: true, force: true })
   await fs.mkdir(outDir, { recursive: true })
 
-  await ensureCsgove((p) => {
-    events.progress('voice-extract', Math.round((p.received / Math.max(1, p.total)) * 100), 100)
-  })
+  // 缓存校验：存在非空 .wav 且全部比 demo 文件新 → 复用
+  let demoMtime = 0
+  try {
+    demoMtime = (await fs.stat(demo.path)).mtimeMs
+  } catch {
+    demoMtime = 0
+  }
+  let cachedFiles: string[] = []
+  try {
+    cachedFiles = (await fs.readdir(outDir)).filter((f) => f.toLowerCase().endsWith('.wav'))
+  } catch {
+    cachedFiles = []
+  }
+  const cachedUsable =
+    cachedFiles.length > 0 &&
+    demoMtime > 0 &&
+    (async () => {
+      for (const f of cachedFiles) {
+        const st = await fs.stat(join(outDir, f)).catch(() => null)
+        if (!st || st.size < 1024 || st.mtimeMs < demoMtime) return false
+      }
+      return true
+    })()
 
-  events.progress('voice-extract', 0, 1)
-  const res = await run(csgoveExe(), ['-mode', 'split-full', '-output', outDir, demo.path], {
-    // csgove 从 CWD 查找 vaudio_celt.dll 等库文件
-    cwd: csgoveDir(),
-    signal
-  })
-  if (res.code !== 0) {
-    throw new Error(`csgove 退出码 ${res.code}: ${res.output.slice(-600)}`)
+  if (!(await cachedUsable)) {
+    await fs.rm(outDir, { recursive: true, force: true })
+    await fs.mkdir(outDir, { recursive: true })
+
+    await ensureCsgove((p) => {
+      events.progress('voice-extract', Math.round((p.received / Math.max(1, p.total)) * 100), 100)
+    })
+
+    events.progress('voice-extract', 0, 1)
+    const res = await run(csgoveExe(), ['-mode', 'split-full', '-output', outDir, demo.path], {
+      // csgove 从 CWD 查找 vaudio_celt.dll 等库文件
+      cwd: csgoveDir(),
+      signal
+    })
+    if (res.code !== 0) {
+      throw new Error(`csgove 退出码 ${res.code}: ${res.output.slice(-600)}`)
+    }
+  } else {
+    events.progress('voice-extract', 1, 1)
   }
 
   // 输出: 每玩家一个 WAV；命名形如 <demo>_<name>_<steamid>.wav 或 <steamid>.wav
@@ -437,10 +483,11 @@ interface WhisperSeg {
   text: string
 }
 
-/** 本地 whisper.cpp 转写（-l auto, JSON 输出） */
+/** 本地 whisper.cpp 转写（-l <language>, JSON 输出；'auto'=自动检测） */
 export async function transcribeLocal(
   wavPath: string,
   model: 'base' | 'small' | 'medium',
+  language: string,
   signal?: AbortSignal
 ): Promise<WhisperSeg[]> {
   await ensureWhisperCli(() => {})
@@ -449,7 +496,7 @@ export async function transcribeLocal(
   const threads = Math.max(2, cpus().length - 2)
   const res = await run(
     whisperExe(),
-    ['-m', whisperModelPath(model), '-f', wavPath, '-l', 'auto', '-t', String(threads), '-oj', '-of', outPrefix, '--no-prints'],
+    ['-m', whisperModelPath(model), '-f', wavPath, '-l', language || 'auto', '-t', String(threads), '-oj', '-of', outPrefix, '--no-prints'],
     { signal }
   )
   if (res.code !== 0 && res.code !== null) {
@@ -495,7 +542,7 @@ export async function transcribeLocal(
 /** 云端 OpenAI 兼容转写（默认 Groq whisper-large-v3-turbo，verbose_json 带时间戳） */
 export async function transcribeCloud(
   wavPath: string,
-  cfg: { baseUrl: string; apiKey: string; model: string },
+  cfg: { baseUrl: string; apiKey: string; model: string; language: string },
   signal?: AbortSignal
 ): Promise<WhisperSeg[]> {
   if (!cfg.apiKey) throw new Error('未配置云端 API Key（设置 → 转写引擎 → 获取免费 Key）')
@@ -513,9 +560,15 @@ export async function transcribeCloud(
     ),
     fileBuf,
     Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\n${cfg.model}\r\n`),
-    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\nverbose_json\r\n`),
-    Buffer.from(`--${boundary}--\r\n`)
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\nverbose_json\r\n`)
   )
+  // 指定转写语言（'auto' 不传，由服务商自动检测）
+  if (cfg.language && cfg.language !== 'auto') {
+    parts.push(
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\n${cfg.language}\r\n`)
+    )
+  }
+  parts.push(Buffer.from(`--${boundary}--\r\n`))
   const body = Buffer.concat(parts)
   // 用 Electron net.fetch（走 Chromium 网络栈，跟随系统代理）：
   // 全局 fetch 不走 Windows 系统代理，国内网络访问 Groq 等会被墙（403/连接失败）
@@ -553,6 +606,8 @@ export interface TranscribeOptions {
   cloudBaseUrl: string
   cloudApiKey: string
   cloudModel: string
+  /** 转写语言（whisper ISO-639-1；'auto'=自动检测） */
+  language?: string
   players?: string[]
 }
 
@@ -594,14 +649,21 @@ export async function transcribeDemo(
     )
     let segs: WhisperSeg[]
     try {
-      // 阶段①：VAD 静音裁剪（读 100+MB 整轨算能量，耗时数秒，先提示）
+      // 阶段①：语音切分。★优先复用「语音分割」的结果（detail.voice 中无文字的段，
+      //   跳过 VAD 重新检测）；没有分割过才做 VAD 静音裁剪
       events.progress(
         options.engine === 'cloud' ? 'asr-cloud' : 'asr-local',
         i,
         items.length,
         `${item.playerName} · 裁剪中…`
       )
-      const chunks = await detectSpeech(item.path)
+      const priorSplit = (detail.voice ?? []).filter(
+        (v) => !v.text && v.playerName === item.playerName && v.endSec > v.timeSec + 0.2
+      )
+      const chunks: SpeechChunk[] =
+        priorSplit.length > 0
+          ? priorSplit.map((v) => ({ start: v.timeSec, end: v.endSec }))
+          : await detectSpeech(item.path)
       let effective: { start: number; end: number; text: string }[]
       if (chunks.length === 0) {
         console.log(`[asr] ${item.playerName}: no speech detected, skipping`)
@@ -627,11 +689,12 @@ export async function transcribeDemo(
         const raw = await transcribeCloud(targetWav, {
           baseUrl: options.cloudBaseUrl,
           apiKey: options.cloudApiKey,
-          model: options.cloudModel
+          model: options.cloudModel,
+          language: options.language ?? 'auto'
         }, signal)
         effective = compact ? mapCompactSegments(raw, chunks, compact.offsets) : raw
       } else {
-        const raw = await transcribeLocal(targetWav, options.localModel, signal)
+        const raw = await transcribeLocal(targetWav, options.localModel, options.language ?? 'auto', signal)
         effective = compact ? mapCompactSegments(raw, chunks, compact.offsets) : raw
       }
       if (compact) {

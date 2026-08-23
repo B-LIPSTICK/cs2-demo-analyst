@@ -38,7 +38,22 @@ export function DemoDetailPage({
     let alive = true
     setDetail(null)
     window.api.library.detail(id).then((d) => {
-      if (alive) setDetail(d)
+      if (!alive) return
+      if (d) {
+        setDetail(d)
+      } else if (meta?.status === 'ready') {
+        // 详情缓存失效（解析器升级）→ 自动重新解析，完成后回填
+        window.api.library.parse(id).then(() => {
+          const poll = setInterval(async () => {
+            const nd = await window.api.library.detail(id)
+            if (nd) {
+              clearInterval(poll)
+              if (alive) setDetail(nd)
+            }
+          }, 500)
+          setTimeout(() => clearInterval(poll), 60000)
+        })
+      }
     })
     return () => {
       alive = false
@@ -379,11 +394,8 @@ function RoundIcon({ type }: { type: RoundEndType }) {
         </svg>
       )
     case 'bomb_defused':
-      return (
-        <svg viewBox="0 0 24 24" fill="currentColor" style={style}>
-          <path d="M21.7 5.4l-3.8 3.8a3 3 0 0 1-4.1 0L9.6 5a3 3 0 0 1-.9-2.4A7 7 0 0 0 3.6 9l4.2 4.2-1 1a2.1 2.1 0 1 0 3 3l1-1L15 20.4A7 7 0 0 0 21.4 6.3 3 3 0 0 1 19 7.2l-3.6-3.6 4-4H21v5.8z" />
-        </svg>
-      )
+      // 拆除：🔧
+      return <span style={{ fontSize: 13, lineHeight: 1 }}>🔧</span>
     case 'elimination':
       return (
         <svg viewBox="0 0 24 24" fill="currentColor" style={style}>
@@ -453,18 +465,22 @@ function KillRow({
   tickRate: number
   onJump: (tick: number) => void
 }) {
+  // 自杀/环境击杀（attacker 与 victim 同一人，或 attacker=世界 65535）
+  const isSuicide = kill.attackerUid === kill.victimUid || kill.attackerUid === 65535
+  const attackerLabel = isSuicide ? '' : (kill.attackerName ?? '—')
+  const victimLabel = isSuicide ? (kill.attackerName ?? kill.victimName ?? '—') : (kill.victimName ?? '—')
   return (
     <div className="kill-row" onClick={() => onJump(kill.tick)}>
       <span className="tk">{fmtTick(kill.tick, tickRate)}</span>
       <span className={`nm ${kill.attackerTeam === 'T' ? 't' : kill.attackerTeam === 'CT' ? 'ct' : ''}`}>
-        {kill.attackerName ?? '—'}
+        {attackerLabel}
       </span>
       <span className="wp">
-        {kill.weapon}
+        {isSuicide ? '自杀' : kill.weapon}
         <KillIcons kill={kill} />
       </span>
       <span className={`nm ${kill.victimTeam === 'T' ? 't' : kill.victimTeam === 'CT' ? 'ct' : ''}`}>
-        {kill.victimName ?? '—'}
+        {victimLabel}
       </span>
       <span className="rn">R{kill.roundNum}</span>
     </div>

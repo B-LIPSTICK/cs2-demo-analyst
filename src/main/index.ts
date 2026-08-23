@@ -157,8 +157,9 @@ function registerIpc(): void {
 
   // AI 分析
   ipcMain.handle('ai:ask', async (_e, id: string, question: string, history?: { role: 'user' | 'assistant'; text: string }[]) => {
-    const detail = await library.detail(id)
-    if (!detail) return { started: false, error: 'demo not found' }
+    // 等待详情就绪（demo 刚加入还在解析时自动等待/重解析，而不是直接报 demo not found）
+    const detail = await library.waitDetail(id)
+    if (!detail) return { started: false, error: 'demo 尚未解析完成，请稍候再试（或该 demo 解析失败）' }
     const s = await getSettings()
     return ai.ask(id, question, detail, s.ai, s.language, history)
   })

@@ -1,5 +1,32 @@
 # progress.md — 会话日志
 
+## 本轮十四补3（demo not found 根因：解析未完成即转写/AI）✅ 待 git 提交
+- **场景**: 用户本地新加 demo 后立刻转写/分割/AI 对话 → 报 "demo not found"。根因: demo 加入后处于 pending/parsing，`library.detail()` 返回 null（无缓存 / parserVersion 不匹配 / 缓存被清理），转写/分割/AI 三处入口直接抛英文错误。
+- **修复**: ① `LibraryService.waitDetail(id, timeout=180s)`——解析中自动轮询等待解析队列完成；ready 但缓存缺失自动触发重解析；解析失败/超时返回 null；② 转写/分割入口改用 waitDetail，失败抛友好中文提示（区分"解析失败/未完成"）；③ `ai:ask` 同样改用 waitDetail（AI 对话不再报 demo not found，自动等解析完成再回答）；④ 转写页按钮：选中 demo 未 ready 时禁用 + hover 提示"尚未解析完成"（runTranscribe/runSplit 内也加守卫）；⑤ i18n zh/en 新增 notReadyHint/transcribeHint。
+- 回归: typecheck ✓ / build ✓ / dist:zip ✓。待用户实机验证。
+
+## 本轮十四补2（转写链路：分割复用 + 重复修复 + 语言选择）✅ 待 git 提交
+- **分割后转写仍卡（根因）**: ① `transcribeDemo` 无条件重跑 `extractVoice`（csgove 重新提取 100MB+/玩家，还先 `fs.rm` 全删）；② 重跑 `detectSpeech` VAD——分割结果（detail.voice 无文字段）完全没被复用；③ `normalizeWav` 每次全量读 WAV 文件（100MB+）。
+- **修复**: ① `extractVoice` 缓存复用——voices/<id>/ 已有非空 WAV 且比 demo 新 → 跳过 csgove；② `transcribeDemo` 优先用 detail.voice 无文字段作切分（跳过 VAD），无分割才 detectSpeech；③ `normalizeWav` 只读 44B 头判断格式（16bit 直接返回）。
+- **★"一段话转写两次"根因（UI 层）**: `runTranscribe` 完成后未清 `liveSegs`（转写过程实时预览事件累积），`allVoice = [...base, ...liveSegs]` → 整个列表翻倍。修复: 转写完成 setLiveSegs([]) + allVoice 按 player|timeSec 去重兜底。
+- **★段边界错位（引擎层）**: 紧凑 WAV 多段无缝拼接，whisper 段边界识别差（上句延续到下段 → 文本重复/错位）。修复: `buildCompactWav` 段间插入 0.3s 静音（COMPACT_PAD_SEC），`mapCompactSegments` 映射同步计入。
+- **转写语言选择**: settings.asr.language（默认 auto）；设置页下拉（自动/简体中文 zh/英/日/韩/俄/法等）；本地 whisper `-l <lang>`；云端 multipart 加 language 字段（auto 不传）。中文 demo 选 zh 避免繁体输出。旧配置 deepMerge 自动补默认值。
+- 回归: typecheck ✓ / build ✓ / dist:zip ✓（146.9MB）。待用户实机验证（分割后转写不再重新提取、无重复、繁体消失）。
+
+## 本轮十四补1（★手枪局丢失根因：CS2 首回合无 round_prestart）✅ 待 git 提交
+- **★根因（事件时间线实证）**: 该 demo `round_announce_match_start@18.5s` → 9 个击杀 @37-67s（真手枪局，**无 round_prestart**——CS2 首回合隐式开始）→ 首个 `round_prestart@74.3s`（=R2 开始）。解析器 `startRound` 在 `roundsStarted=false` 时**直接覆盖**装着 9 个手枪局击杀的隐式 currentRound 而不入数组 → **手枪局整局丢失**；比分 6:13（19 局）只解析出 18 局。上一轮以为的"热身击杀"其实是手枪局本身。
+- **修复（parser.ts）**: ① `startRound` 首个 prestart 到来前若隐式回合已有击杀/炸弹 → 先 `closeRound` 收进 rounds（5E/完美 demo 无 begin_new_match 时必然触发）；② 换边判定 `prestartCount>12` 改 `rounds.length+1>12`（隐式回合使 prestart 序号与真实回合号差 1，否则 R13 换边错位）；③ 隐式回合击杀过滤：`begin_new_match`/`round_announce_match_start` 之前的击杀丢弃（热身击杀不污染 R1）；④ 手枪局击杀阵营走 pawn 句柄兜底（roundTeamByName 首回合为空），已验证全对。
+- **验证**: 19 回合 ✓（=6:13）、R1=手枪局 9 杀全手枪（USP-S/Glock-18）✓、R2-R19 与旧版 R1-R18 一一对应无回归 ✓、R13 上半场/R14 换边翻转 ✓。`scripts/verify-pistol-round.mjs` 入库回归。PARSER_VERSION 3→4（自动重解析）。
+- **遗留（既有问题，非本次引入）**: 推导 winner 统计 T:14 CT:5 vs 实体比分 6:13 系统性偏差——疑似 5E 平台 CCSTeam 实体读分或 winner 推导问题，待单独排查（击杀记录颜色用户已确认正确）。
+
+## 本轮十四（设置页修复 + 击杀阵营/第一局解析 + 删除头像功能）✅ 待 git 提交
+- **设置页三修**: ①「推荐免费」确认弹窗 createPortal 到 body（`.page` fadeUp 动画的 transform 会让 position:fixed 相对页面而非视口 → 弹窗错位到下拉栏中间）；② API Key 说明下加可点击「获取免费 Key」链接（console.groq.com）；③ 切「自定义 API」时清空 baseUrl → 显示 API 地址 + 模型输入框（原来 baseUrl 残留 groq.com 导致输入框不出现）。转写/AI 两个引擎区同改。
+- **GSI 说明文字** + 转写/AI 引擎下拉精简（推荐免费 Groq / 本地 Whisper / 自定义 API，声明弹窗注明上传第三方+隐私提示）。
+- **击杀记录与选手数据**: 自杀/环境击杀（attackerUid==victimUid 或 65535）→ 显示「自杀」+ 空攻击者；选手数据阵营颜色与击杀记录互换（此前开局相反）；拆弹回合图标改 🔧 emoji。
+- **★第一局（R1/手枪局）解析修复**: 解析器升级为实时跟踪击杀阵营；`PARSER_VERSION=3` 写入详情缓存，版本不匹配自动视为无缓存 → 强制重新解析（parse/parseAll/detail 三处）；详情页缓存失效时自动重解析并轮询回填。旧实例需重启应用才生效（内存缓存不自动重读）。
+- **删除/恢复调整**（用户拍板）: ① **demo 卡片地图名左边的正方形地图徽标（MapGlyph 雷达风 SVG 轮廓）整条删除**——卡片 JSX、mapBadge()/MapGlyph() 组件（134 行 SVG）、hud.css .map-badge 全部规则（保留 mapName 文字与 inferMap/MAP_BADGE_CLASS 推断逻辑）；② 玩家头像曾误删，**用户要求后已全部恢复**——Avatar 组件 img 渲染 + avatar prop 还原，DemoDetailPage（选手数据表 20px/语音行 16px/选手弹窗 46px）与 TranscriptPage（VoiceRow/ChatRow 18px）传参还原（有真实头像显示图片，无则首字母圆标兜底）。
+- 回归: typecheck ✓ / build ✓ / dist:zip ✓（146.9MB）。待用户实机验证。
+
 ## 本轮十三补9（★真机 HUD 显示 + UI 定型）✅ 待 git 提交
 - **★真机验证成功（诊断脚本 diag-play-hud.mjs 驱动）**: 游戏内 HUD 显示！日志定位最终 bug —— **Panorama Panel API 是 `BHasClass()` 不是 `HasClass()`**（TypeError 中断渲染）；修复后说话者胶囊出现。此错误同时证明 VPK/数据/JS 链路全通。
 - **参数顺序坑**: `steam -applaunch` 透传时 **`+exec` 必须放最后**（`-applaunch 730 -insecure -novid -console -consolelog dsh_hud.log +exec dsh-play.cfg`）；+exec 后置参数被吞（SwiftDemoUIPro 同款规则）。`-console` 让游戏内按 ~ 看 Panorama 错误。

@@ -488,140 +488,6 @@ const MAP_BADGE_CLASS: Record<string, string> = {
   overpass: 'm-overpass'
 }
 
-function mapBadge(mapName?: string): { cls: string; abbr: string } {
-  const key = (mapName ?? '').toLowerCase()
-  const cls = MAP_BADGE_CLASS[key] ?? 'm-default'
-  const abbr = mapName
-    ? mapName.replace(/^de_/, '').slice(0, 2).toUpperCase()
-    : '??'
-  return { cls, abbr }
-}
-
-/**
- * 地图小地图图标：每张地图一幅简化俯视轮廓（雷达图风格），替代文字缩写。
- * 44×44 viewBox，白色线条 + 炸弹点圆点；未知地图用山形兜底。
- */
-function MapGlyph({ map }: { map?: string }) {
-  const key = (map ?? '').toLowerCase().replace(/^de_/, '')
-  const stroke = {
-    stroke: 'rgba(255,255,255,0.92)',
-    strokeWidth: 1.7,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    fill: 'none'
-  }
-  const site = { fill: 'rgba(255,255,255,0.95)', stroke: 'none' }
-  switch (key) {
-    case 'dust2':
-      return (
-        <svg viewBox="0 0 44 44" width="100%" height="100%">
-          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
-          <path d="M6 15h32M6 29h32" {...stroke} />
-          <path d="M15 6v38" {...stroke} />
-          <path d="M29 6v38" {...stroke} />
-          <path d="M6 15L15 29M38 29L29 15" {...stroke} strokeDasharray="2 2" opacity={0.6} />
-          <circle cx="10.5" cy="10.5" r="2.1" {...site} />
-          <circle cx="33.5" cy="33.5" r="2.1" {...site} />
-        </svg>
-      )
-    case 'mirage':
-      return (
-        <svg viewBox="0 0 44 44" width="100%" height="100%">
-          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
-          <path d="M22 6v32" {...stroke} />
-          <path d="M6 13h32M6 31h32" {...stroke} />
-          <path d="M6 13h9M35 13h-9M6 31h9M35 31h-9" {...stroke} strokeDasharray="2 2" opacity={0.55} />
-          <circle cx="9.5" cy="25" r="2.1" {...site} />
-          <circle cx="34.5" cy="19" r="2.1" {...site} />
-        </svg>
-      )
-    case 'inferno':
-      return (
-        <svg viewBox="0 0 44 44" width="100%" height="100%">
-          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
-          <path d="M6 24L24 6M6 38L38 6" {...stroke} />
-          <path d="M38 24L24 38" {...stroke} />
-          <path d="M24 6L30 12M30 12l-6 6M30 12l6 6" {...stroke} strokeDasharray="2 2" opacity={0.55} />
-          <circle cx="9" cy="20" r="2.1" {...site} />
-          <circle cx="35" cy="28" r="2.1" {...site} />
-        </svg>
-      )
-    case 'anubis':
-      return (
-        <svg viewBox="0 0 44 44" width="100%" height="100%">
-          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
-          <path d="M10 22q6-5 12 0t12 0" {...stroke} />
-          <path d="M10 30q6-5 12 0t12 0" {...stroke} strokeDasharray="2 2" opacity={0.55} />
-          <path d="M22 6v12M22 32v6" {...stroke} />
-          <circle cx="9.5" cy="12" r="2.1" {...site} />
-          <circle cx="34.5" cy="34" r="2.1" {...site} />
-        </svg>
-      )
-    case 'nuke':
-      return (
-        <svg viewBox="0 0 44 44" width="100%" height="100%">
-          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
-          <circle cx="22" cy="22" r="9" {...stroke} />
-          <circle cx="22" cy="22" r="3.4" {...stroke} />
-          <path d="M22 13v-7M22 31v7" {...stroke} />
-          <path d="M13 22H6M31 22h7" {...stroke} />
-          <circle cx="14" cy="10" r="2.1" {...site} />
-          <circle cx="30" cy="34" r="2.1" {...site} />
-        </svg>
-      )
-    case 'ancient':
-      return (
-        <svg viewBox="0 0 44 44" width="100%" height="100%">
-          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
-          <path d="M6 15h32M6 29h32" {...stroke} />
-          <path d="M16 15v14M28 15v14" {...stroke} />
-          <path d="M6 22h10M28 22h10" {...stroke} />
-          <circle cx="9.5" cy="34.5" r="2.1" {...site} />
-          <circle cx="34.5" cy="9.5" r="2.1" {...site} />
-        </svg>
-      )
-    case 'train':
-      return (
-        <svg viewBox="0 0 44 44" width="100%" height="100%">
-          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
-          <path d="M6 14h32M6 30h32" {...stroke} />
-          <path d="M14 14v16M30 14v16" {...stroke} />
-          <path d="M14 6v8M14 30v8M30 6v8M30 30v8" {...stroke} strokeDasharray="2 2" opacity={0.55} />
-          <circle cx="9.5" cy="10" r="2.1" {...site} />
-          <circle cx="34.5" cy="34" r="2.1" {...site} />
-        </svg>
-      )
-    case 'vertigo':
-      return (
-        <svg viewBox="0 0 44 44" width="100%" height="100%">
-          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
-          <rect x="13" y="13" width="18" height="18" rx="3" {...stroke} />
-          <path d="M22 6v7M22 31v7M6 22h7M31 22h7" {...stroke} />
-          <path d="M13 22H6M31 22h7" {...stroke} strokeDasharray="2 2" opacity={0.55} />
-          <circle cx="22" cy="22" r="2.1" {...site} />
-        </svg>
-      )
-    case 'overpass':
-      return (
-        <svg viewBox="0 0 44 44" width="100%" height="100%">
-          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
-          <path d="M6 14h32M6 30h32" {...stroke} />
-          <path d="M20 6v38" {...stroke} />
-          <path d="M20 14l-7 8M20 14l7 8" {...stroke} strokeDasharray="2 2" opacity={0.55} />
-          <circle cx="10" cy="37" r="2.1" {...site} />
-          <circle cx="34" cy="7" r="2.1" {...site} />
-        </svg>
-      )
-    default:
-      return (
-        <svg viewBox="0 0 44 44" width="100%" height="100%">
-          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
-          <path d="M6 34L17 14l7 12 4-6 10 14z" {...stroke} />
-          <circle cx="33.5" cy="10.5" r="2.1" {...site} />
-        </svg>
-      )
-  }
-}
 
 /** 未解析时从文件名推断地图（文件名常含 de_xxx；纯数字文件名的平台 demo 推不出返回 undefined） */
 function inferMap(fileName: string): string | undefined {
@@ -664,7 +530,6 @@ function DemoCard({
   const [menuOpen, setMenuOpen] = useState(false)
   // 未解析时用文件名推断地图（已解析用真实 mapName）
   const mapName = demo.mapName ?? inferMap(demo.fileName)
-  const badge = mapBadge(mapName)
 
   // 点击外部关闭菜单
   useEffect(() => {
@@ -722,9 +587,6 @@ function DemoCard({
 
       {/* 单卡操作菜单（⋯）：放在 top 行比分右侧，不遮挡比分/统计 */}
       <div className="top">
-        <span className={`map-badge ${badge.cls}`}>
-          <MapGlyph map={mapName} />
-        </span>
         <div style={{ minWidth: 0 }}>
           <div className="map">{mapName ?? '—'}</div>
           <div className="file" title={demo.path}>

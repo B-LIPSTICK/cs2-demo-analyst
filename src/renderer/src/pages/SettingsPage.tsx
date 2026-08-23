@@ -1,7 +1,65 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Btn, IcFolder, IcPlus, IcRefresh, Panel, SectionHead, Tag, Toggle, useToast } from '@/components/ui'
 import { useT, type Lang } from '@/i18n'
 import type { Settings } from '@shared/types'
+
+/** 弹窗：createPortal 到 body，fixed 相对视口居中（避免被 .page 的 transform 动画干扰） */
+function Modal({
+  title,
+  body,
+  onClose,
+  onConfirm,
+  confirmLabel
+}: {
+  title: string
+  body: string
+  onClose: () => void
+  onConfirm: () => void
+  confirmLabel: string
+}) {
+  const t = useT()
+  return createPortal(
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 999,
+        background: 'rgba(0,0,0,0.55)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: 460,
+          maxWidth: '92vw',
+          background: 'var(--bg-2)',
+          border: '1px solid var(--line-1)',
+          borderRadius: 12,
+          padding: 20
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 10 }}>{title}</div>
+        <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.8, whiteSpace: 'pre-line' }}>
+          {body}
+        </div>
+        <div className="flex" style={{ gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+          <Btn variant="ghost" size="sm" onClick={onClose}>
+            {t.t('common.cancel')}
+          </Btn>
+          <Btn variant="accent" size="sm" onClick={onConfirm}>
+            {confirmLabel}
+          </Btn>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
 
 const ENGINE_ROWS: { kind: string; label: string }[] = [
   { kind: 'csgove', label: 'settings.engCsgove' },
@@ -58,6 +116,40 @@ export function SettingsPage({ settings }: { settings: Settings }) {
 
   const setAsr = (patch: Partial<Settings['asr']>) => {
     set({ asr: { ...draft.asr, ...patch } })
+  }
+
+  // 推荐免费（Groq）声明弹窗
+  const [showRecModal, setShowRecModal] = useState(false)
+  const pickRecommended = () => {
+    if (draft.asr.engine === 'cloud' && draft.asr.cloudBaseUrl.includes('groq.com')) {
+      // 已选推荐：直接确认（弹窗已展示过）
+      return
+    }
+    setShowRecModal(true)
+  }
+  const confirmRecommended = () => {
+    setAsr({
+      engine: 'cloud',
+      cloudBaseUrl: 'https://api.groq.com/openai/v1',
+      cloudModel: 'whisper-large-v3-turbo'
+    })
+    setShowRecModal(false)
+    toast.push(t.t('settings.recommendedSet'))
+  }
+
+  // AI 推荐免费（Groq llama）声明弹窗
+  const [showAiRecModal, setShowAiRecModal] = useState(false)
+  const pickAiRecommended = () => {
+    if (draft.ai.baseUrl.includes('groq.com')) return
+    setShowAiRecModal(true)
+  }
+  const confirmAiRecommended = () => {
+    setAi({
+      baseUrl: 'https://api.groq.com/openai/v1',
+      model: 'llama-3.3-70b-versatile'
+    })
+    setShowAiRecModal(false)
+    toast.push(t.t('settings.aiRecommendedSet'))
   }
 
   const setAi = (patch: Partial<Settings['ai']>) => {
@@ -199,9 +291,15 @@ export function SettingsPage({ settings }: { settings: Settings }) {
         <div className="set-row">
           <div className="info">
             <div className="t">{t.t('settings.asrEngine')}</div>
-            <div className="d">{t.t('settings.keyHint')}</div>
+            <div className="d">{t.t('settings.asrEngineHint')}</div>
           </div>
           <div className="seg">
+            <span
+              className={`seg-item ${draft.asr.engine === 'cloud' && draft.asr.cloudBaseUrl.includes('groq.com') ? 'on' : ''}`}
+              onClick={() => pickRecommended()}
+            >
+              {t.t('settings.asrRecommended')}
+            </span>
             <span
               className={`seg-item ${draft.asr.engine === 'local' ? 'on' : ''}`}
               onClick={() => setAsr({ engine: 'local' })}
@@ -209,12 +307,38 @@ export function SettingsPage({ settings }: { settings: Settings }) {
               {t.t('settings.asrLocal')}
             </span>
             <span
-              className={`seg-item ${draft.asr.engine === 'cloud' ? 'on' : ''}`}
-              onClick={() => setAsr({ engine: 'cloud' })}
+              className={`seg-item ${draft.asr.engine === 'cloud' && !draft.asr.cloudBaseUrl.includes('groq.com') ? 'on' : ''}`}
+              onClick={() => setAsr({ engine: 'cloud', cloudBaseUrl: '' })}
             >
-              {t.t('settings.asrCloud')}
+              {t.t('settings.asrCustom')}
             </span>
           </div>
+        </div>
+
+        {/* 转写语言（本地/云端通用）：中文 demo 选简体中文避免输出繁体 */}
+        <div className="set-row">
+          <div className="info">
+            <div className="t">{t.t('settings.asrLanguage')}</div>
+            <div className="d">{t.t('settings.asrLanguageHint')}</div>
+          </div>
+          <select
+            className="select"
+            style={{ width: 220 }}
+            value={draft.asr.language ?? 'auto'}
+            onChange={(e) => setAsr({ language: e.target.value })}
+          >
+            <option value="auto">{t.t('settings.langAuto')}</option>
+            <option value="zh">简体中文</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="ko">한국어</option>
+            <option value="ru">Русский</option>
+            <option value="fr">Français</option>
+            <option value="de">Deutsch</option>
+            <option value="es">Español</option>
+            <option value="pt">Português</option>
+            <option value="it">Italiano</option>
+          </select>
         </div>
 
         {draft.asr.engine === 'local' ? (
@@ -240,7 +364,11 @@ export function SettingsPage({ settings }: { settings: Settings }) {
             <div className="set-row">
               <div className="info">
                 <div className="t">{t.t('settings.cloudApiKey')}</div>
-                <div className="d">{t.t('settings.keyHint')}</div>
+                <div className="d">
+                  {draft.asr.cloudBaseUrl.includes('groq.com')
+                    ? t.t('settings.groqKeyHint')
+                    : t.t('settings.keyHint')}
+                </div>
               </div>
               <input
                 className="input"
@@ -251,28 +379,46 @@ export function SettingsPage({ settings }: { settings: Settings }) {
                 onChange={(e) => setAsr({ cloudApiKey: e.target.value })}
               />
             </div>
-            <div className="set-row">
-              <div className="info">
-                <div className="t">{t.t('settings.cloudBaseUrl')}</div>
+            {draft.asr.cloudBaseUrl.includes('groq.com') && (
+              <div className="set-row">
+                <div className="info">
+                  <a
+                    href="https://console.groq.com/keys"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: 'var(--accent)', fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}
+                  >
+                    {t.t('settings.getKey')} → console.groq.com/keys
+                  </a>
+                </div>
               </div>
-              <input
-                className="input"
-                style={{ width: 300 }}
-                value={draft.asr.cloudBaseUrl}
-                onChange={(e) => setAsr({ cloudBaseUrl: e.target.value })}
-              />
-            </div>
-            <div className="set-row">
-              <div className="info">
-                <div className="t">{t.t('settings.cloudModel')}</div>
-              </div>
-              <input
-                className="input"
-                style={{ width: 300 }}
-                value={draft.asr.cloudModel}
-                onChange={(e) => setAsr({ cloudModel: e.target.value })}
-              />
-            </div>
+            )}
+            {!draft.asr.cloudBaseUrl.includes('groq.com') && (
+              <>
+                <div className="set-row">
+                  <div className="info">
+                    <div className="t">{t.t('settings.cloudBaseUrl')}</div>
+                  </div>
+                  <input
+                    className="input"
+                    style={{ width: 300 }}
+                    value={draft.asr.cloudBaseUrl}
+                    onChange={(e) => setAsr({ cloudBaseUrl: e.target.value })}
+                  />
+                </div>
+                <div className="set-row">
+                  <div className="info">
+                    <div className="t">{t.t('settings.cloudModel')}</div>
+                  </div>
+                  <input
+                    className="input"
+                    style={{ width: 300 }}
+                    value={draft.asr.cloudModel}
+                    onChange={(e) => setAsr({ cloudModel: e.target.value })}
+                  />
+                </div>
+              </>
+            )}
           </>
         )}
       </Panel>
@@ -281,8 +427,32 @@ export function SettingsPage({ settings }: { settings: Settings }) {
       <Panel>
         <div className="set-row">
           <div className="info">
+            <div className="t">{t.t('settings.aiEngine')}</div>
+            <div className="d">{t.t('settings.aiEngineHint')}</div>
+          </div>
+          <div className="seg">
+            <span
+              className={`seg-item ${draft.ai.baseUrl.includes('groq.com') ? 'on' : ''}`}
+              onClick={() => pickAiRecommended()}
+            >
+              {t.t('settings.aiRecommended')}
+            </span>
+            <span
+              className={`seg-item ${!draft.ai.baseUrl.includes('groq.com') ? 'on' : ''}`}
+              onClick={() => setAi({ baseUrl: '' })}
+            >
+              {t.t('settings.aiCustom')}
+            </span>
+          </div>
+        </div>
+        <div className="set-row">
+          <div className="info">
             <div className="t">{t.t('settings.aiApiKey')}</div>
-            <div className="d">{t.t('settings.aiHint')}</div>
+            <div className="d">
+              {draft.ai.baseUrl.includes('groq.com')
+                ? t.t('settings.groqKeyHint')
+                : t.t('settings.aiHint')}
+            </div>
           </div>
           <input
             className="input"
@@ -293,51 +463,69 @@ export function SettingsPage({ settings }: { settings: Settings }) {
             onChange={(e) => setAi({ apiKey: e.target.value })}
           />
         </div>
-        <div className="set-row">
-          <div className="info">
-            <div className="t">{t.t('settings.aiBaseUrl')}</div>
-            <div className="d">{t.t('settings.aiBaseUrlHint')}</div>
+        {draft.ai.baseUrl.includes('groq.com') && (
+          <div className="set-row">
+            <div className="info">
+              <a
+                href="https://console.groq.com/keys"
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: 'var(--accent)', fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}
+              >
+                {t.t('settings.getKey')} → console.groq.com/keys
+              </a>
+            </div>
           </div>
-          <input
-            className="input"
-            style={{ width: 300 }}
-            value={draft.ai.baseUrl}
-            onChange={(e) => setAi({ baseUrl: e.target.value })}
-          />
-        </div>
-        <div className="set-row">
-          <div className="info">
-            <div className="t">{t.t('settings.aiModel')}</div>
-            <div className="d">{t.t('settings.aiModelHint')}</div>
-          </div>
-          {aiModels ? (
-            <select
-              className="input select"
-              style={{ width: 280 }}
-              value={draft.ai.model}
-              onChange={(e) => setAi({ model: e.target.value })}
-            >
-              {!aiModels.includes(draft.ai.model) && (
-                <option value={draft.ai.model}>{draft.ai.model}</option>
+        )}
+        {!draft.ai.baseUrl.includes('groq.com') && (
+          <>
+            <div className="set-row">
+              <div className="info">
+                <div className="t">{t.t('settings.aiBaseUrl')}</div>
+                <div className="d">{t.t('settings.aiBaseUrlHint')}</div>
+              </div>
+              <input
+                className="input"
+                style={{ width: 300 }}
+                value={draft.ai.baseUrl}
+                onChange={(e) => setAi({ baseUrl: e.target.value })}
+              />
+            </div>
+            <div className="set-row">
+              <div className="info">
+                <div className="t">{t.t('settings.aiModel')}</div>
+                <div className="d">{t.t('settings.aiModelHint')}</div>
+              </div>
+              {aiModels ? (
+                <select
+                  className="input select"
+                  style={{ width: 280 }}
+                  value={draft.ai.model}
+                  onChange={(e) => setAi({ model: e.target.value })}
+                >
+                  {!aiModels.includes(draft.ai.model) && (
+                    <option value={draft.ai.model}>{draft.ai.model}</option>
+                  )}
+                  {aiModels.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="input"
+                  style={{ width: 280 }}
+                  value={draft.ai.model}
+                  onChange={(e) => setAi({ model: e.target.value })}
+                />
               )}
-              {aiModels.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              className="input"
-              style={{ width: 280 }}
-              value={draft.ai.model}
-              onChange={(e) => setAi({ model: e.target.value })}
-            />
-          )}
-          <Btn variant="ghost" size="sm" disabled={aiModelsLoading} onClick={pullModels}>
-            {aiModelsLoading ? '…' : aiModels ? t.t('common.refresh') : t.t('settings.aiPullModels')}
-          </Btn>
-        </div>
+              <Btn variant="ghost" size="sm" disabled={aiModelsLoading} onClick={pullModels}>
+                {aiModelsLoading ? '…' : aiModels ? t.t('common.refresh') : t.t('settings.aiPullModels')}
+              </Btn>
+            </div>
+          </>
+        )}
       </Panel>
 
       <SectionHead idx={5}>{t.t('settings.cs2')}</SectionHead>
@@ -443,6 +631,9 @@ export function SettingsPage({ settings }: { settings: Settings }) {
           <div className="info">
             <div className="t">{t.t('settings.cs2Setup')}</div>
             <div className="d">{t.t('settings.cs2SetupHint')}</div>
+            <div className="muted" style={{ fontSize: 11.5, marginTop: 6, lineHeight: 1.7 }}>
+              {t.t('settings.gsiWhat')}
+            </div>
           </div>
           <div className="flex" style={{ gap: 8, flexWrap: 'wrap' }}>
             <Btn variant="ghost" size="sm" onClick={installGsi}>
@@ -577,6 +768,27 @@ export function SettingsPage({ settings }: { settings: Settings }) {
           </div>
         </div>
       </Panel>
+
+      {/* 推荐免费（Groq）声明弹窗 */}
+      {showRecModal && (
+        <Modal
+          title={t.t('settings.recTitle')}
+          body={t.t('settings.recBody')}
+          confirmLabel={t.t('settings.recConfirm')}
+          onClose={() => setShowRecModal(false)}
+          onConfirm={confirmRecommended}
+        />
+      )}
+      {/* AI 推荐免费（Groq llama）声明弹窗 */}
+      {showAiRecModal && (
+        <Modal
+          title={t.t('settings.aiRecTitle')}
+          body={t.t('settings.aiRecBody')}
+          confirmLabel={t.t('settings.aiRecConfirm')}
+          onClose={() => setShowAiRecModal(false)}
+          onConfirm={confirmAiRecommended}
+        />
+      )}
     </div>
   )
 }

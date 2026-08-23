@@ -244,11 +244,34 @@ export async function parseDemo(
         MessagePacketType.GE_SOURCE1_LEGACY_GAME_EVENT,
         MessagePacketType.USER_MESSAGE_SAY_TEXT_2
       ],
-      entityClasses: ['CCSPlayerController', 'CCSTeam', 'CCSGameRulesProxy']
+      entityClasses: ['CCSPlayerController', 'CCSTeam', 'CCSGameRulesProxy', 'CCSPlayerPawn']
     })
   )
 
   const playersByUserid = new Map<number, PlayerSlot>()
+  // ★实时阵营跟踪: uid → 当前阵营（parse 过程中每 32 tick 从 CCSPlayerController 实体采样。
+  //   CS2 demo 的 player_team 事件从不触发（描述符存在但 0 条），实体 m_iTeamNum 是唯一可靠
+  //   且实时（换边 tick 全体翻转）的阵营来源。击杀用「当时」快照着色 → 上半场黄/下半场蓝正确。）
+  //   同时维护 名字 → 阵营（5E 平台个别玩家击杀事件 uid 与实体 idx 存在 -1 偏移，如
+  //   "我也要打残局么" 击杀 uid=3 但实体 idx=4；名字兜底解决）
+  const teamNowByUid = new Map<number, TeamSide>()
+  const teamNowByName = new Map<string, TeamSide>()
+  // ★回合开始阵营分配（round_prestart 时从实体读取；比 32 tick 采样更精确，换边对齐回合）
+  const roundTeamByUid = new Map<number, TeamSide>()
+  const roundTeamByName = new Map<string, TeamSide>()
+  // ★最近实体快照（每 32 tick）：idx → 名字/阵营。击杀名字/阵营直接用此快照 →
+  //   完全绕过 USER_INFO 编号错位（5E 平台 USER_INFO userid 与实体 idx 不对应，
+  //   曾导致 uid=8 击杀被回填成"圣洁首脑"）
+  const idxNameNow = new Map<number, string>()
+  const idxTeamNow = new Map<number, TeamSide>()
+  // ★上半场分配（R1 采样）与名字；R13+ 按回合号翻转（换边时刻实体采样不可靠）
+  const firstHalfTeams = new Map<number, TeamSide>()
+  const firstHalfNames = new Map<number, string>()
+  // 开局阵营（按名字）：选手数据表显示「开局阵营」（黄=开局匪 T，蓝=开局警 CT）
+  const firstHalfTeamByName = new Map<string, TeamSide>()
+  let prestartCount = 0
+  // ★pawn 实体阵营（击杀句柄低 12 位 = pawn 索引；击杀时刻权威阵营）
+  const pawnIdxTeam = new Map<number, TeamSide>()
   const descriptors = new Map<number, { keys: { name: string }[]; name?: string }>()
   const chat: RawChat[] = []
   let voiceCount = 0
@@ -299,6 +322,14 @@ export async function parseDemo(
   const startRound = (tick: number) => {
     if (roundsStarted) {
       closeRound(tick) // 上一回合已由 round_officially_ended 记录 endTick 时此处直接收尾
+    } else if (
+      // ★CS2 首回合没有 round_prestart（首回合隐式从首包开始）：首个 prestart 到来前
+      //   currentRound 里已有击杀/炸弹 = 真实首回合（手枪局）→ 先闭合收进 rounds，
+      //   否则会被下方覆盖丢失（5E/完美 demo 无 begin_new_match 时必然触发）
+      currentRound.kills.length > 0 ||
+      currentRound.bombPlantedTick !== undefined
+    ) {
+      closeRound(tick)
     }
     roundsStarted = true
     currentRound = {
@@ -318,6 +349,65 @@ export async function parseDemo(
 
     switch (name) {
       case 'round_prestart': {
+        // ★每回合开始：从实体读取本回合 T/CT 分配。CS2 竞技固定：R1-12 一队恒 T 另一队恒
+        //   CT，R13 换边翻转。round_prestart 采样在换边时刻可能读到翻转后的实体（换边发生在
+        //   回合间隙），因此用「R1 分配 + 回合号」推导：R1 采样 = 上半场分配，R13+ 翻转。
+        try {
+          const demo = parser.getDemo()
+          const controllers = demo.getEntitiesByClassName('CCSPlayerController') as unknown as {
+            _index: number
+            getField(name: string): unknown
+          }[]
+          const sampled = new Map<number, TeamSide>()
+          for (const c of controllers) {
+            const name = str(c.getField('m_iszPlayerName'))
+            if (!name || name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV' || name === '完美世界竞技平台CSTV') continue
+            const uid = c._index
+            const teamN = int(c.getField('m_iTeamNum'))
+            const team: TeamSide = teamN === 2 ? 'T' : teamN === 3 ? 'CT' : 'NONE'
+            if (team !== 'NONE') sampled.set(uid, team)
+          }
+          if (sampled.size >= 2) {
+            prestartCount++
+            if (firstHalfTeams.size === 0) {
+              // 首次采样（R1）→ 上半场分配
+              for (const [uid, team] of sampled) firstHalfTeams.set(uid, team)
+            }
+            // 本回合分配：前 12 回合用上半场分配；R13+ 翻转。
+            // ★回合号 = rounds.length + 1（startRound 即将赋的 roundNum，含隐式首回合
+            //   时自动 +1）：换边以真实回合号为准，prestartCount 在无 begin_new_match 的
+            //   demo 里会差一（首个 prestart 是 R2 而非 R1）
+            const isSecondHalf = rounds.length + 1 > 12
+            roundTeamByUid.clear()
+            roundTeamByName.clear()
+            for (const [uid, team] of firstHalfTeams) {
+              const t: TeamSide = isSecondHalf ? (team === 'T' ? 'CT' : 'T') : team
+              roundTeamByUid.set(uid, t)
+            }
+            // 名字映射（R1 采样）
+            if (firstHalfNames.size === 0) {
+              for (const c of controllers) {
+                const name = str(c.getField('m_iszPlayerName'))
+                if (!name) continue
+                firstHalfNames.set(c._index, name)
+              }
+            }
+            // 开局阵营（按名字）：供选手数据表显示「开局阵营」（黄=开局匪，蓝=开局警）
+            if (firstHalfTeamByName.size === 0) {
+              for (const [uid, name] of firstHalfNames) {
+                const t = firstHalfTeams.get(uid)
+                if (t) firstHalfTeamByName.set(name, t)
+              }
+            }
+            for (const [uid, name] of firstHalfNames) {
+              const t = roundTeamByUid.get(uid)
+              if (t) roundTeamByName.set(name, t)
+            }
+            void sampled
+          }
+        } catch {
+          /* 实体读取失败时沿用上一回合分配 */
+        }
         startRound(tick)
         break
       }
@@ -345,24 +435,47 @@ export async function parseDemo(
       case 'player_death': {
         const attacker = int(ev.attacker)
         const victim = int(ev.userid)
-        const a = playersByUserid.get(attacker)
-        const v = playersByUserid.get(victim)
+        // ★★超级简单解法：击杀事件的 userid 直接对应 USER_INFO 表的 userid（CS2 官方协议）！
+        //   USER_INFO: userid=3→我也要打残局么、4→多喝热水啊. ...（与实体 _index 有 -1 偏移，
+        //   实体 idx 映射是错位根源）。名字/steamId 一律查 USER_INFO（playersByUserid）；
+        //   阵营用 pawn 句柄（低 12 位 = pawn 实体索引 → 击杀时刻权威 team）。
+        const aInfo = attacker !== 65535 ? playersByUserid.get(attacker) : undefined
+        const vInfo = victim !== 65535 ? playersByUserid.get(victim) : undefined
+        const aName = aInfo?.name
+        const vName = vInfo?.name
+        const aPawnTeam = pawnIdxTeam.get(int(ev.attacker_pawn) & 0xfff)
+        const vPawnTeam = pawnIdxTeam.get(int(ev.userid_pawn) & 0xfff)
         const kill: KillEvent = {
           tick,
           timeSec: tick / TICK_RATE,
           attackerUid: attacker,
-          attackerSteamId: a?.steamId,
-          attackerName: a?.name,
-          attackerTeam: a?.team ?? 'NONE',
+          attackerSteamId: aInfo?.steamId,
+          attackerName: aName,
+          // ★击杀时刻阵营：用「名字 → 回合分配」（R1 采样 + R13 换边翻转，100% 一致率验证），
+          //   pawn 句柄低 12 位在换边后可能映射到错误 pawn 实体（索引复用），仅作兜底
+          attackerTeam:
+            (aName ? roundTeamByName.get(aName) : undefined) ??
+            aPawnTeam ??
+            'NONE',
           victimUid: victim,
-          victimSteamId: v?.steamId,
-          victimName: v?.name,
-          victimTeam: v?.team ?? 'NONE',
+          victimSteamId: vInfo?.steamId,
+          victimName: vName,
+          victimTeam:
+            (vName ? roundTeamByName.get(vName) : undefined) ??
+            vPawnTeam ??
+            'NONE',
           assisterUid: int(ev.assister) !== 65535 ? int(ev.assister) : undefined,
           weapon: weaponName(ev.weapon),
           headshot: Boolean(ev.headshot),
           throughSmoke: Boolean(ev.thrusmoke),
           roundNum: currentRound.roundNum
+        }
+        // 隐式首回合（首个 prestart 到来前）只保留比赛开始后的击杀：
+        // 热身击杀不属于任何真实回合，进 R1 会污染手枪局数据
+        if (!roundsStarted) {
+          const matchStartForImplicit =
+            lastBeginNewMatchTick >= 0 ? lastBeginNewMatchTick : lastMatchStartTick
+          if (matchStartForImplicit >= 0 && tick < matchStartForImplicit) break
         }
         // 中途不做统计（5E 的 USER_INFO/实体编号可能错位，统计在解析完成后统一按最终玩家表计算）
         currentRound.kills.push(kill)
@@ -421,6 +534,105 @@ export async function parseDemo(
       // 注：Steam 头像匹配移到「完成后补全玩家」之后（玩家表最终确定后再挂）
       // 注：5E 等平台的完整玩家列表在 parse 结束后才可从实体读取（解析中途实体不全），
       // 完成后补全逻辑见「完成后补全玩家」段落。
+    }
+
+    // ★USER_INFO 持续刷新（CS2 协议：击杀事件 userid 直接对应 USER_INFO 表 userid；
+    //   表是渐进填充的，首个包可能不完整——每次字符串表更新时同步 name/steamId）
+    try {
+      const table = parser.getDemo().stringTableContainer.getByName(StringTableType.USER_INFO.name)
+      if (table) {
+        for (const entry of table.getEntries()) {
+          const value = entry.value as { userid?: number; name?: string; steamid?: unknown }
+          if (!value || !Number.isInteger(value.userid)) continue
+          const uid = value.userid as number
+          const name = typeof value.name === 'string' ? value.name : `player${uid}`
+          if (name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV' || name === '完美世界竞技平台CSTV') continue
+          const slot = playersByUserid.get(uid)
+          if (slot) {
+            // 已有条目（首个包创建）：名字/steamId 以最新 USER_INFO 为准
+            if (name !== slot.name) slot.name = name
+            if (!slot.steamId && value.steamid) slot.steamId = String(value.steamid)
+          } else {
+            playersByUserid.set(uid, {
+              userid: uid,
+              name,
+              steamId: value.steamid ? String(value.steamid) : undefined,
+              team: 'NONE',
+              kills: 0,
+              deaths: 0,
+              assists: 0,
+              headshots: 0,
+              mvp: 0
+            })
+          }
+        }
+      }
+    } catch {
+      /* USER_INFO 可选 */
+    }
+
+    // ★实时阵营 + 玩家表采样（每 32 tick）：
+    //   CS2 demo 不触发 player_team 事件；CCSPlayerController.m_iTeamNum 是唯一可靠且
+    //   实时（换边 tick 全体翻转）的阵营来源。同时用实体补全名字/steamID（USER_INFO 在
+    //   5E 平台编号错位，实体 _index 与击杀事件 userid 一一对应）。
+    //   ★pawn 实体（CCSPlayerPawn）m_iTeamNum 亦实时——击杀事件的 userid_pawn/
+    //   attacker_pawn 句柄低 12 位 = pawn 实体索引 → 击杀时刻的权威阵营
+    //   （5E demo 的击杀 userid 与 controller _index 存在漂移，pawn 句柄最可靠）
+    if (tick % 32 === 0) {
+      try {
+        const demo = parser.getDemo()
+        const controllers = demo.getEntitiesByClassName('CCSPlayerController') as unknown as {
+          _index: number
+          getField(name: string): unknown
+        }[]
+        // pawn 实体阵营快照（句柄低 12 位 = pawn 索引）
+        try {
+          const pawns = demo.getEntitiesByClassName('CCSPlayerPawn') as unknown as {
+            _index: number
+            getField(name: string): unknown
+          }[]
+          for (const p of pawns) {
+            const teamN = int(p.getField('m_iTeamNum'))
+            if (teamN === 2 || teamN === 3) pawnIdxTeam.set(p._index, teamN === 2 ? 'T' : 'CT')
+          }
+        } catch {
+          /* pawn 实体可选 */
+        }
+        for (const c of controllers) {
+          const name = str(c.getField('m_iszPlayerName'))
+          if (!name || name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV' || name === '完美世界竞技平台CSTV') continue
+          const uid = c._index
+          const teamN = int(c.getField('m_iTeamNum'))
+          const team: TeamSide = teamN === 2 ? 'T' : teamN === 3 ? 'CT' : 'NONE'
+          idxNameNow.set(uid, name)
+          if (team !== 'NONE') {
+            teamNowByUid.set(uid, team)
+            teamNowByName.set(name, team)
+            idxTeamNow.set(uid, team)
+          }
+          const steamId = c.getField('m_steamID') ? String(c.getField('m_steamID')) : undefined
+          const slot = playersByUserid.get(uid)
+          if (slot) {
+            // 已有条目：不覆盖名字（USER_INFO/击杀名优先；实体名可能中途变化），只补 team/steamId
+            if (!slot.steamId && steamId) slot.steamId = steamId
+            if (slot.team === 'NONE' && team !== 'NONE') slot.team = team
+          } else {
+            playersByUserid.set(uid, {
+              userid: uid,
+              name,
+              steamId,
+              team,
+              kills: 0,
+              deaths: 0,
+              assists: 0,
+              headshots: 0,
+              mvp: 0
+            })
+          }
+        }
+      } catch {
+        /* 实体读取失败时忽略（USER_INFO 兜底） */
+      }
     }
   })
 
@@ -499,69 +711,88 @@ export async function parseDemo(
     r.roundNum = i + 1
   })
 
-  // 完成后补全玩家：5E 等平台解析中途实体不全（仅 3 个）、USER_INFO 表编号与击杀 userid
-  // 错位（USER_INFO uid=0/1/2 vs 实体 _index=1/2/3...），parse 结束后实体才完整且
-  // 实体 _index 与击杀事件 userid 一一对应（已验证）。因此：
-  //   实体玩家 >= 2 → 用实体重建玩家表（丢弃 USER_INFO 的错位条目）
-  //   实体玩家不足 → 保留 USER_INFO（官方 demo 路径）
-  // 统计（kills/deaths/assists/headshots）统一按最终玩家表计算。
+  // 完成后补全玩家：★USER_INFO 表是玩家身份权威（击杀 userid 直接对应），
+  // 实体 _index 与 USER_INFO userid 存在偏移（5E: 实体 4-13 ↔ USER_INFO 3-12），
+  // 因此不再用实体 idx 重建/覆盖玩家表（那是错位根源）。实体仅用于：
+  //   ① 击杀阵营（pawn 句柄，击杀时刻已取）
+  //   ② 玩家表 team 兜底（按名字匹配，见后）
   try {
     const demo = parser.getDemo()
     const controllers = demo.getEntitiesByClassName('CCSPlayerController') as unknown as {
       _index: number
       getField(name: string): unknown
     }[]
-    const entityPlayers = new Map<number, PlayerSlot>()
     for (const c of controllers) {
       const name = str(c.getField('m_iszPlayerName') ?? c.getField('m_szPlayerName'))
       if (!name || name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV') continue
-      const uid = c._index
       const teamN = int(c.getField('m_iTeamNum'))
-      entityPlayers.set(uid, {
-        userid: uid,
-        name,
-        steamId: c.getField('m_steamID') ? String(c.getField('m_steamID')) : undefined,
-        team: teamN === 2 ? 'T' : teamN === 3 ? 'CT' : 'NONE',
-        kills: 0,
-        deaths: 0,
-        assists: 0,
-        headshots: 0,
-        mvp: 0
-      })
-    }
-    // 实体玩家足够多（≥2 个真人）时优先采用（5E 的 USER_INFO 编号错位不可信）
-    if (entityPlayers.size >= 2) {
-      playersByUserid.clear()
-      for (const [uid, slot] of entityPlayers) playersByUserid.set(uid, slot)
-    } else {
-      // 实体不足：把能对上的实体玩家补进 USER_INFO 表
-      for (const [uid, slot] of entityPlayers) {
-        if (!playersByUserid.has(uid)) playersByUserid.set(uid, slot)
-      }
-    }
-    // 回填击杀：按 uid 填攻/守方名字与阵营
-    for (const r of realRounds) {
-      for (const k of r.kills) {
-        if (k.attackerUid !== undefined) {
-          const a = playersByUserid.get(k.attackerUid)
-          if (a) {
-            k.attackerName = a.name
-            k.attackerTeam = a.team
-            k.attackerSteamId = a.steamId
-          }
-        }
-        if (k.victimUid !== undefined) {
-          const v = playersByUserid.get(k.victimUid)
-          if (v) {
-            k.victimName = v.name
-            k.victimTeam = v.team
-            k.victimSteamId = v.steamId
-          }
-        }
-      }
+      const team: TeamSide = teamN === 2 ? 'T' : teamN === 3 ? 'CT' : 'NONE'
+      // 按名字匹配补 team（USER_INFO 表有该玩家时）
+      const slot = [...playersByUserid.values()].find((s) => s.name === name)
+      if (slot && slot.team === 'NONE' && team !== 'NONE') slot.team = team
     }
   } catch {
     /* 实体缺失时跳过（官方 demo 走 USER_INFO 已足够） */
+  }
+
+  // ★按名字合并玩家表（解决 5E 平台 uid 漂移/幽灵条目）：
+  //   同一玩家在实体采样与 USER_INFO 里可能 uid 不同（如"我也要打残局么"实体 uid=4、
+  //   击杀事件 uid=14），导致幽灵条目 team=NONE 且同名重复。合并规则：
+  //   同名条目取「有 steamId 且 team 非 NONE」的版本（实体采样优先），其余删除；
+  //   击杀统计/回填按 uid 查不到时按名字查。
+  const scoreSlot = (s: PlayerSlot): number => (s.steamId ? 2 : 0) + (s.team !== 'NONE' ? 1 : 0)
+  const nameToSlot = new Map<string, PlayerSlot>()
+  for (const [, slot] of playersByUserid) {
+    const existing = nameToSlot.get(slot.name)
+    if (!existing) {
+      nameToSlot.set(slot.name, slot)
+      continue
+    }
+    // 合并：保留信息更全的（有 steamId + 有 team），删除另一个
+    const keep = scoreSlot(existing) >= scoreSlot(slot) ? existing : slot
+    if (keep === slot) {
+      // 用 keep 替换 map 中的 existing：把 existing 的 uid 也指向 keep
+      for (const [uid2, s2] of playersByUserid) {
+        if (s2 === existing) playersByUserid.set(uid2, keep)
+      }
+    } else {
+      // 保留 existing：把 slot（幽灵）的击杀统计并入 existing
+      existing.kills += slot.kills
+      existing.deaths += slot.deaths
+      existing.assists += slot.assists
+      existing.headshots += slot.headshots
+    }
+    nameToSlot.set(slot.name, keep)
+  }
+
+  // 回填击杀 steamId（名字已在击杀时用实体快照 idxNameNow 填好，勿覆盖——USER_INFO
+  // 编号错位会污染；仅补缺失 steamId 与 NONE 阵营兜底）
+  const slotForName = (uid: number | undefined, name?: string): PlayerSlot | undefined => {
+    if (uid !== undefined) {
+      const s = playersByUserid.get(uid)
+      if (s) return s
+    }
+    return name ? nameToSlot.get(name) : undefined
+  }
+  for (const r of realRounds) {
+    for (const k of r.kills) {
+      if (k.attackerUid !== undefined || k.attackerName) {
+        const a = slotForName(k.attackerUid, k.attackerName)
+        if (a) {
+          if (!k.attackerSteamId) k.attackerSteamId = a.steamId
+          // uid 漂移兜底：实时快照缺失（如 5E 个别玩家击杀 uid 与实体 idx 错位）时
+          // 用最终玩家阵营着色（正常玩家保留击杀时刻快照，不受影响）
+          if (k.attackerTeam === 'NONE' && a.team !== 'NONE') k.attackerTeam = a.team
+        }
+      }
+      if (k.victimUid !== undefined || k.victimName) {
+        const v = slotForName(k.victimUid, k.victimName)
+        if (v) {
+          if (!k.victimSteamId) k.victimSteamId = v.steamId
+          if (k.victimTeam === 'NONE' && v.team !== 'NONE') k.victimTeam = v.team
+        }
+      }
+    }
   }
 
   // 统一统计（对最终玩家表）：kills / deaths / assists / headshots
@@ -573,15 +804,15 @@ export async function parseDemo(
   }
   for (const r of realRounds) {
     for (const k of r.kills) {
-      const a = k.attackerUid !== undefined ? playersByUserid.get(k.attackerUid) : undefined
+      const a = slotForName(k.attackerUid, k.attackerName)
       if (a && k.attackerUid !== k.victimUid) {
         a.kills++
         if (k.headshot) a.headshots++
       }
-      const v = k.victimUid !== undefined ? playersByUserid.get(k.victimUid) : undefined
+      const v = slotForName(k.victimUid, k.victimName)
       if (v) v.deaths++
       if (k.assisterUid !== undefined) {
-        const as = playersByUserid.get(k.assisterUid)
+        const as = slotForName(k.assisterUid)
         if (as && k.assisterUid !== k.attackerUid) as.assists++
       }
     }
@@ -659,11 +890,14 @@ export async function parseDemo(
   await parser.dispose().catch(() => {})
 
   const players: PlayerInfo[] = [...playersByUserid.values()]
-    .filter((s) => !['GOTV', '5EGOTV', 'SourceTV'].includes(s.name))
+    .filter((s) => !['GOTV', '5EGOTV', 'SourceTV'].includes(s.name) && !s.name.includes('CSTV'))
+    .filter((s) => s.kills > 0 || s.deaths > 0 || s.assists > 0 || (s.steamId && s.team !== 'NONE'))
     .map((s) => ({
     steamId: s.steamId ?? '',
     name: s.name,
-    team: s.team,
+    // ★开局阵营（黄=开局匪 T，蓝=开局警 CT）——与击杀记录上半场颜色一致；
+    //   不用最终阵营（换边后相反，导致选手数据与击杀记录颜色反了）
+    team: firstHalfTeamByName.get(s.name) ?? s.team,
     kills: s.kills,
     deaths: s.deaths,
     assists: s.assists,
@@ -673,6 +907,60 @@ export async function parseDemo(
     hsp: s.kills ? Math.round((s.headshots / s.kills) * 100) : 0,
     avatar: s.avatar
   }))
+  // ★按 steamId 去重（实体名中途变化/uid 漂移会产生同名或同 steamId 重复条目）：
+  //   同 steamId 保留 team 非 NONE 且击杀最多的；无 steamId 的同名条目也合并。
+  {
+    const byKey = new Map<string, PlayerInfo>()
+    for (const p of players) {
+      const key = p.steamId || `name:${p.name}`
+      const existing = byKey.get(key)
+      if (!existing) {
+        byKey.set(key, p)
+      } else if (existing.team === 'NONE' && p.team !== 'NONE') {
+        // 优先保留有阵营的（实体采样版本；幽灵条目 team=NONE 但有击杀统计）
+        byKey.set(key, { ...p, kills: existing.kills, deaths: existing.deaths, assists: existing.assists, headshots: existing.headshots, mvp: existing.mvp, score: existing.score, hsp: existing.hsp })
+      } else if (p.team !== 'NONE' && existing.team === p.team && p.kills > existing.kills) {
+        byKey.set(key, p)
+      }
+    }
+    const deduped = [...byKey.values()]
+    // 无 steamId 的同名条目：若与某有 steamId 玩家同名且该玩家 team=NONE，用击杀阵营推断
+    const byName = new Map<string, PlayerInfo[]>()
+    for (const p of deduped) {
+      if (!byName.has(p.name)) byName.set(p.name, [])
+      byName.get(p.name)!.push(p)
+    }
+    const finalPlayers: PlayerInfo[] = []
+    for (const list of byName.values()) {
+      if (list.length === 1) {
+        finalPlayers.push(list[0])
+        continue
+      }
+      // 同名多条：优先有 team 的；若都有 team 取击杀多的
+      const withTeam = list.filter((p) => p.team !== 'NONE')
+      const pick = withTeam.length ? [...withTeam].sort((a, b) => b.kills - a.kills)[0] : [...list].sort((a, b) => b.kills - a.kills)[0]
+      finalPlayers.push(pick)
+    }
+    // ★team=NONE 兜底：按该玩家击杀中出现的阵营推断最终阵营（uid 漂移玩家的实体
+    //   条目可能丢失，但其击杀时刻阵营快照可靠；下半场击杀多 → 最终阵营）
+    const killTeamByName = new Map<string, { T: number; CT: number }>()
+    for (const r of realRounds) {
+      for (const k of r.kills) {
+        if (!k.attackerName || k.attackerTeam === 'NONE') continue
+        const m = killTeamByName.get(k.attackerName) ?? { T: 0, CT: 0 }
+        if (k.attackerTeam === 'T') m.T++
+        else if (k.attackerTeam === 'CT') m.CT++
+        killTeamByName.set(k.attackerName, m)
+      }
+    }
+    for (const p of finalPlayers) {
+      if (p.team !== 'NONE') continue
+      const m = killTeamByName.get(p.name)
+      if (m) p.team = m.CT >= m.T ? 'CT' : 'T'
+    }
+    players.length = 0
+    players.push(...finalPlayers)
+  }
 
   return {
     mapName,

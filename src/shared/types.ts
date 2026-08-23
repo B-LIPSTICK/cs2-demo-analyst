@@ -128,6 +128,8 @@ export interface DemoDetail {
   voice: VoiceSegment[]
   firstTick: number
   lastTick: number
+  /** 解析器版本（library 写缓存时记录；读取时版本不匹配 → 强制重新解析） */
+  parserVersion?: number
 }
 
 // ─── 收藏 ───────────────────────────────────────────────────────────────────
@@ -224,6 +226,8 @@ export interface Settings {
     cloudBaseUrl: string
     cloudApiKey: string
     cloudModel: string
+    /** 转写语言（whisper ISO-639-1 代码；'auto'=自动检测）。中文语音建议 'zh'（简体输出） */
+    language: string
   }
   ai: {
     baseUrl: string
@@ -272,7 +276,8 @@ export const DEFAULT_SETTINGS: Settings = {
     localModel: 'small',
     cloudBaseUrl: 'https://api.groq.com/openai/v1',
     cloudApiKey: '',
-    cloudModel: 'whisper-large-v3-turbo'
+    cloudModel: 'whisper-large-v3-turbo',
+    language: 'auto'
   },
   ai: {
     baseUrl: 'https://api.groq.com/openai/v1',

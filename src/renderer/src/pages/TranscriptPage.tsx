@@ -85,12 +85,18 @@ export function TranscriptPage({
 
   const runTranscribe = async () => {
     if (!demoId) return
+    if (demos.find((d) => d.id === demoId)?.status !== 'ready') {
+      toast.push(t('transcript.notReadyHint'), 'warn')
+      return
+    }
     setTranscribing(true)
     setProgress({ stage: 'voice-extract', done: 0, total: 1 })
     try {
       await window.api.asr.transcribe(demoId)
       toast.push(t('library.transcribeDone'))
-      // 转写完成刷新详情（语音列表更新）
+      // 转写完成刷新详情（语音列表更新）；liveSegs 只是转写过程的实时预览，
+      // 完成后清空，否则与 detail.voice 合并显示会整列表翻倍
+      setLiveSegs([])
       const d = await window.api.library.detail(demoId)
       if (d) setDetail(d)
     } catch (err) {
@@ -104,6 +110,10 @@ export function TranscriptPage({
   /** 语音分割：只提取并切分语音（不转写、无需 API Key），切完可直接逐段听 */
   const runSplit = async () => {
     if (!demoId) return
+    if (demos.find((d) => d.id === demoId)?.status !== 'ready') {
+      toast.push(t('transcript.notReadyHint'), 'warn')
+      return
+    }
     setSplitting(true)
     setProgress({ stage: 'voice-extract', done: 0, total: 1 })
     try {
@@ -121,7 +131,16 @@ export function TranscriptPage({
 
   const allVoice = useMemo<VoiceSegment[]>(() => {
     const base = detail?.voice ?? []
-    return [...base, ...liveSegs]
+    // 去重兜底（防 liveSegs 与 detail.voice 偶发重叠）
+    const seen = new Set<string>()
+    const out: VoiceSegment[] = []
+    for (const v of [...base, ...liveSegs]) {
+      const key = `${v.playerName}|${v.timeSec}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(v)
+    }
+    return out
   }, [detail, liveSegs])
 
   const voicePlayers = useMemo(() => {
@@ -181,6 +200,8 @@ export function TranscriptPage({
   }
 
   const rounds = detail?.rounds ?? []
+  // 当前选中 demo 是否解析完成（未完成时禁转写/分割）
+  const demoReady = Boolean(demos.find((d) => d.id === demoId)?.status === 'ready')
 
   return (
     <div className="page">
@@ -213,17 +234,18 @@ export function TranscriptPage({
           {/* 先分割（提取语音片段），再转写（生成文字） */}
           <Btn
             variant="accent"
-            disabled={!demoId || transcribing || splitting}
+            disabled={!demoId || !demoReady || transcribing || splitting}
             onClick={runSplit}
-            title={t('transcript.splitHint')}
+            title={demoReady ? t('transcript.splitHint') : t('transcript.notReadyHint')}
           >
             <IcMic size={13} />
             {splitting ? t('transcript.splitting') : t('transcript.split')}
           </Btn>
           <Btn
             variant="primary"
-            disabled={!demoId || transcribing || splitting}
+            disabled={!demoId || !demoReady || transcribing || splitting}
             onClick={runTranscribe}
+            title={demoReady ? t('transcript.transcribeHint') : t('transcript.notReadyHint')}
           >
             <IcMic size={13} />
             {transcribing ? t('library.transcribing') : t('library.transcribe')}
