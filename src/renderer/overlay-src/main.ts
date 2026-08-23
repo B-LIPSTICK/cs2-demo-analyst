@@ -21,12 +21,31 @@ interface OverlayState {
 const speakersEl = document.getElementById('speakers')!
 const hintEl = document.getElementById('hint')!
 const hudEl = document.getElementById('hud')!
+const captionEl = document.getElementById('caption')!
 
 function teamCls(team: string): string {
   return team === 'T' ? 't' : team === 'CT' ? 'ct' : ''
 }
 
 function render(state: OverlayState): void {
+  // 字幕：取最近一条正在播（或刚播完）的语音文字
+  const now = state.lines[state.lines.length - 1]
+  if (now) {
+    captionEl.classList.add('on')
+    captionEl.innerHTML = ''
+    const who = document.createElement('span')
+    who.className = `cap-who ${teamCls(now.team)}`
+    who.textContent = now.playerName
+    const txt = document.createElement('span')
+    txt.className = 'cap-txt'
+    txt.textContent = now.text
+    captionEl.appendChild(who)
+    captionEl.appendChild(txt)
+  } else {
+    captionEl.classList.remove('on')
+    captionEl.innerHTML = ''
+  }
+
   // 说话者（语音 HUD）
   const want = new Set(state.speakers.map((s) => s.name))
   const existing = new Map<string, HTMLElement>()

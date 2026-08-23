@@ -7,10 +7,10 @@ import {
   IcChat,
   IcFolder,
   IcJump,
-  IcMic,
   IcTranscript,
   Panel,
   Tag,
+  VoicePlayButton,
   fmtBytes,
   fmtTick,
   fmtTime,
@@ -33,8 +33,6 @@ export function DemoDetailPage({
   const [detail, setDetail] = useState<DemoDetail | null>(null)
   const [selectedRound, setSelectedRound] = useState<number | 'all'>('all')
   const [player, setPlayer] = useState<PlayerInfo | null>(null)
-  const [hudOn, setHudOn] = useState(false)
-  const [panelOn, setPanelOn] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -50,6 +48,17 @@ export function DemoDetailPage({
   const jump = async (tick: number) => {
     const ok = await window.api.live.jumpTick(tick)
     if (!ok) toast.push(t('common.jumpHint'), 'warn')
+  }
+
+  /** 播放：普通模式 = CS2 内置播放器（-console +demoui +playdemo）；工具模式 = VConsole 注入 */
+  const playInCs2 = async () => {
+    const s = await window.api.settings.get()
+    const toolsMode = !!s.cs2?.useToolsMode
+    const r = await window.api.live.launch({ toolsMode, playDemoPath: meta.path })
+    if (r.ok) {
+      if (r.starting) toast.push(t('detail.playStarting'))
+      else toast.push(r.injected ? t('detail.playInjected') : t('detail.playLaunched'))
+    } else toast.push(r.error ?? t('common.error'), 'warn')
   }
 
   const parseAndWait = async () => {
@@ -82,7 +91,9 @@ export function DemoDetailPage({
   const kills: KillEvent[] = round ? round.kills : rounds.flatMap((r) => r.kills)
   // 按时间正序：比赛开始 → 结束
   const sortedKills = [...kills].sort((a, b) => a.tick - b.tick)
-  const voiceSecs = voice.reduce((s, v) => s + (v.endSec - v.timeSec), 0)
+  // 已转写：用转写段累计时长；未转写：回退用解析时检测到的语音时长（meta.voiceSec）
+  const voiceSecs =
+    voice.length > 0 ? voice.reduce((s, v) => s + (v.endSec - v.timeSec), 0) : (meta.voiceSec ?? 0)
 
   return (
     <div className="page">
@@ -110,50 +121,18 @@ export function DemoDetailPage({
               </div>
             </div>
             <div className="flex gap-8" style={{ alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <Btn
-                size="sm"
-                variant="accent"
-                onClick={async () => {
-                  // 普通模式启动并加载 demo（-tools 模式 +playdemo 在部分版本不生效）；
-                  // 需要注入跳转时，用设置页「启动 CS2（-tools）」或自定义启动项
-                  const r = await window.api.live.launch({ toolsMode: false, playDemoPath: meta.path })
-                  if (r.ok) {
-                    toast.push(r.injected ? t('detail.playInjected') : t('detail.playLaunched'))
-                  } else toast.push(r.error ?? t('common.error'), 'warn')
-                }}
-              >
+              <Btn size="sm" variant="accent" onClick={playInCs2}>
                 <IcJump size={12} />
                 {t('detail.playInCs2')}
               </Btn>
               <Btn
                 size="sm"
-                variant={hudOn ? 'primary' : 'accent'}
-                onClick={async () => {
-                  const next = !hudOn
-                  setHudOn(next)
-                  await window.api.overlay.setEnabled(next, next ? id : undefined)
-                  toast.push(next ? t('detail.hudOn') : t('detail.hudOff'))
-                }}
-              >
-                <IcMic size={12} />
-                {t('detail.voiceHud')}
-              </Btn>
-              <Btn
-                size="sm"
-                variant={panelOn ? 'primary' : 'accent'}
-                onClick={async () => {
-                  const next = !panelOn
-                  setPanelOn(next)
-                  await window.api.overlay.setFullPanel(next, next ? id : undefined)
-                  toast.push(next ? t('detail.panelOn') : t('detail.panelOff'))
-                }}
+                variant="primary"
+                onClick={() => onGoTranscript()}
+                title={t('detail.goTranscriptHint')}
               >
                 <IcTranscript size={12} />
-                {t('detail.voicePanel')}
-              </Btn>
-              <Btn size="sm" variant="primary" onClick={() => onGoTranscript()}>
-                <IcTranscript size={12} />
-                {t('library.transcribe')}
+                {t('detail.goTranscript')} →
               </Btn>
               <Btn size="sm" variant="ghost" onClick={() => window.api.app.revealInFolder(meta.path)}>
                 <IcFolder size={12} />
@@ -310,7 +289,12 @@ export function DemoDetailPage({
                       />
                       <span className={`nm ${v.team === 'T' ? 't' : v.team === 'CT' ? 'ct' : ''}`}>{v.playerName}</span>
                     </span>
-                    <span className="txt">{v.text}</span>
+                    <span className={`txt ${v.text ? '' : 'no-text'}`}>{v.text || t('transcript.noText')}</span>
+                    <VoicePlayButton
+                      demoId={id}
+                      seg={{ steamId: v.steamId, playerName: v.playerName, startSec: v.timeSec, endSec: v.endSec }}
+                      size={13}
+                    />
                     <span className="jump">
                       <IcJump size={13} />
                     </span>

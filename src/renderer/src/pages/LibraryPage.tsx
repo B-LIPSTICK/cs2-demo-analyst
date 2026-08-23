@@ -28,7 +28,14 @@ function LibraryPageInner({
   const [loading, setLoading] = useState(true)
   const [favIds, setFavIds] = useState<Set<string>>(new Set())
   const [roots, setRoots] = useState<string[]>([])
-  const [rootFilter, setRootFilter] = useState('')
+  // 目录过滤：默认记住上次选择的目录（localStorage），「全部目录」需手动点
+  const [rootFilter, setRootFilter] = useState<string>(() => {
+    try {
+      return localStorage.getItem('lib.rootFilter') ?? ''
+    } catch {
+      return ''
+    }
+  })
   const [sortMode, setSortMode] = useState<'date' | 'added'>('date')
   const [rootOpen, setRootOpen] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
@@ -91,8 +98,25 @@ function LibraryPageInner({
 
   // 库目录（多目录下拉切换）
   useEffect(() => {
-    window.api.settings.get().then((s) => setRoots(s.libraryRoots ?? [])).catch(() => {})
+    window.api.settings.get().then((s) => {
+      const rs = s.libraryRoots ?? []
+      setRoots(rs)
+      // 记住的目录已不存在 → 回退到第一个目录（而不是全部）
+      setRootFilter((cur) => {
+        if (cur && rs.includes(cur)) return cur
+        return rs[0] ?? ''
+      })
+    }).catch(() => {})
   }, [])
+
+  // 目录选择持久化（下次启动保持上次目录）
+  useEffect(() => {
+    try {
+      localStorage.setItem('lib.rootFilter', rootFilter)
+    } catch {
+      /* noop */
+    }
+  }, [rootFilter])
 
   const toggleFav = async (id: string) => {
     if (favIds.has(id)) {
@@ -297,7 +321,11 @@ function LibraryPageInner({
                 <IcPlus size={13} />
                 {t('library.addRoot')}
               </Btn>
-              <Btn variant="ghost" onClick={load}>
+              <Btn variant="ghost" onClick={async () => {
+                // 真正重新扫描磁盘（旧实现只读内存缓存，新下载的 demo 不出现）
+                await window.api.library.rescan()
+                load()
+              }}>
                 <IcRefresh size={13} />
                 {t('library.rescan')}
               </Btn>
@@ -364,6 +392,10 @@ function LibraryPageInner({
               onParse={() => {
                 window.api.library.parse(d.id)
                 toast.push(t('library.parseStart'))
+              }}
+              onReparse={() => {
+                window.api.library.parse(d.id, true)
+                toast.push(t('library.reparseStart'))
               }}
             />
           ))}
@@ -465,6 +497,132 @@ function mapBadge(mapName?: string): { cls: string; abbr: string } {
   return { cls, abbr }
 }
 
+/**
+ * 地图小地图图标：每张地图一幅简化俯视轮廓（雷达图风格），替代文字缩写。
+ * 44×44 viewBox，白色线条 + 炸弹点圆点；未知地图用山形兜底。
+ */
+function MapGlyph({ map }: { map?: string }) {
+  const key = (map ?? '').toLowerCase().replace(/^de_/, '')
+  const stroke = {
+    stroke: 'rgba(255,255,255,0.92)',
+    strokeWidth: 1.7,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    fill: 'none'
+  }
+  const site = { fill: 'rgba(255,255,255,0.95)', stroke: 'none' }
+  switch (key) {
+    case 'dust2':
+      return (
+        <svg viewBox="0 0 44 44" width="100%" height="100%">
+          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
+          <path d="M6 15h32M6 29h32" {...stroke} />
+          <path d="M15 6v38" {...stroke} />
+          <path d="M29 6v38" {...stroke} />
+          <path d="M6 15L15 29M38 29L29 15" {...stroke} strokeDasharray="2 2" opacity={0.6} />
+          <circle cx="10.5" cy="10.5" r="2.1" {...site} />
+          <circle cx="33.5" cy="33.5" r="2.1" {...site} />
+        </svg>
+      )
+    case 'mirage':
+      return (
+        <svg viewBox="0 0 44 44" width="100%" height="100%">
+          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
+          <path d="M22 6v32" {...stroke} />
+          <path d="M6 13h32M6 31h32" {...stroke} />
+          <path d="M6 13h9M35 13h-9M6 31h9M35 31h-9" {...stroke} strokeDasharray="2 2" opacity={0.55} />
+          <circle cx="9.5" cy="25" r="2.1" {...site} />
+          <circle cx="34.5" cy="19" r="2.1" {...site} />
+        </svg>
+      )
+    case 'inferno':
+      return (
+        <svg viewBox="0 0 44 44" width="100%" height="100%">
+          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
+          <path d="M6 24L24 6M6 38L38 6" {...stroke} />
+          <path d="M38 24L24 38" {...stroke} />
+          <path d="M24 6L30 12M30 12l-6 6M30 12l6 6" {...stroke} strokeDasharray="2 2" opacity={0.55} />
+          <circle cx="9" cy="20" r="2.1" {...site} />
+          <circle cx="35" cy="28" r="2.1" {...site} />
+        </svg>
+      )
+    case 'anubis':
+      return (
+        <svg viewBox="0 0 44 44" width="100%" height="100%">
+          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
+          <path d="M10 22q6-5 12 0t12 0" {...stroke} />
+          <path d="M10 30q6-5 12 0t12 0" {...stroke} strokeDasharray="2 2" opacity={0.55} />
+          <path d="M22 6v12M22 32v6" {...stroke} />
+          <circle cx="9.5" cy="12" r="2.1" {...site} />
+          <circle cx="34.5" cy="34" r="2.1" {...site} />
+        </svg>
+      )
+    case 'nuke':
+      return (
+        <svg viewBox="0 0 44 44" width="100%" height="100%">
+          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
+          <circle cx="22" cy="22" r="9" {...stroke} />
+          <circle cx="22" cy="22" r="3.4" {...stroke} />
+          <path d="M22 13v-7M22 31v7" {...stroke} />
+          <path d="M13 22H6M31 22h7" {...stroke} />
+          <circle cx="14" cy="10" r="2.1" {...site} />
+          <circle cx="30" cy="34" r="2.1" {...site} />
+        </svg>
+      )
+    case 'ancient':
+      return (
+        <svg viewBox="0 0 44 44" width="100%" height="100%">
+          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
+          <path d="M6 15h32M6 29h32" {...stroke} />
+          <path d="M16 15v14M28 15v14" {...stroke} />
+          <path d="M6 22h10M28 22h10" {...stroke} />
+          <circle cx="9.5" cy="34.5" r="2.1" {...site} />
+          <circle cx="34.5" cy="9.5" r="2.1" {...site} />
+        </svg>
+      )
+    case 'train':
+      return (
+        <svg viewBox="0 0 44 44" width="100%" height="100%">
+          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
+          <path d="M6 14h32M6 30h32" {...stroke} />
+          <path d="M14 14v16M30 14v16" {...stroke} />
+          <path d="M14 6v8M14 30v8M30 6v8M30 30v8" {...stroke} strokeDasharray="2 2" opacity={0.55} />
+          <circle cx="9.5" cy="10" r="2.1" {...site} />
+          <circle cx="34.5" cy="34" r="2.1" {...site} />
+        </svg>
+      )
+    case 'vertigo':
+      return (
+        <svg viewBox="0 0 44 44" width="100%" height="100%">
+          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
+          <rect x="13" y="13" width="18" height="18" rx="3" {...stroke} />
+          <path d="M22 6v7M22 31v7M6 22h7M31 22h7" {...stroke} />
+          <path d="M13 22H6M31 22h7" {...stroke} strokeDasharray="2 2" opacity={0.55} />
+          <circle cx="22" cy="22" r="2.1" {...site} />
+        </svg>
+      )
+    case 'overpass':
+      return (
+        <svg viewBox="0 0 44 44" width="100%" height="100%">
+          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
+          <path d="M6 14h32M6 30h32" {...stroke} />
+          <path d="M20 6v38" {...stroke} />
+          <path d="M20 14l-7 8M20 14l7 8" {...stroke} strokeDasharray="2 2" opacity={0.55} />
+          <circle cx="10" cy="37" r="2.1" {...site} />
+          <circle cx="34" cy="7" r="2.1" {...site} />
+        </svg>
+      )
+    default:
+      return (
+        <svg viewBox="0 0 44 44" width="100%" height="100%">
+          <rect x="6" y="6" width="32" height="32" rx="4" {...stroke} />
+          <path d="M6 34L17 14l7 12 4-6 10 14z" {...stroke} />
+          <circle cx="33.5" cy="10.5" r="2.1" {...site} />
+        </svg>
+      )
+  }
+}
+
 /** 未解析时从文件名推断地图（文件名常含 de_xxx；纯数字文件名的平台 demo 推不出返回 undefined） */
 function inferMap(fileName: string): string | undefined {
   const f = fileName.toLowerCase()
@@ -485,7 +643,8 @@ function DemoCard({
   onToggleSelect,
   onToggleFav,
   onRemoveMenu,
-  onParse
+  onParse,
+  onReparse
 }: {
   demo: DemoMeta
   index: number
@@ -498,6 +657,7 @@ function DemoCard({
   onToggleFav: () => void
   onRemoveMenu: () => void
   onParse: () => void
+  onReparse: () => void
 }) {
   const t = useTKey()
   const toast = useToast()
@@ -560,45 +720,11 @@ function DemoCard({
       {/* 选择模式：左上角勾选 */}
       {selectMode && <span className={`card-check ${selected ? 'on' : ''}`}>{selected ? '✓' : ''}</span>}
 
-      {/* 单卡操作菜单（⋯） */}
-      {!selectMode && (
-        <div className="card-menu-wrap">
-          <button
-            className="card-menu-btn"
-            onClick={(e) => {
-              e.stopPropagation()
-              setMenuOpen((v) => !v)
-            }}
-          >
-            ⋯
-          </button>
-          {menuOpen && (
-            <div className="card-menu" onClick={(e) => e.stopPropagation()}>
-              <button
-                className="card-menu-item"
-                onClick={() => {
-                  onToggleFav()
-                  setMenuOpen(false)
-                }}
-              >
-                {fav ? `★ ${t('library.menuUnfav')}` : `☆ ${t('library.menuFav')}`}
-              </button>
-              <button
-                className="card-menu-item danger"
-                onClick={() => {
-                  onRemoveMenu()
-                  setMenuOpen(false)
-                }}
-              >
-                ✕ {t('library.menuRemove')}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
+      {/* 单卡操作菜单（⋯）：放在 top 行比分右侧，不遮挡比分/统计 */}
       <div className="top">
-        <span className={`map-badge ${badge.cls}`}>{badge.abbr}</span>
+        <span className={`map-badge ${badge.cls}`}>
+          <MapGlyph map={mapName} />
+        </span>
         <div style={{ minWidth: 0 }}>
           <div className="map">{mapName ?? '—'}</div>
           <div className="file" title={demo.path}>
@@ -611,6 +737,52 @@ function DemoCard({
           <span className="sep">:</span>
           <span className="ct">{demo.scoreCT ?? 0}</span>
         </div>
+        {!selectMode && (
+          <div className="card-menu-wrap">
+            <button
+              className="card-menu-btn"
+              onClick={(e) => {
+                e.stopPropagation()
+                setMenuOpen((v) => !v)
+              }}
+            >
+              ⋯
+            </button>
+            {menuOpen && (
+              <div className="card-menu" onClick={(e) => e.stopPropagation()}>
+                <button
+                  className="card-menu-item"
+                  onClick={() => {
+                    onToggleFav()
+                    setMenuOpen(false)
+                  }}
+                >
+                  {fav ? `★ ${t('library.menuUnfav')}` : `☆ ${t('library.menuFav')}`}
+                </button>
+                {demo.status === 'ready' && (
+                  <button
+                    className="card-menu-item"
+                    onClick={() => {
+                      onReparse()
+                      setMenuOpen(false)
+                    }}
+                  >
+                    ↻ {t('library.menuReparse')}
+                  </button>
+                )}
+                <button
+                  className="card-menu-item danger"
+                  onClick={() => {
+                    onRemoveMenu()
+                    setMenuOpen(false)
+                  }}
+                >
+                  ✕ {t('library.menuRemove')}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="mid">

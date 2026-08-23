@@ -23,7 +23,7 @@ const api: ApiWithEvents = {
     rescan: () => ipcRenderer.invoke('library:rescan'),
     remove: (id: string, opts?: { deleteFile?: boolean }) =>
       ipcRenderer.invoke('library:remove', id, opts),
-    parse: (id: string) => ipcRenderer.invoke('library:parse', id),
+    parse: (id: string, force?: boolean) => ipcRenderer.invoke('library:parse', id, force),
     parseAll: () => ipcRenderer.invoke('library:parseAll')
   },
   favorites: {
@@ -34,7 +34,10 @@ const api: ApiWithEvents = {
   },
   voice: {
     detect: (id: string) => ipcRenderer.invoke('voice:detect', id),
-    extract: (id: string) => ipcRenderer.invoke('voice:extract', id)
+    extract: (id: string) => ipcRenderer.invoke('voice:extract', id),
+    split: (id: string) => ipcRenderer.invoke('voice:split', id),
+    play: (demoId: string, seg: { steamId?: string; playerName: string; startSec: number; endSec: number }) =>
+      ipcRenderer.invoke('voice:play', demoId, seg)
   },
   asr: {
     transcribe: (id: string, opts?: { players?: string[] }) =>
@@ -82,7 +85,8 @@ const api: ApiWithEvents = {
   },
   app: {
     version: () => ipcRenderer.invoke('app:version'),
-    revealInFolder: (path: string) => ipcRenderer.invoke('app:revealInFolder', path)
+    revealInFolder: (path: string) => ipcRenderer.invoke('app:revealInFolder', path),
+    pickDirectory: () => ipcRenderer.invoke('app:pickDirectory')
   },
   onEvent: <T extends MainEventType>(
     type: T,

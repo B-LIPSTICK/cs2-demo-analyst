@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; media-src 'self' blob: data:"
     />
     <title>Overlay</title>
   </head>
@@ -32,6 +32,8 @@
           </button>
         </div>
       </div>
+      <!-- 字幕条：当前语音转写文字（说话人 + 文本） -->
+      <div id="caption" class="ov-caption"></div>
       <!-- 空态提示：没有语音数据时引导用户 -->
       <div id="hint" class="ov-hint"></div>
     </div>

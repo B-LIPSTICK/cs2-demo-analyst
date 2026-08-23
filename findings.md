@@ -105,6 +105,41 @@
 - 本地 whisper.cpp（base/small/medium）作为离线备选，已接 VAD 静音裁剪提速。
 - csgove 侧车 DLL 需从引擎目录 cwd 运行（已处理）。
 
+## 16. 普通模式 +playdemo 启动参数（2026-08-26 真机验证 + 逆向参考项目）
+
+- **真机结论（本机 CS2）**: `cs2.exe -novid +playdemo dsh-vfy.dem`（裸文件名、无 -insecure）→ **停在主菜单**，进程存活（启动成功但命令没生效）；`+con_logfile dsh_vfy.log` 同时被忽略（全盘无日志文件、convars 无痕迹）→ 该 CS2 版本命令行 `+命令` 不可靠（与此前 tools 模式观察一致，当时因此改走 VConsole 注入）。
+- **cs-demo-manager 源码逆向**（start-counter-strike.ts）: 真实参数 = `-insecure -novid +playdemo "<完整路径>"`（exec shell 形式，路径带引号）。**-insecure 是疑似关键**（secure 模式限制非白名单文件访问）；完整路径 + 引号可规避引擎对命令字符串的空格重解析。
+- **CS2 普通模式无任何官方远程控制通道**: VDM 文件不支持；-netconport/VConsole 仅 -tools（cs-dm 文档确认，这也是他们改用插件的原因）。GSI 只读不写。
+- **cs-demo-manager 的 CS2 控制方案（参考，不采用）**: 自研 DLL 插件 —— 复制 server.dll 到 game\csgo\csdm\bin + gameinfo.gi SearchPaths 加 `Game csgo/csdm` + 启动带 `-insecure`；插件连 WebSocket 服务器，读 demo 旁的 `<name>.dem.json` action 文件（`{tick, cmd}`，如 demo_gototick 123）执行；退出/崩溃时恢复 gameinfo.gi 并删二进制。SwiftDemoUIPro 同类（VPK 注入）。
+- **播放前提**: demo 路径必须全 Basic Latin 字符（cs-dm issue #992；中文路径会失败 → 需先复制到拉丁路径，如 game/csgo/）。
+- **待验证**: 变体矩阵 v1..v5（见 progress.md 本轮八）确定本机 CS2 可接受的启动参数形式。★v1..v5 全部失败（停在主菜单，+con_logfile 始终未生成）→ 该 CS2 版本无 -console 时命令行 +命令不执行。
+
+## 17. 5E 对战平台播放链路逆向（2026-08-26，决定性）
+
+- **来源**: 5E 客户端（Electron）D:\61-5EClient\resources\app.asar; 混淆模块用 Node VM 执行 + 解码器调用解出全部字符串（scripts/asar-decrypt.mjs）。
+- **5E 真实播放参数**（forcePlayDemo，playDemo 模块）:
+  ```
+  spawn(cs2.exe, ["-console", "+demoui", "+playdemo", "<demo完整路径>", "-insecure", <用户附加参数>], {detached:true})
+  ```
+  - demo 路径 = `D:\5EDemocache\<name>.dem`（drive root 无空格; 路径须全 Basic Latin 无空格）;
+  - 启动前检查 CS2 未运行（单实例）; getLauncherType() 拒绝类型 0;
+  - 渲染进程拼串 → IPC `send_cs2_command`（csgoAddon 业务模块）→ 主进程 v2/module/cs2/index.js `run(args)` spawn;
+  - v2/module/steam/index.js 另有 `steam.run(args)=spawn(steam.exe, args)`（-applaunch 730 备用路径）。
+- **待测（v6）**: 5E 原样 `-console +demoui +playdemo <无空格路径> -insecure` 在本机是否成功; 若成功 → 本应用普通模式播放参数即定为此形式（demo 先复制到无空格 Latin 路径，如 D:\5EDemocache）。
+- **★v6/v7 真机验证成功（2026-08-26）**: 该参数形式秒播、无闪退（cs2.exe 直启与 steam.exe -applaunch 730 均可）。**本应用已实施**: 普通模式 = `cs2.exe -console +demoui +playdemo <盘根\dsh-demo\暂存路径> -insecure`（暂存目录用盘根无空格路径，见 live.ts stageDemoForPlayNoSpace）; 详情页/设置页改普通模式默认，overlay 入口已移除（主进程代码保留）。
+- 播放结束退主菜单时 CS2 可能弹「解析消息失败」（demo 消息兼容性提示，不影响播放）。
+
+## 18. 完美平台播放机制与「视角卡死」根因（2026-08-26，决定性）
+
+- **抓真实命令行**（scripts/capture-cs2-cmdline.mjs）: 完美平台启动 CS2 的参数 =
+  `cs2.exe +exec pwa.cfg +exec pwa_userconfig<steamid>.cfg -pwa -condebug +tv_listen_voice_indices -1 +cl_demo_predict 0 -consolelog pwa_<steamid>_<date>.log -consolelog_append -worldwide -exec autoexec`
+  —— **没有 +playdemo！**
+- **pwa.cfg 内容**（game/csgo/cfg/pwa.cfg，每次播放覆盖写）: `playdemo "D:\csgodemocache\<demo>.dem"`（demo 放盘根无空格目录）。
+- **★根因**: `+playdemo` 作为**启动参数**在引擎早期被静默丢弃（demo 系统未就绪）→ 播放器半初始化 → **时间在走但导播镜头不动（视角卡死）**；`+exec <cfg>` 在引擎就绪后执行 cfg 内命令 → playdemo 正常。5E 的 `-console +demoui +playdemo` 形式能播放但同样有视角问题（真机确认）。
+- **★★视角卡死真正根因（2026-08-23 单变量验证）**: CS2 demo 播放预测 **cl_demo_predict（默认 1）干扰导播镜头** → 时间走但镜头不动；**`+cl_demo_predict 0`** 关闭预测后导播正常。同一 demo 完美平台正常（其参数含 `+cl_demo_predict 0`）、我们卡死（缺该参数）。**+playdemo 早期丢弃只是"能播但半初始化"的一层问题，cl_demo_predict 才是镜头问题主因。**
+- **★最终方案（应用已实施）**: 普通模式 = 写 `game/csgo/cfg/dsh-play.cfg`（`playdemo "<盘根 dsh-demo 暂存路径>"`）→ `spawn(cs2.exe, ['+exec','dsh-play.cfg','+cl_demo_predict','0','-novid',...])`; CS2 退出后删 cfg。不需要 -console/+demoui/-insecure。
+- **附带**: CS2 控制台日志参数 = `-consolelog <file>`（写到 game/csgo/），`con_logfile` cvar 在 CS2 无效; 完美平台每个 steamid/天一个 pwa_*.log 保留在 game/csgo/。
+
 ## 15. 打包（离线可行，包体压缩）
 
 - **网络依赖**：electron-builder 默认要下载 electron zip（GitHub 直连在无代理环境 ETIMEDOUT）。解法：`electron-builder.yml` 配 `electronDist: node_modules/electron/dist`（本地 npm 安装的 dist 直接复用），winCodeSign/signtool 用本地缓存 → 离线可打包。

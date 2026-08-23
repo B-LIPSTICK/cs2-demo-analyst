@@ -13,7 +13,7 @@ import type { DemoDetail, DemoMeta, Settings } from '@shared/types'
 import { parseDemo } from './parser'
 import { getMockDetail, getMockLibrary } from './mock'
 import { updateSettings } from './settings'
-import { extractVoice as asrExtract, transcribeDemo } from './asr'
+import { extractVoice as asrExtract, splitVoice as asrSplit, transcribeDemo } from './asr'
 
 export interface LibraryService {
   init(): Promise<void>
@@ -24,10 +24,11 @@ export interface LibraryService {
   setRoots(roots: string[]): Promise<void>
   rescan(): Promise<void>
   remove(id: string, opts?: { deleteFile?: boolean }): Promise<void>
-  parse(id: string): Promise<void>
+  parse(id: string, force?: boolean): Promise<void>
   parseAll(): Promise<void>
   detectVoice(id: string): Promise<{ hasVoice: boolean; voiceSec: number }>
   extractVoice(id: string): Promise<number>
+  splitVoice(id: string): Promise<number>
   transcribe(id: string, opts?: { players?: string[] }): Promise<void>
   cancelTranscribe(): void
 }
@@ -178,11 +179,13 @@ export function createLibraryService(
         voiceSec: result.voiceSec,
         error: undefined
       })
+      // 重新解析时保留已转写的语音（voice 由转写产生，解析不覆盖）
+      const prevDetail = store.details.get(meta.id)
       store.details.set(meta.id, {
         meta: { ...meta },
         rounds: result.rounds,
         chat: result.chat,
-        voice: [],
+        voice: prevDetail?.voice ?? [],
         firstTick: result.firstTick,
         lastTick: result.lastTick
       })
@@ -322,7 +325,13 @@ export function createLibraryService(
           const name = basename(e.entryName.replace(/\\/g, '/'))
           // id 只依赖 zip 路径 + 内部条目名 + 解压大小（不含 zip mtime/size）：
           // 完美平台会持续改写 zip 文件，若把 mtime 纳入 key，解析结果会被反复清成 pending
-          const id = demoid(`${zp}|${name}`, e.header.size, 0)
+          const newId = demoid(`${zp}|${name}`, e.header.size, 0)
+          // 兼容旧缓存：622fc23 之前 id 含 zip mtime/size（demoid(zp|name, zst.size, zst.mtimeMs)）。
+          // 若命中旧 id 条目（且容器一致），沿用旧 id —— 保留已解析/已转写状态，
+          // 避免「重新扫描把旧条目当失效删光」导致列表清空。
+          const legacyId = demoid(`${zp}|${name}`, zst.size, zst.mtimeMs)
+          const legacy = store.index[legacyId]
+          const id = legacy && legacy.containerPath === zp ? legacyId : newId
           seen.add(id)
           const existing = store.index[id]
           if (existing && existing.containerPath === zp) continue
@@ -395,6 +404,9 @@ export function createLibraryService(
       async extractVoice() {
         return 0
       },
+      async splitVoice() {
+        return 0
+      },
       async transcribe() {},
       cancelTranscribe() {}
     }
@@ -437,12 +449,18 @@ export function createLibraryService(
         }
         dbg(`init index loaded: ${Object.keys(store.index).length}`)
         // 校验缓存文件仍存在
+        // 注意：zip 条目的 id 基于「容器路径+条目名+解压大小」计算（见 scan），
+        // 不能用缓存 .dem 的 path/size/mtime 反推校验（必然不一致 → 启动即清空列表）。
+        // 因此 zip 条目只校验缓存 .dem 文件存在；普通 .dem 才做完整指纹比对。
         for (const id of Object.keys(store.index)) {
           const meta = store.index[id]
           try {
-            const st = await fs.stat(meta.path)
-            if (demoid(meta.path, st.size, st.mtimeMs) !== id) {
-              delete store.index[id]
+            await fs.stat(meta.path)
+            if (!meta.containerPath) {
+              const st = await fs.stat(meta.path)
+              if (demoid(meta.path, st.size, st.mtimeMs) !== id) {
+                delete store.index[id]
+              }
             }
           } catch {
             delete store.index[id]
@@ -502,13 +520,19 @@ export function createLibraryService(
     },
 
     async rescan() {
-      void scan()
+      // 等扫描完成再返回（renderer await 后重新 list 能拿到新结果）
+      await scan()
     },
 
-    /** 手动解析单个 demo（把条目加入解析队列） */
-    async parse(id: string) {
+    /** 手动解析单个 demo（把条目加入解析队列）；force=true 时已解析的也重新解析（刷新统计，保留已转写语音） */
+    async parse(id: string, force = false) {
       const meta = store.index[id]
-      if (!meta || meta.status === 'ready' || meta.status === 'parsing') return
+      if (!meta || meta.status === 'parsing') return
+      if (meta.status === 'ready' && !force) return
+      if (force) {
+        meta.status = 'pending'
+        meta.error = undefined
+      }
       if (!store.queue.some((q) => q.id === id)) store.queue.push(meta)
       void pump()
     },
@@ -573,6 +597,52 @@ export function createLibraryService(
         transcribeSignal?.signal
       )
       return items.length
+    },
+
+    async splitVoice(id: string) {
+      const detail = await this.detail(id)
+      if (!detail) throw new Error('demo not found')
+      const segments = await asrSplit(
+        detail,
+        {
+          progress: (stage, done, total, message) =>
+            emit('asr:progress', { demoId: id, stage, done, total, message }),
+          segment: () => {}
+        },
+        transcribeSignal?.signal
+      )
+      // 分割结果暂存到 detail.voice（无文字；若已有转写结果则合并去重）
+      const cached = store.details.get(id)
+      const existing = new Set(
+        (cached?.voice ?? detail.voice ?? []).map((v) => `${v.playerName}|${v.timeSec}`)
+      )
+      const merged = [...(cached?.voice ?? detail.voice ?? [])]
+      for (const s of segments) {
+        const key = `${s.playerName}|${s.startSec}`
+        if (existing.has(key)) continue
+        merged.push({
+          tick: s.tick,
+          endTick: s.endTick,
+          timeSec: s.startSec,
+          endSec: s.endSec,
+          playerName: s.playerName,
+          steamId: s.steamId,
+          team: s.team,
+          text: '',
+          roundNum: undefined,
+          engine: 'local'
+        })
+        existing.add(key)
+      }
+      merged.sort((a, b) => a.tick - b.tick)
+      if (cached) {
+        cached.voice = merged
+        await persistDetail(cached).catch(() => {})
+      } else {
+        detail.voice = merged
+        await persistDetail(detail).catch(() => {})
+      }
+      return segments.length
     },
 
     async transcribe(id: string, opts?: { players?: string[] }) {

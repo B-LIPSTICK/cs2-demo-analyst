@@ -59,7 +59,8 @@ export function LivePage() {
   }
 
   const launchCs2 = async () => {
-    const r = await window.api.live.launch({ toolsMode: true })
+    const s = await window.api.settings.get()
+    const r = await window.api.live.launch({ toolsMode: !!s.cs2?.useToolsMode })
     if (r.ok) toast.push(t('live.launched'))
     else toast.push(r.error ?? t('common.error'), 'warn')
   }

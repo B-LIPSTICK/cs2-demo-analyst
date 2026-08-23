@@ -148,19 +148,27 @@ export default function App() {
             <div className="app-body">
               <NavRail page={route.page} onNavigate={(p) => navigate(p)} version={version} />
               <main className="page-scroll">
-                {route.page === 'library' && (
+                {/* 页面常驻（display 显隐而非卸载）：切换页面后保留原页面状态
+                    （选中的 demo、筛选、转写进度等不再丢失） */}
+                <div style={{ display: route.page === 'library' ? undefined : 'none' }}>
                   <LibraryPage
                     demoId={route.demoId}
                     onOpenDemo={(id) => navigate('library', id)}
                     onGoTranscript={(id) => navigate('transcript', id)}
                   />
-                )}
-                {route.page === 'transcript' && (
+                </div>
+                <div style={{ display: route.page === 'transcript' ? undefined : 'none' }}>
                   <TranscriptPage initialDemoId={route.demoId} onOpenDemo={(id) => navigate('transcript', id)} />
-                )}
-                {route.page === 'live' && <LivePage />}
-                {route.page === 'ai' && <AiPage onGoSettings={() => navigate('settings')} />}
-                {route.page === 'settings' && <SettingsPage settings={settings} />}
+                </div>
+                <div style={{ display: route.page === 'live' ? undefined : 'none' }}>
+                  <LivePage />
+                </div>
+                <div style={{ display: route.page === 'ai' ? undefined : 'none' }}>
+                  <AiPage onGoSettings={() => navigate('settings')} />
+                </div>
+                <div style={{ display: route.page === 'settings' ? undefined : 'none' }}>
+                  <SettingsPage settings={settings} />
+                </div>
               </main>
             </div>
           </div>

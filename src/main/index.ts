@@ -1,7 +1,7 @@
 /**
  * 主进程入口：窗口、IPC 装配、冒烟模式。
  */
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
 import type { Settings } from '@shared/types'
 import { createLibraryService } from './services/library'
@@ -88,6 +88,9 @@ function registerIpc(): void {
     if (patch.libraryRoots) {
       await library.setRoots(patch.libraryRoots)
     }
+    if (patch.cs2?.installPath !== undefined) {
+      live.setInstallPath(patch.cs2.installPath)
+    }
     // 事件载荷必须带 { settings } 包装（renderer 按 e.settings 读取；
     // 之前发裸对象导致 e.settings=undefined → App setSettings(undefined) → 页面全黑）
     mainWindow?.webContents.send('settings:changed', { settings })
@@ -103,7 +106,7 @@ function registerIpc(): void {
   ipcMain.handle('library:remove', (_e, id: string, opts?: { deleteFile?: boolean }) =>
     library.remove(id, opts)
   )
-  ipcMain.handle('library:parse', (_e, id: string) => library.parse(id))
+  ipcMain.handle('library:parse', (_e, id: string, force?: boolean) => library.parse(id, force))
   ipcMain.handle('library:parseAll', () => library.parseAll())
 
   // 收藏
@@ -129,6 +132,22 @@ function registerIpc(): void {
   // 语音
   ipcMain.handle('voice:detect', (_e, id: string) => library.detectVoice(id))
   ipcMain.handle('voice:extract', (_e, id: string) => library.extractVoice(id))
+  // 语音分割：提取 + VAD 切段（不转写，无需 API Key），返回分段数
+  ipcMain.handle('voice:split', (_e, id: string) => library.splitVoice(id))
+  // 语音切片播放：返回 base64 编码的小 WAV（字符串过 contextBridge 无损；
+  // Buffer 会被序列化成普通对象，renderer 无法还原为可播放的 Blob）
+  ipcMain.handle(
+    'voice:play',
+    async (
+      _e,
+      demoId: string,
+      seg: { steamId?: string; playerName: string; startSec: number; endSec: number }
+    ) => {
+      const { sliceVoiceWav } = await import('./services/asr')
+      const buf = await sliceVoiceWav(demoId, seg.steamId, seg.playerName, seg.startSec, seg.endSec)
+      return buf ? buf.toString('base64') : null
+    }
+  )
 
   // 转写
   ipcMain.handle('asr:transcribe', (_e, id: string, opts?: { players?: string[] }) =>
@@ -165,7 +184,12 @@ function registerIpc(): void {
   ipcMain.handle('live:specGoto', (_e, userid: number) => live.specGoto(userid))
   ipcMain.handle('live:launch', async (_e, opts?: { toolsMode?: boolean; playDemoPath?: string }) => {
     const s = await getSettings()
-    return live.launch(opts, s.cs2.launchArgs ?? '')
+    return live.launch(
+      opts,
+      s.cs2.launchArgs ?? '',
+      s.cs2.installPath,
+      { mode: s.cs2.playMode, resolution: s.cs2.playResolution }
+    )
   })
   ipcMain.handle('live:installGsi', () => live.installGsi())
   ipcMain.handle('live:locateInstall', () => live.locateInstall())
@@ -236,6 +260,14 @@ function registerIpc(): void {
   ipcMain.handle('app:revealInFolder', (_e, path: string) => {
     shell.showItemInFolder(path)
   })
+  // 目录选择（设置页选 CS2 安装路径等）
+  ipcMain.handle('app:pickDirectory', async () => {
+    const res = await dialog.showOpenDialog(mainWindow!, {
+      title: '选择目录',
+      properties: ['openDirectory']
+    })
+    return res.canceled ? null : (res.filePaths[0] ?? null)
+  })
 }
 
 // ─── 生命周期 ──────────────────────────────────────────────────────────────
@@ -257,6 +289,7 @@ if (!gotLock) {
     void library.init()
     void getSettings().then((s) => {
       live.setPorts(s.cs2.vconsolePort, s.cs2.gsiPort)
+      live.setInstallPath(s.cs2.installPath)
       live.start()
       // 开发模式: --vcon-mock 启动模拟控制台并伪装 CS2 运行
       if (process.argv.includes('--vcon-mock')) {

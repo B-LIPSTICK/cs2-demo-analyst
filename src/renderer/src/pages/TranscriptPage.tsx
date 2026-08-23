@@ -6,11 +6,11 @@ import {
   IcChevron,
   IcDownload,
   IcJump,
-  IcLive,
   IcMic,
   IcSearch,
   Panel,
   Tag,
+  VoicePlayButton,
   fmtTick,
   useToast
 } from '@/components/ui'
@@ -35,8 +35,14 @@ export function TranscriptPage({
   const [query, setQuery] = useState('')
   const [liveSegs, setLiveSegs] = useState<VoiceSegment[]>([])
   const [transcribing, setTranscribing] = useState(false)
+  const [splitting, setSplitting] = useState(false)
   const [progress, setProgress] = useState<{ stage: string; done: number; total: number; message?: string } | null>(null)
   const [hasCloudKey, setHasCloudKey] = useState(false)
+
+  // 页面常驻（App 只切换 display）后，从详情页跳转带入新的 demoId 时同步切换
+  useEffect(() => {
+    if (initialDemoId) setDemoId(initialDemoId)
+  }, [initialDemoId])
 
   useEffect(() => {
     window.api.settings.get().then((s) => setHasCloudKey(Boolean(s.asr?.cloudApiKey))).catch(() => {})
@@ -84,10 +90,31 @@ export function TranscriptPage({
     try {
       await window.api.asr.transcribe(demoId)
       toast.push(t('library.transcribeDone'))
+      // 转写完成刷新详情（语音列表更新）
+      const d = await window.api.library.detail(demoId)
+      if (d) setDetail(d)
     } catch (err) {
       toast.push(err instanceof Error ? err.message : String(err), 'err')
     } finally {
       setTranscribing(false)
+      setProgress(null)
+    }
+  }
+
+  /** 语音分割：只提取并切分语音（不转写、无需 API Key），切完可直接逐段听 */
+  const runSplit = async () => {
+    if (!demoId) return
+    setSplitting(true)
+    setProgress({ stage: 'voice-extract', done: 0, total: 1 })
+    try {
+      const n = await window.api.voice.split(demoId)
+      toast.push(t('transcript.splitDone').replace('{n}', String(n)))
+      const d = await window.api.library.detail(demoId)
+      if (d) setDetail(d)
+    } catch (err) {
+      toast.push(err instanceof Error ? err.message : String(err), 'err')
+    } finally {
+      setSplitting(false)
       setProgress(null)
     }
   }
@@ -171,19 +198,31 @@ export function TranscriptPage({
             onChange={(e) => {
               const v = e.target.value
               setDemoId(v || undefined)
-              onOpenDemo(v)
+              // 只更新本地状态，不回写路由（避免页面常驻下路由 demoId 干扰其他入口）
+              if (v) onOpenDemo(v)
             }}
           >
             <option value="">{t('transcript.selectDemo')}</option>
             {demos.map((d) => (
               <option key={d.id} value={d.id}>
-                {d.mapName ?? d.fileName} · {d.fileName}
+                {d.fileName}
+                {d.status === 'ready' && d.mapName ? ` · ${d.mapName}` : d.status === 'pending' ? ' · 待解析' : d.status === 'error' ? ' · 解析失败' : ''}
               </option>
             ))}
           </select>
+          {/* 先分割（提取语音片段），再转写（生成文字） */}
+          <Btn
+            variant="accent"
+            disabled={!demoId || transcribing || splitting}
+            onClick={runSplit}
+            title={t('transcript.splitHint')}
+          >
+            <IcMic size={13} />
+            {splitting ? t('transcript.splitting') : t('transcript.split')}
+          </Btn>
           <Btn
             variant="primary"
-            disabled={!demoId || transcribing}
+            disabled={!demoId || transcribing || splitting}
             onClick={runTranscribe}
           >
             <IcMic size={13} />
@@ -194,17 +233,6 @@ export function TranscriptPage({
               {t('transcript.localSlowHint')}
             </span>
           )}
-          <Btn
-            variant="ghost"
-            onClick={async () => {
-              if (!demoId) return
-              await window.api.overlay.setEnabled(true, demoId)
-              toast.push('OVERLAY ON')
-            }}
-          >
-            <IcLive size={13} />
-            OVERLAY
-          </Btn>
           <Btn variant="ghost" onClick={exportText} disabled={filteredVoice.length === 0}>
             <IcDownload size={13} />
             {t('transcript.export')}
@@ -223,9 +251,7 @@ export function TranscriptPage({
                 <span style={{ fontSize: 12, color: 'var(--text-1)' }}>
                   {progress.stage === 'voice-extract'
                     ? t('transcript.stage.extract')
-                    : progress.stage === 'asr-local'
-                      ? `${t('transcript.stage.asr')} · ${progress.message ?? ''}`
-                      : t('transcript.stage.asr')}
+                    : (progress.message || t('transcript.stage.asr'))}
                 </span>
                 <span className="mono muted" style={{ fontSize: 11 }}>
                   {progress.stage === 'voice-extract' ? '…' : `${progress.done}/${progress.total}`}
@@ -309,7 +335,7 @@ export function TranscriptPage({
               ) : (
                 <div style={{ maxHeight: 560, overflowY: 'auto', padding: '8px 0' }}>
                   {filteredVoice.map((v, i) => (
-                    <VoiceRow key={`${v.tick}-${i}-${i}`} seg={v} tickRate={detail.meta.tickRate ?? 64} onJump={jump} avatar={(detail.meta.players ?? []).find((p) => p.name === v.playerName)?.avatar} />
+                    <VoiceRow key={`${v.tick}-${i}-${i}`} demoId={demoId!} seg={v} tickRate={detail.meta.tickRate ?? 64} onJump={jump} avatar={(detail.meta.players ?? []).find((p) => p.name === v.playerName)?.avatar} />
                   ))}
                 </div>
               )
@@ -330,11 +356,13 @@ export function TranscriptPage({
 }
 
 function VoiceRow({
+  demoId,
   seg,
   tickRate,
   onJump,
   avatar
 }: {
+  demoId: string
   seg: VoiceSegment
   tickRate: number
   onJump: (tick: number) => void
@@ -356,7 +384,11 @@ function VoiceRow({
         </span>
         {seg.roundNum !== undefined && <Tag tone="ghost">R{seg.roundNum}</Tag>}
       </span>
-      <span className="txt">{seg.text}</span>
+      <span className={`txt ${seg.text ? '' : 'no-text'}`}>{seg.text || t('transcript.noText')}</span>
+      <VoicePlayButton
+        demoId={demoId}
+        seg={{ steamId: seg.steamId, playerName: seg.playerName, startSec: seg.timeSec, endSec: seg.endSec }}
+      />
       <button className="icon-btn jump" onClick={() => onJump(seg.tick)} title={t('transcript.jump')}>
         <IcJump size={13} />
       </button>

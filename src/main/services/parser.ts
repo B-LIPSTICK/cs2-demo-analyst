@@ -88,6 +88,8 @@ const WEAPON_NAMES: Record<string, string> = {
   famas: 'FAMAS',
   sg556: 'SG 553',
   aug: 'AUG',
+  scar20: 'SCAR-20',
+  g3sg1: 'G3SG1',
   knife: 'Knife',
   knife_t: 'Knife',
   bayonet: 'Knife',
@@ -110,6 +112,30 @@ const CHAT_CHANNELS: Record<string, ChatChannel> = {
   Cstrike_Chat_CT_Dead: 'CT',
   Cstrike_Chat_T: 'T',
   Cstrike_Chat_T_Dead: 'T'
+}
+
+/**
+ * 武器名规范化：官方 demo 事件里是 ak47/m4a1_silencer 等；
+ * 5E 等平台带皮肤前缀/后缀（5e_2024pass5_awp、ak47_tx12、5e_2024pass5_knife_skeleton），
+ * 需剥掉皮肤部分再查表。
+ */
+function weaponName(raw: unknown): string {
+  const s = String(raw ?? '').toLowerCase()
+  if (!s || s === 'world') return '—'
+  if (WEAPON_NAMES[s]) return WEAPON_NAMES[s]
+  // 剥 5E 皮肤前缀（如 5e_2024pass5_ / 5e_2025_）与 _tx12/_txz12/_vip 等皮肤后缀
+  const stripped = s
+    .replace(/^5e_20\d{2}pass\d+_/, '')
+    .replace(/^5e_[a-z0-9]+_/, '')
+    .replace(/_(txz?\d*|fm\d*|vip|gold|blood|dawn|volt|emerald|chroma|prem|elite|s\d+)$/, '')
+  if (WEAPON_NAMES[stripped]) return WEAPON_NAMES[stripped]
+  // 兜底：从长到短匹配已知武器名子串（如 5e_2024pass5_knife_skeleton → knife）
+  const keys = Object.keys(WEAPON_NAMES).sort((a, b) => b.length - a.length)
+  for (const k of keys) {
+    if (stripped.includes(k)) return WEAPON_NAMES[k]
+  }
+  if (stripped.includes('knife')) return 'Knife'
+  return s
 }
 
 // ─── 内部累积结构 ────────────────────────────────────────────────────────────
@@ -226,8 +252,9 @@ export async function parseDemo(
   const descriptors = new Map<number, { keys: { name: string }[]; name?: string }>()
   const chat: RawChat[] = []
   let voiceCount = 0
-  let voiceMinTick = Infinity
-  let voiceMaxTick = -Infinity
+  // 真实累计语音时长：收集「有语音数据的 tick」去重累加（同 tick 多帧只算一次），
+  // 而非首尾跨度（跨度会把静音/游戏过程也算进去，导致「语音 1700s」的假象）
+  const voiceTicks = new Set<number>()
   let firstTick = Infinity
   let lastTick = 0
   let mapName: string | undefined
@@ -323,27 +350,21 @@ export async function parseDemo(
         const kill: KillEvent = {
           tick,
           timeSec: tick / TICK_RATE,
+          attackerUid: attacker,
           attackerSteamId: a?.steamId,
           attackerName: a?.name,
           attackerTeam: a?.team ?? 'NONE',
+          victimUid: victim,
           victimSteamId: v?.steamId,
           victimName: v?.name,
           victimTeam: v?.team ?? 'NONE',
-          weapon: (WEAPON_NAMES[str(ev.weapon).toLowerCase()] ?? str(ev.weapon)) || '—',
+          assisterUid: int(ev.assister) !== 65535 ? int(ev.assister) : undefined,
+          weapon: weaponName(ev.weapon),
           headshot: Boolean(ev.headshot),
           throughSmoke: Boolean(ev.thrusmoke),
           roundNum: currentRound.roundNum
         }
-        if (a && attacker !== victim) {
-          a.kills++
-          if (kill.headshot) a.headshots++
-        }
-        if (v) v.deaths++
-        const assister = int(ev.assister)
-        if (assister !== 65535) {
-          const as = playersByUserid.get(assister)
-          if (as) as.assists++
-        }
+        // 中途不做统计（5E 的 USER_INFO/实体编号可能错位，统计在解析完成后统一按最终玩家表计算）
         currentRound.kills.push(kill)
         break
       }
@@ -397,24 +418,9 @@ export async function parseDemo(
           }
         }
       }
-      // Steam 头像（SERVER_AVATAR_OVERRIDES 表：key=steamid, value=PNG）
-      try {
-        const avatarTable = parser
-          .getDemo()
-          .stringTableContainer.getByName(StringTableType.SERVER_AVATAR_OVERRIDES.name)
-        if (avatarTable) {
-          for (const entry of avatarTable.getEntries()) {
-            const raw = entry.value as Uint8Array | string | null | undefined
-            if (!raw) continue
-            const b64 = typeof raw === 'string' ? raw : Buffer.from(raw).toString('base64')
-            const uri = b64.startsWith('data:image') ? b64 : `data:image/png;base64,${b64}`
-            const slot = [...playersByUserid.values()].find((p) => p.steamId === String(entry.key))
-            if (slot) slot.avatar = uri
-          }
-        }
-      } catch {
-        /* 头像可选 */
-      }
+      // 注：Steam 头像匹配移到「完成后补全玩家」之后（玩家表最终确定后再挂）
+      // 注：5E 等平台的完整玩家列表在 parse 结束后才可从实体读取（解析中途实体不全），
+      // 完成后补全逻辑见「完成后补全玩家」段落。
     }
   })
 
@@ -456,8 +462,7 @@ export async function parseDemo(
         }
         case MessagePacketType.SVC_VOICE_DATA: {
           voiceCount++
-          if (tick < voiceMinTick) voiceMinTick = tick
-          if (tick > voiceMaxTick) voiceMaxTick = tick
+          voiceTicks.add(tick)
           break
         }
         default:
@@ -493,6 +498,113 @@ export async function parseDemo(
   realRounds.forEach((r, i) => {
     r.roundNum = i + 1
   })
+
+  // 完成后补全玩家：5E 等平台解析中途实体不全（仅 3 个）、USER_INFO 表编号与击杀 userid
+  // 错位（USER_INFO uid=0/1/2 vs 实体 _index=1/2/3...），parse 结束后实体才完整且
+  // 实体 _index 与击杀事件 userid 一一对应（已验证）。因此：
+  //   实体玩家 >= 2 → 用实体重建玩家表（丢弃 USER_INFO 的错位条目）
+  //   实体玩家不足 → 保留 USER_INFO（官方 demo 路径）
+  // 统计（kills/deaths/assists/headshots）统一按最终玩家表计算。
+  try {
+    const demo = parser.getDemo()
+    const controllers = demo.getEntitiesByClassName('CCSPlayerController') as unknown as {
+      _index: number
+      getField(name: string): unknown
+    }[]
+    const entityPlayers = new Map<number, PlayerSlot>()
+    for (const c of controllers) {
+      const name = str(c.getField('m_iszPlayerName') ?? c.getField('m_szPlayerName'))
+      if (!name || name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV') continue
+      const uid = c._index
+      const teamN = int(c.getField('m_iTeamNum'))
+      entityPlayers.set(uid, {
+        userid: uid,
+        name,
+        steamId: c.getField('m_steamID') ? String(c.getField('m_steamID')) : undefined,
+        team: teamN === 2 ? 'T' : teamN === 3 ? 'CT' : 'NONE',
+        kills: 0,
+        deaths: 0,
+        assists: 0,
+        headshots: 0,
+        mvp: 0
+      })
+    }
+    // 实体玩家足够多（≥2 个真人）时优先采用（5E 的 USER_INFO 编号错位不可信）
+    if (entityPlayers.size >= 2) {
+      playersByUserid.clear()
+      for (const [uid, slot] of entityPlayers) playersByUserid.set(uid, slot)
+    } else {
+      // 实体不足：把能对上的实体玩家补进 USER_INFO 表
+      for (const [uid, slot] of entityPlayers) {
+        if (!playersByUserid.has(uid)) playersByUserid.set(uid, slot)
+      }
+    }
+    // 回填击杀：按 uid 填攻/守方名字与阵营
+    for (const r of realRounds) {
+      for (const k of r.kills) {
+        if (k.attackerUid !== undefined) {
+          const a = playersByUserid.get(k.attackerUid)
+          if (a) {
+            k.attackerName = a.name
+            k.attackerTeam = a.team
+            k.attackerSteamId = a.steamId
+          }
+        }
+        if (k.victimUid !== undefined) {
+          const v = playersByUserid.get(k.victimUid)
+          if (v) {
+            k.victimName = v.name
+            k.victimTeam = v.team
+            k.victimSteamId = v.steamId
+          }
+        }
+      }
+    }
+  } catch {
+    /* 实体缺失时跳过（官方 demo 走 USER_INFO 已足够） */
+  }
+
+  // 统一统计（对最终玩家表）：kills / deaths / assists / headshots
+  for (const s of playersByUserid.values()) {
+    s.kills = 0
+    s.deaths = 0
+    s.assists = 0
+    s.headshots = 0
+  }
+  for (const r of realRounds) {
+    for (const k of r.kills) {
+      const a = k.attackerUid !== undefined ? playersByUserid.get(k.attackerUid) : undefined
+      if (a && k.attackerUid !== k.victimUid) {
+        a.kills++
+        if (k.headshot) a.headshots++
+      }
+      const v = k.victimUid !== undefined ? playersByUserid.get(k.victimUid) : undefined
+      if (v) v.deaths++
+      if (k.assisterUid !== undefined) {
+        const as = playersByUserid.get(k.assisterUid)
+        if (as && k.assisterUid !== k.attackerUid) as.assists++
+      }
+    }
+  }
+
+  // Steam 头像（SERVER_AVATAR_OVERRIDES 表：key=steamid, value=PNG；玩家表最终确定后匹配）
+  try {
+    const avatarTable = parser
+      .getDemo()
+      .stringTableContainer.getByName(StringTableType.SERVER_AVATAR_OVERRIDES.name)
+    if (avatarTable) {
+      for (const entry of avatarTable.getEntries()) {
+        const raw = entry.value as Uint8Array | string | null | undefined
+        if (!raw) continue
+        const b64 = typeof raw === 'string' ? raw : Buffer.from(raw).toString('base64')
+        const uri = b64.startsWith('data:image') ? b64 : `data:image/png;base64,${b64}`
+        const slot = [...playersByUserid.values()].find((p) => p.steamId === String(entry.key))
+        if (slot) slot.avatar = uri
+      }
+    }
+  } catch {
+    /* 头像可选 */
+  }
 
   // 阵营/队名/权威比分（实体，尽力而为）
   let teamT: string | undefined
@@ -546,7 +658,9 @@ export async function parseDemo(
 
   await parser.dispose().catch(() => {})
 
-  const players: PlayerInfo[] = [...playersByUserid.values()].map((s) => ({
+  const players: PlayerInfo[] = [...playersByUserid.values()]
+    .filter((s) => !['GOTV', '5EGOTV', 'SourceTV'].includes(s.name))
+    .map((s) => ({
     steamId: s.steamId ?? '',
     name: s.name,
     team: s.team,
@@ -579,7 +693,8 @@ export async function parseDemo(
     })),
     chat: chat.sort((a, b) => a.tick - b.tick),
     hasVoice: voiceCount > 0,
-    voiceSec: voiceMaxTick >= voiceMinTick ? Math.round((voiceMaxTick - voiceMinTick) / TICK_RATE) : 0,
+    // 真实累计语音秒数：去重语音 tick / tickrate（每 tick 至多 ~20ms 语音帧）
+    voiceSec: Math.round(voiceTicks.size / TICK_RATE),
     teamT,
     teamCT,
     scoreT,

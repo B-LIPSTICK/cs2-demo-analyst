@@ -9,3 +9,7 @@ web-dist/
 true/
 
 NUL
+
+# 验证/抓取脚本的本地结果（不入库）
+scripts/*result*.txt
+scripts/capture-cs2-cmdline-result.txt

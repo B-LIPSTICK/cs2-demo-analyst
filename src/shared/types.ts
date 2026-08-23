@@ -57,12 +57,16 @@ export interface PlayerInfo {
 export interface KillEvent {
   tick: number
   timeSec: number
+  /** 原始 userid（5E 等平台实体补全时用于回填名字） */
+  attackerUid?: number
   attackerSteamId?: string
   attackerName?: string
   attackerTeam: TeamSide
+  victimUid?: number
   victimSteamId?: string
   victimName?: string
   victimTeam: TeamSide
+  assisterUid?: number
   weapon: string
   headshot: boolean
   throughSmoke: boolean
@@ -198,6 +202,10 @@ export interface LaunchResult {
   /** 直接启动了 cs2.exe（而非 steam:// URL） */
   direct?: boolean
   exe?: string
+  /** 复制到 CS2 目录后的 demo 文件名（playdemo 注入用） */
+  demoFile?: string
+  /** CS2 启动中，demo 将在 VConsole 就绪后自动播放 */
+  starting?: boolean
 }
 
 // ─── 设置 ──────────────────────────────────────────────────────────────────
@@ -229,6 +237,10 @@ export interface Settings {
     useToolsMode: boolean
     /** 用户自定义启动项（空格分隔，如 "-tools -insecure"），软件启动 CS2 时自动带上 */
     launchArgs?: string
+    /** 播放显示模式：'auto'=跟随用户当前配置；'fullscreen'=全屏；'borderless'=全屏窗口(无边框)；'windowed'=窗口化 */
+    playMode?: 'auto' | 'fullscreen' | 'borderless' | 'windowed'
+    /** 播放分辨率（宽x高，如 "1920x1080"）；'auto'=跟随用户当前配置 */
+    playResolution?: string
   }
   overlay: {
     enabled: boolean
@@ -269,7 +281,9 @@ export const DEFAULT_SETTINGS: Settings = {
     vconsolePort: 29000,
     gsiPort: 30070,
     useToolsMode: true,
-    launchArgs: ''
+    launchArgs: '',
+    playMode: 'auto',
+    playResolution: 'auto'
   },
   overlay: {
     enabled: false,
@@ -300,7 +314,7 @@ export interface Api {
     removeRoot: (root: string) => Promise<void>
     rescan: () => Promise<void>
     remove: (id: string, opts?: { deleteFile?: boolean }) => Promise<void>
-    parse: (id: string) => Promise<void>
+    parse: (id: string, force?: boolean) => Promise<void>
     parseAll: () => Promise<void>
   }
   favorites: {
@@ -312,6 +326,11 @@ export interface Api {
   voice: {
     detect: (id: string) => Promise<{ hasVoice: boolean; voiceSec: number }>
     extract: (id: string) => Promise<number>
+    split: (id: string) => Promise<number>
+    play: (
+      demoId: string,
+      seg: { steamId?: string; playerName: string; startSec: number; endSec: number }
+    ) => Promise<string | null>
   }
   asr: {
     transcribe: (id: string, opts?: { players?: string[] }) => Promise<void>
@@ -359,6 +378,7 @@ export interface Api {
   app: {
     version: () => Promise<string>
     revealInFolder: (path: string) => Promise<void>
+    pickDirectory: () => Promise<string | null>
   }
 }
 

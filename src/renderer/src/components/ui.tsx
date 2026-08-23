@@ -5,6 +5,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useState,
   type ReactNode,
   type SVGProps
@@ -414,4 +415,114 @@ export function fmtDate(ms: number): string {
   const d = new Date(ms)
   const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+// ─── 语音播放按钮（全局单 Audio，点播放 / 再点停止，换段自动切换） ─────────────
+
+let voiceAudio: HTMLAudioElement | null = null
+let voiceUrl: string | null = null
+let voiceListener: ((playing: boolean) => void) | null = null
+
+/** 停止当前播放（若有）并通知监听者 */
+function stopVoice() {
+  if (voiceAudio) {
+    voiceAudio.pause()
+    voiceAudio = null
+  }
+  if (voiceUrl) {
+    URL.revokeObjectURL(voiceUrl)
+    voiceUrl = null
+  }
+  voiceListener?.(false)
+  voiceListener = null
+}
+
+/**
+ * 语音片段播放按钮：点击 → 主进程切片返回小 WAV → Audio 播放。
+ * 全局单实例：任何时刻只有一段在播，再次点击停止。
+ */
+export function VoicePlayButton({
+  demoId,
+  seg,
+  size = 15
+}: {
+  demoId: string
+  seg: { steamId?: string; playerName: string; startSec: number; endSec: number }
+  size?: number
+}) {
+  const toast = useToast()
+  const [playing, setPlaying] = useState(false)
+
+  useEffect(() => {
+    // 组件卸载/切换时若有播放，停止并清理
+    return () => {
+      if (voiceListener === setPlaying) stopVoice()
+    }
+  }, [])
+
+  const toggle = async () => {
+    if (playing) {
+      stopVoice()
+      return
+    }
+    let audio: HTMLAudioElement | null = null
+    try {
+      const b64 = await window.api.voice.play(demoId, seg)
+      if (!b64) {
+        toast.push('语音文件不存在（需先提取/转写语音）', 'warn')
+        return
+      }
+      // base64 → Uint8Array → Blob（主进程传字符串，避免 Buffer 序列化失真）
+      const bin = atob(b64)
+      const bytes = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+      // 切新段：先停旧的
+      if (voiceAudio) stopVoice()
+      const blob = new Blob([bytes as BlobPart], { type: 'audio/wav' })
+      const url = URL.createObjectURL(blob)
+      voiceUrl = url
+      audio = new Audio(url)
+      voiceAudio = audio
+      voiceListener = setPlaying
+      audio.onended = () => {
+        voiceAudio = null
+        if (voiceUrl) {
+          URL.revokeObjectURL(voiceUrl)
+          voiceUrl = null
+        }
+        setPlaying(false)
+        voiceListener = null
+      }
+      // onerror 与 play() reject 会同时触发，用标志避免连弹两个错误
+      let errShown = false
+      const fail = (msg: string) => {
+        if (errShown) return
+        errShown = true
+        stopVoice()
+        toast.push(msg, 'err')
+      }
+      audio.onerror = () => fail('播放失败（语音文件可能已损坏）')
+      try {
+        await audio.play()
+        setPlaying(true)
+      } catch {
+        fail('播放失败')
+      }
+    } catch {
+      toast.push('播放失败', 'err')
+    }
+  }
+
+  return (
+    <button
+      className={`icon-btn voice-play ${playing ? 'on' : ''}`}
+      onClick={(e) => {
+        e.stopPropagation()
+        void toggle()
+      }}
+      title={playing ? '停止' : '播放'}
+    >
+      {playing ? <IcPause size={size} /> : <IcPlay size={size} />}
+    </button>
+  )
 }

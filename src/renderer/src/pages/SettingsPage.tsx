@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Btn, IcFolder, IcPlus, Panel, SectionHead, Tag, Toggle, useToast } from '@/components/ui'
+import { Btn, IcFolder, IcPlus, IcRefresh, Panel, SectionHead, Tag, useToast } from '@/components/ui'
 import { useT, type Lang } from '@/i18n'
 import type { Settings } from '@shared/types'
 
@@ -84,10 +84,6 @@ export function SettingsPage({ settings }: { settings: Settings }) {
 
   const setCs2 = (patch: Partial<Settings['cs2']>) => {
     set({ cs2: { ...draft.cs2, ...patch } })
-  }
-
-  const setOverlay = (patch: Partial<Settings['overlay']>) => {
-    set({ overlay: { ...draft.overlay, ...patch } })
   }
 
   const addRoot = async () => {
@@ -349,12 +345,35 @@ export function SettingsPage({ settings }: { settings: Settings }) {
         <div className="set-row">
           <div className="info">
             <div className="t">{t.t('settings.cs2Path')}</div>
-            <div className="d">{draft.cs2.installPath ?? '—'}</div>
+            <div className="d">{t.t('settings.cs2PathHint')}</div>
           </div>
-          <Btn variant="ghost" size="sm" onClick={detectCs2}>
-            <IcFolder size={12} />
-            {t.t('settings.cs2Detect')}
-          </Btn>
+          <div className="flex" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              className="input"
+              style={{ width: 300 }}
+              placeholder="…\steamapps\common\Counter-Strike Global Offensive"
+              value={draft.cs2.installPath ?? ''}
+              onChange={(e) => setCs2({ installPath: e.target.value || undefined })}
+            />
+            <Btn
+              variant="ghost"
+              size="sm"
+              onClick={async () => {
+                const p = await window.api.app.pickDirectory()
+                if (p) {
+                  setCs2({ installPath: p })
+                  toast.push(t.t('settings.cs2PathSet'))
+                }
+              }}
+            >
+              <IcFolder size={12} />
+              {t.t('settings.cs2Browse')}
+            </Btn>
+            <Btn variant="ghost" size="sm" onClick={detectCs2}>
+              <IcRefresh size={12} />
+              {t.t('settings.cs2Detect')}
+            </Btn>
+          </div>
         </div>
         <div className="set-row">
           <div className="info">
@@ -368,6 +387,57 @@ export function SettingsPage({ settings }: { settings: Settings }) {
             value={draft.cs2.launchArgs ?? ''}
             onChange={(e) => setCs2({ launchArgs: e.target.value })}
           />
+        </div>
+        {/* 播放显示设置（tools 模式下生效） */}
+        <div className="set-row">
+          <div className="info">
+            <div className="t">{t.t('settings.playDisplay')}</div>
+            <div className="d">{t.t('settings.playDisplayHint')}</div>
+          </div>
+          <div className="flex" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select
+              className="input select"
+              style={{ width: 150 }}
+              value={draft.cs2.playMode ?? 'auto'}
+              onChange={(e) => setCs2({ playMode: e.target.value as never })}
+            >
+              <option value="auto">{t.t('settings.playModeAuto')}</option>
+              <option value="fullscreen">{t.t('settings.playModeFullscreen')}</option>
+              <option value="borderless">{t.t('settings.playModeBorderless')}</option>
+              <option value="windowed">{t.t('settings.playModeWindowed')}</option>
+            </select>
+            <select
+              className="input select"
+              style={{ width: 130 }}
+              value={draft.cs2.playResolution ?? 'auto'}
+              onChange={(e) => setCs2({ playResolution: e.target.value })}
+            >
+              <option value="auto">{t.t('settings.playResAuto')}</option>
+              <optgroup label="16:9">
+                <option value="1280x720">1280×720</option>
+                <option value="1920x1080">1920×1080</option>
+                <option value="2560x1440">2560×1440</option>
+                <option value="3840x2160">3840×2160</option>
+              </optgroup>
+              <optgroup label="16:10">
+                <option value="1280x800">1280×800</option>
+                <option value="1680x1050">1680×1050</option>
+                <option value="1920x1200">1920×1200</option>
+              </optgroup>
+              <optgroup label="4:3">
+                <option value="1024x768">1024×768</option>
+                <option value="1280x960">1280×960</option>
+                <option value="1440x1080">1440×1080</option>
+              </optgroup>
+              <optgroup label="5:4">
+                <option value="1280x1024">1280×1024</option>
+              </optgroup>
+              <optgroup label="21:9">
+                <option value="2560x1080">2560×1080</option>
+                <option value="3440x1440">3440×1440</option>
+              </optgroup>
+            </select>
+          </div>
         </div>
         <div className="set-row">
           <div className="info">
@@ -411,78 +481,27 @@ export function SettingsPage({ settings }: { settings: Settings }) {
         </div>
         <div className="set-row">
           <div className="info">
-            <div className="t">{t.t('settings.toolsMode')}</div>
-            <div className="d">-tools 路 VConsole2</div>
-          </div>
-          <Toggle on={draft.cs2.useToolsMode} onChange={(v) => setCs2({ useToolsMode: v })} />
-        </div>
-      </Panel>
-
-      <SectionHead idx={6}>{t.t('settings.overlay')}</SectionHead>
-      <Panel>
-        <div className="set-row">
-          <div className="info">
-            <div className="t">{t.t('settings.overlayEnabled')}</div>
-            <div className="d">{t.t('settings.overlayHint')}</div>
-          </div>
-          <Toggle
-            on={draft.overlay.enabled}
-            onChange={(v) => {
-              setOverlay({ enabled: v })
-              window.api.overlay.setEnabled(v)
-            }}
-          />
-        </div>
-        <div className="set-row">
-          <div className="info">
-            <div className="t">{t.t('settings.overlayClickThrough')}</div>
-            <div className="d">{t.t('settings.overlayClickHint')}</div>
-          </div>
-          <Toggle
-            on={draft.overlay.clickThrough}
-            onChange={(v) => {
-              setOverlay({ clickThrough: v })
-              window.api.overlay.setClickThrough(v)
-            }}
-          />
-        </div>
-        <div className="set-row">
-          <div className="info">
-            <div className="t">{t.t('settings.overlayPosition')}</div>
+            <div className="t">{t.t('settings.playMode')}</div>
+            <div className="d">{t.t('settings.playModeHint')}</div>
           </div>
           <div className="seg">
-            {(['bottom-left', 'bottom-center', 'bottom-right', 'top-left'] as const).map((p) => (
-              <span
-                key={p}
-                className={`seg-item ${draft.overlay.position === p ? 'on' : ''}`}
-                onClick={() => {
-                  setOverlay({ position: p })
-                  window.api.overlay.setPosition(p)
-                }}
-              >
-                {t.t(`pos.${p}` as never)}
-              </span>
-            ))}
+            <span
+              className={`seg-item ${!draft.cs2.useToolsMode ? 'on' : ''}`}
+              onClick={() => setCs2({ useToolsMode: false })}
+            >
+              {t.t('settings.playModeNormal')}
+            </span>
+            <span
+              className={`seg-item ${draft.cs2.useToolsMode ? 'on' : ''}`}
+              onClick={() => setCs2({ useToolsMode: true })}
+            >
+              {t.t('settings.playModeTools')}
+            </span>
           </div>
-        </div>
-        <div className="set-row">
-          <div className="info">
-            <div className="t">{t.t('settings.overlayScale')}</div>
-            <div className="d">{Math.round(draft.overlay.scale * 100)}%</div>
-          </div>
-          <input
-            type="range"
-            min={0.6}
-            max={1.6}
-            step={0.05}
-            value={draft.overlay.scale}
-            onChange={(e) => setOverlay({ scale: Number(e.target.value) })}
-            style={{ width: 180, accentColor: 'var(--green)' }}
-          />
         </div>
       </Panel>
 
-      <SectionHead idx={7}>{t.t('settings.engines')}</SectionHead>
+      <SectionHead idx={6}>{t.t('settings.engines')}</SectionHead>
       <Panel>
         <div className="set-row">
           <div className="info">

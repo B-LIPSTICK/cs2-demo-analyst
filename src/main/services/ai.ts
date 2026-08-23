@@ -3,7 +3,7 @@
  * 流式返回；无 Key 或网络失败时给出可读错误；--ai-mock 模式本地生成回答（开发验证）。
  * 附带对话会话（记忆）持久化：userData/ai-chats.json。
  */
-import { app } from 'electron'
+import { app, net } from 'electron'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import type { AiChatMessage, AiChatSession, ChatMessage, DemoDetail, KillEvent, VoiceSegment } from '@shared/types'
@@ -173,7 +173,8 @@ export class AiService {
     }
     if (!cfg.apiKey) throw new Error('请先填写 AI API Key')
     const base = cfg.baseUrl.replace(/\/+$/, '')
-    const res = await fetch(`${base}/models`, {
+    // net.fetch：跟随系统代理（全局 fetch 不走代理，国内网络直连外网 API 会失败）
+    const res = await net.fetch(`${base}/models`, {
       headers: { Authorization: `Bearer ${cfg.apiKey}` }
     })
     if (!res.ok) {
@@ -245,7 +246,7 @@ export class AiService {
     const context = buildContext(detail)
     const langHint = language === 'zh' ? '请用中文回答。' : 'Answer in English.'
     try {
-      const res = await fetch(`${base}/chat/completions`, {
+      const res = await net.fetch(`${base}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

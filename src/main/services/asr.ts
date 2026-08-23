@@ -1,7 +1,7 @@
 /**
  * 语音提取（csgove sidecar）与转写编排（本地 whisper.cpp / 云端 OpenAI 兼容）
  */
-import { app } from 'electron'
+import { app, net } from 'electron'
 import { spawn } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import { join, basename } from 'node:path'
@@ -204,6 +204,119 @@ function voicesDir(demoId: string): string {
 }
 
 /**
+ * 语音切片播放：从该玩家整轨 WAV（48kHz/16bit 单声道，extractVoice 产物）中
+ * 切出 [startSec, endSec) 时间段，返回独立的小 WAV Buffer（供 renderer 播放）。
+ * 找不到对应文件 / 越界时返回 null。
+ */
+export async function sliceVoiceWav(
+  demoId: string,
+  steamId: string | undefined,
+  playerName: string,
+  startSec: number,
+  endSec: number
+): Promise<Buffer | null> {
+  if (!(endSec > startSec) || startSec < 0) return null
+  const dir = voicesDir(demoId)
+  let files: string[]
+  try {
+    files = await fs.readdir(dir)
+  } catch {
+    return null
+  }
+  // 文件名形如 <demo>_<name>_<steamid>.wav 或 <steamid>.wav；优先按 steamId 精确匹配
+  const wav = files.find((f) => {
+    if (!f.toLowerCase().endsWith('.wav')) return false
+    if (steamId) {
+      if (f === `${steamId}.wav` || f.endsWith(`_${steamId}.wav`)) return true
+    }
+    // 中文/特殊字符玩家名可能被文件名转义，fallback：名字前缀匹配
+    if (playerName && f.includes(playerName)) return true
+    return false
+  })
+  if (!wav) return null
+  const full = join(dir, wav)
+
+  // 解析 WAV 头（可含 LIST/fact 等扩展块，须按块扫描定位 data）
+  let hdr = Buffer.alloc(256)
+  const fh = await fs.open(full, 'r')
+  try {
+    await fh.read(hdr, 0, 256, 0)
+  } catch {
+    await fh.close().catch(() => {})
+    return null
+  }
+  if (hdr.toString('ascii', 0, 4) !== 'RIFF' || hdr.toString('ascii', 8, 12) !== 'WAVE') {
+    await fh.close().catch(() => {})
+    return null
+  }
+  const channels = hdr.readUInt16LE(22)
+  const rate = hdr.readUInt32LE(24)
+  const bits = hdr.readUInt16LE(34)
+  const bytesPerSample = bits / 8
+  const blockAlign = channels * bytesPerSample
+  let dataStart = -1
+  let dataSize = 0
+  let pos = 12
+  // 头可能超过 256 字节（罕见），循环读块头定位 data
+  while (pos + 8 <= 1024 * 1024) {
+    if (pos + 8 > hdr.length) {
+      const ext = Buffer.alloc(4096)
+      const { bytesRead } = await fh.read(ext, 0, 4096, pos)
+      if (bytesRead < 8) break
+      hdr = Buffer.concat([hdr, ext])
+    }
+    const id = hdr.toString('ascii', pos, pos + 4)
+    const size = hdr.readUInt32LE(pos + 4)
+    if (id === 'data') {
+      dataStart = pos + 8
+      dataSize = size
+      break
+    }
+    pos += 8 + size + (size % 2)
+  }
+  if (dataStart < 0 || bytesPerSample < 2) {
+    await fh.close().catch(() => {})
+    return null
+  }
+
+  // 需要读取的样本区间（含 60ms 前后缓冲，便于听感）
+  const padSamples = Math.floor(rate * 0.06)
+  const fromSample = Math.max(0, Math.floor(startSec * rate) - padSamples)
+  const toSample = Math.min(
+    Math.floor(dataSize / blockAlign),
+    Math.floor(endSec * rate) + padSamples
+  )
+  const nSamples = toSample - fromSample
+  if (nSamples <= 0) {
+    await fh.close().catch(() => {})
+    return null
+  }
+
+  // 只读需要的字节段
+  const dataBuf = Buffer.alloc(nSamples * blockAlign)
+  await fh.read(dataBuf, 0, dataBuf.length, dataStart + fromSample * blockAlign)
+  await fh.close().catch(() => {})
+
+  // 组装独立小 WAV（规范 44 字节头）
+  const out = Buffer.alloc(44 + dataBuf.length)
+  out.write('RIFF', 0, 'ascii')
+  out.writeUInt32LE(36 + dataBuf.length, 4)
+  out.write('WAVE', 8, 'ascii')
+  out.write('fmt ', 12, 'ascii')
+  out.writeUInt32LE(16, 16)
+  out.writeUInt16LE(1, 20)
+  out.writeUInt16LE(channels, 22)
+  out.writeUInt32LE(rate, 24)
+  out.writeUInt32LE(rate * blockAlign, 28)
+  out.writeUInt16LE(blockAlign, 32)
+  out.writeUInt16LE(bits, 34)
+  out.write('data', 36, 'ascii')
+  out.writeUInt32LE(dataBuf.length, 40)
+  dataBuf.copy(out, 44)
+  return out
+}
+
+/**
  * 规范化 csgove 输出的 WAV（已知怪癖：fmt=1 PCM 但 bits=32）。
  * 实测（research-voice-decode.md）：csgove 写入的是**真正的 int32 PCM**，
  * 语音有效位在**高 16 位**（int(v * MaxInt32) 满幅），低 16 位是量化残差。
@@ -387,19 +500,43 @@ export async function transcribeCloud(
 ): Promise<WhisperSeg[]> {
   if (!cfg.apiKey) throw new Error('未配置云端 API Key（设置 → 转写引擎 → 获取免费 Key）')
   const base = cfg.baseUrl.replace(/\/+$/, '')
-  const form = new FormData()
-  form.append('file', new Blob([await fs.readFile(wavPath)]), 'voice.wav')
-  form.append('model', cfg.model)
-  form.append('response_format', 'verbose_json')
-  const res = await fetch(`${base}/audio/transcriptions`, {
+  // 手动构造 multipart/form-data（Node 全局 FormData 与 Electron net.fetch 不完全兼容，
+  // 用 Buffer 拼接最稳）
+  const boundary = `----cs2danalyst${Date.now().toString(16)}`
+  const fileBuf = await fs.readFile(wavPath)
+  const parts: Buffer[] = []
+  parts.push(
+    Buffer.from(
+      `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="file"; filename="voice.wav"\r\n` +
+        `Content-Type: audio/wav\r\n\r\n`
+    ),
+    fileBuf,
+    Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\n${cfg.model}\r\n`),
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\nverbose_json\r\n`),
+    Buffer.from(`--${boundary}--\r\n`)
+  )
+  const body = Buffer.concat(parts)
+  // 用 Electron net.fetch（走 Chromium 网络栈，跟随系统代理）：
+  // 全局 fetch 不走 Windows 系统代理，国内网络访问 Groq 等会被墙（403/连接失败）
+  const res = await net.fetch(`${base}/audio/transcriptions`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${cfg.apiKey}` },
-    body: form,
+    headers: {
+      Authorization: `Bearer ${cfg.apiKey}`,
+      'Content-Type': `multipart/form-data; boundary=${boundary}`
+    },
+    body,
     signal
   })
   if (!res.ok) {
-    const body = (await res.text().catch(() => '')).slice(0, 300)
-    throw new Error(`云端转写失败 HTTP ${res.status}: ${body}`)
+    const bodyText = (await res.text().catch(() => '')).slice(0, 300)
+    const hint =
+      res.status === 403
+        ? '（403：服务商拒绝，常见于直连被墙 —— 请确认系统代理已开启，或换用可直连的服务商如硅基流动）'
+        : res.status === 401
+          ? '（401：API Key 无效，请检查设置中的 Key）'
+          : ''
+    throw new Error(`云端转写失败 HTTP ${res.status}${hint}: ${bodyText}`)
   }
   const data = (await res.json()) as { segments?: { start: number; end: number; text: string }[] }
   const segs: WhisperSeg[] = []
@@ -457,7 +594,13 @@ export async function transcribeDemo(
     )
     let segs: WhisperSeg[]
     try {
-      // 静音裁剪：只转写有语音的片段（本地 CPU 提速 5-10 倍）
+      // 阶段①：VAD 静音裁剪（读 100+MB 整轨算能量，耗时数秒，先提示）
+      events.progress(
+        options.engine === 'cloud' ? 'asr-cloud' : 'asr-local',
+        i,
+        items.length,
+        `${item.playerName} · 裁剪中…`
+      )
       const chunks = await detectSpeech(item.path)
       let effective: { start: number; end: number; text: string }[]
       if (chunks.length === 0) {
@@ -473,11 +616,12 @@ export async function transcribeDemo(
       }
       // VAD 没切出有效语音 → 直接转写原文件（避免 0 字节紧凑文件导致 whisper 卡死）
       const targetWav = compact?.path ?? item.path
+      // 阶段②：ASR 转写
       events.progress(
         options.engine === 'cloud' ? 'asr-cloud' : 'asr-local',
         i,
         items.length,
-        `${item.playerName} · ${compact ? '已裁剪' : '整轨'}`
+        `${item.playerName} · 转写中${compact ? `（${chunks.length} 段已裁剪）` : '（整轨）'}`
       )
       if (options.engine === 'cloud') {
         const raw = await transcribeCloud(targetWav, {
@@ -521,4 +665,60 @@ export async function transcribeDemo(
   }
 
   return segments
+}
+
+/** 语音分割结果（无文字，仅分段信息，供直接听） */
+export interface VoiceSplitSegment {
+  playerName: string
+  steamId?: string
+  team: VoiceSegment['team']
+  startSec: number
+  endSec: number
+  tick: number
+  endTick: number
+}
+
+/**
+ * 语音分割：提取（csgove）→ VAD 静音切段 → 返回每段的时间/玩家（不转写，无需 API Key）。
+ * 适合只想要语音片段、不转文字的用户（配合播放按钮直接听）。
+ */
+export async function splitVoice(
+  detail: DemoDetail,
+  events: AsrEvents,
+  signal?: AbortSignal
+): Promise<VoiceSplitSegment[]> {
+  const tickRate = detail.meta.tickRate ?? 64
+  const out: VoiceSplitSegment[] = []
+  let items: WavItem[]
+  try {
+    items = await extractVoice(detail, events, signal)
+  } catch (err) {
+    throw new Error(`语音提取失败：${err instanceof Error ? err.message : String(err)}`)
+  }
+  if (items.length === 0) {
+    throw new Error('该 Demo 未提取到任何语音（MM 天梯 demo 不含语音）')
+  }
+  for (let i = 0; i < items.length; i++) {
+    if (signal?.aborted) break
+    const item = items[i]
+    events.progress('voice-split', i, items.length, `${item.playerName} · 分割中…`)
+    try {
+      const chunks = await detectSpeech(item.path)
+      for (const c of chunks) {
+        out.push({
+          playerName: item.playerName,
+          steamId: item.steamId,
+          team: item.team,
+          startSec: c.start,
+          endSec: c.end,
+          tick: Math.round(c.start * tickRate),
+          endTick: Math.round(c.end * tickRate)
+        })
+      }
+    } catch (err) {
+      console.error(`[asr] split ${item.playerName} failed`, err)
+    }
+    events.progress('voice-split', i + 1, items.length, `${item.playerName} · 完成`)
+  }
+  return out.sort((a, b) => a.tick - b.tick)
 }
