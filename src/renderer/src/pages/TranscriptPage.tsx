@@ -19,9 +19,12 @@ import type { ChatMessage, DemoDetail, DemoMeta, VoiceSegment } from '@shared/ty
 
 export function TranscriptPage({
   initialDemoId,
+  navSeq,
   onOpenDemo
 }: {
   initialDemoId?: string
+  /** 导航序号（App navigate 每次 +1）：重复跳转同一 demo 时也重新同步选中 */
+  navSeq?: number
   onOpenDemo: (id: string) => void
 }) {
   const t = useTKey()
@@ -39,10 +42,11 @@ export function TranscriptPage({
   const [progress, setProgress] = useState<{ stage: string; done: number; total: number; message?: string } | null>(null)
   const [hasCloudKey, setHasCloudKey] = useState(false)
 
-  // 页面常驻（App 只切换 display）后，从详情页跳转带入新的 demoId 时同步切换
+  // 页面常驻（App 只切换 display）后，从详情页跳转带入新的 demoId 时同步切换；
+  // navSeq 变化（即使 demoId 相同）也强制重新选中，保证「点转写必打开对应 demo」
   useEffect(() => {
     if (initialDemoId) setDemoId(initialDemoId)
-  }, [initialDemoId])
+  }, [initialDemoId, navSeq])
 
   useEffect(() => {
     window.api.settings.get().then((s) => setHasCloudKey(Boolean(s.asr?.cloudApiKey))).catch(() => {})
@@ -50,6 +54,9 @@ export function TranscriptPage({
 
   useEffect(() => {
     window.api.library.list().then(setDemos)
+    // 库实时刷新（新加入/移除 demo 后下拉立即可选，避免选到已移除的过期 id）
+    const off = window.api.onEvent('library:updated', (e) => setDemos(e.demos))
+    return () => off()
   }, [])
 
   useEffect(() => {
@@ -100,7 +107,7 @@ export function TranscriptPage({
       const d = await window.api.library.detail(demoId)
       if (d) setDetail(d)
     } catch (err) {
-      toast.push(err instanceof Error ? err.message : String(err), 'err')
+      toast.push(errMsg(err), 'err')
     } finally {
       setTranscribing(false)
       setProgress(null)
@@ -122,7 +129,7 @@ export function TranscriptPage({
       const d = await window.api.library.detail(demoId)
       if (d) setDetail(d)
     } catch (err) {
-      toast.push(err instanceof Error ? err.message : String(err), 'err')
+      toast.push(errMsg(err), 'err')
     } finally {
       setSplitting(false)
       setProgress(null)
@@ -202,6 +209,13 @@ export function TranscriptPage({
   const rounds = detail?.rounds ?? []
   // 当前选中 demo 是否解析完成（未完成时禁转写/分割）
   const demoReady = Boolean(demos.find((d) => d.id === demoId)?.status === 'ready')
+
+  /** 错误提示友好化：Electron 包装的 raw 错误 → 中文提示 */
+  const errMsg = (err: unknown): string => {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('demo not found')) return t('transcript.demoGoneHint')
+    return msg
+  }
 
   return (
     <div className="page">

@@ -1,5 +1,37 @@
 # progress.md — 会话日志
 
+## 本轮十六（1.0 发布 + 界面 4s 闪烁根因修复）✅ 待 git 提交
+- **1.0 正式版**: package.json/package-lock version → 1.0.0（App 版本默认值与设置页 About v 标签动态化）；electron-builder.yml win.target → nsis（oneClick:false + 可选安装目录 + 桌面/开始菜单快捷方式，artifact CS2-Demo-Analyst-1.0.0-setup.exe 92MB）；移除 TitleBar 左上角 logo（只留 Demo Analyst 字标）；dist: zip 147MB + setup 安装包齐。
+- **★界面每 ~4s "从下弹出"闪烁根因（DOM 探针实证）**: 资料库页 `.page` 内 `card-grid` ↔ `empty(SCANNING)` 每 4.0s 往返切换（卡片重建 → fadeUp 重放）。链路: ToastProvider `value={{ push }}` **每次渲染新建对象** → 所有 useToast 消费者每次 provider 渲染获得新引用 → `LibraryPage.load` 的 `useCallback([toast])` 依赖随之变 → `useEffect([load])` 反复重跑 → load()（setLoading(true)→SCANNING→list→恢复）。修复: ToastProvider value 用 `useMemo` 稳定化（顺带避免全树 context 重渲染风暴）。
+- **排障方法论入库**: ① 打包版 exe 只读 `dist/win-unpacked/resources/app.asar` —— **改完代码必须 make-zip（electron-builder --dir）后才生效**，build-only 后重启 exe 跑的是旧 asar（本次大坑，曾误判修复无效）；② scripts/cdp-probe.ps1（CDP MutationObserver 探针）可复用于验证 DOM 周期重建。
+- 待办: 应用图标验收（zeus）、GitHub 头像上传 zeus-512.png、旧 0.1.0 zip 清理。
+
+## 本轮十五补2（Logo 终稿：直接用原版透明素材，不重绘）✅ 待 git 提交
+- **AI 重绘两版均被否（"太丑"）**: image2 手绘版（黑底深蓝枪）和文字重绘版（浅蓝+红龙）都不像原皮肤 → 用户拍板：**不重绘，直接抠图**，提供透明底素材（1536×1024 Format32bppArgb，四角 A=0 已抠好）。
+- **处理**: `scripts/png-to-icon.ps1`（新增，透明素材 → 图标全套）：自动 trim 透明边（内容框 1435×973）→ 长边 88% 适配 1024 方形画布居中 → `assets/logo/zeus-master-1024.png`、`zeus-512.png`（README 引用）→ `build/icon-256.png` + `build/icon.ico`（16~256 七尺寸 PNG 透明条目）。产物经棋盘格预览验收（完整无黑边、比例合适、缩放清晰）。
+- 原素材存档 `assets/logo/zeus-reference.png`（用户提供，勿删）。此前 AI 重绘的黑底图经 `png-to-transparent-icon.ps1`（洪水抠图）产物 zeus-master 已被真图覆盖。
+- 已重打包 zip（147MB）并重启应用。待用户验收任务栏/托盘图标；GitHub 头像上传用 zeus-512.png。
+
+## 本轮十五补1（Logo 定稿方向：Zeus x27 电击枪）✅ 待 git 提交
+- **用户否定放大镜版（"太难看了"）→ 拍板概念**: 玩 Zeus 电击枪的玩家，要 **CS2 Zeus x27 蓝色皮肤本体**作图标：圆角/透明、中间电击枪，用于状态栏托盘。
+- **绘制**: image2（dsh-pupil）生成 Zeus x27 蓝皮肤 1024 图（黑背景）→ `scripts/png-to-transparent-icon.ps1`（C# 洪水填充去背景：从四边 BFS、按与角点色差 tol=26 标记背景置 alpha0；踩坑: GDI+ `Image.Save(file)` 偶发 generic error → 全部改 MemoryStream + WriteAllBytes；路径用 GetFullPath 显式；PS5.1 here-string 须 ASCII）。
+- **产物**: `assets/logo/zeus-master-1024.png`（透明源稿）、`zeus-512.png`（README/GitHub 用，README 已改引用）、`zeus-preview-checker.png`（棋盘格验收图）、`build/icon-256.png` + `build/icon.ico`（16~256 七尺寸 PNG 条目，透明）。
+- 另留 `scripts/make-logo.ps1`（矢量版生成器：放大镜/播放三角版可用参数重画，产物在 assets/logo/logo-*.png 与候选图，未删除供参考）。
+- 已重打包 zip（146.9MB）并重启应用。待用户验收 + GitHub 上传 zeus-512.png。
+
+## 本轮十五（AGENTS.md 交接文档 + 品牌 Logo 重绘）✅ 待 git 提交
+- **AGENTS.md（根目录，多 agent 无缝交接入口）**: 项目一句话/协作铁律（测试由用户操作、typecheck+build+zip 流程、git 中文 message、progress.md 记录惯例）/常用命令/当前架构/关键链路血泪事实（解析首回合无 prestart、PARSER_VERSION、WAV 缓存、+exec cfg 播放、VPK HUD 编译流、waitDetail、页面常驻 navSeq 等）/开放问题清单（头像左裁、winner 偏差、README 截图过时、scripts/hud/dsh_voice.css 旧残留）。docs/DEVELOPMENT.md 已标注"以 AGENTS.md 为准"。
+- **Logo 重绘（用户否定播放器概念 → "重在分析师"）**: 设计 = **金色放大镜（#F5B942）+ 镜内蓝色准星十字（#6FB1FF）+ 金色中心点 + 玻璃高光**，深蓝黑渐变底（#1B2030→#0A0E1A）。"放大镜审视比赛 + 十字锁定" = 分析师/复盘定位，单符号小尺寸可辨。
+- **实现**: `scripts/make-logo.ps1`（内嵌 C# + System.Drawing 矢量绘制，参数化可重跑；注意 PS5.1 按 ANSI 读无 BOM 脚本会乱码——脚本保持 ASCII）。产物: `assets/logo/logo-master-1024.png`、`logo-512.png`（README/GitHub 用）、`build/icon-256.png` + `build/icon.ico`（16~256 七尺寸 PNG 条目）。README 顶部已加 logo 图。踩坑: GDI+ Arc 角度坐标系（正 sweep=顺时针、90°=屏幕下方）曾画坏声波条，改"矩形+端圆"才稳。
+- 打包含新图标（zip 146.9MB）。待用户验收图标 + GitHub 头像上传（用 assets/logo/logo-512.png）。
+
+## 本轮十四补4（卡片布局 + 转写页联动修复）✅ 待 git 提交
+- **voice:split demo not found 根因（第二次）**: 用户 8-29 新加 demo（ff2e6510…, de_inferno 8:13）后分割报错——转写页 demos 下拉**只在挂载时拉一次、不订阅 library:updated**，库里旧 demo 移除后列表仍是过期 id → `store.index[id]` 不存在 → waitDetail 返回 null → 'demo not found'（index/detail 均 ready，非解析问题）。修复: ① 转写页订阅 library:updated 实时刷新列表；② 前端 catch 对 'demo not found' 显示友好中文（"已不在资料库，请重新选择"）。
+- **详情页 → 转写页不自动选中 demo**: 页面常驻下重复导航同一 demo 时 `initialDemoId` 值不变 → React effect 不触发。修复: App navigate 递增 `navSeq`，TranscriptPage effect 依赖 [initialDemoId, navSeq]，点转写必重新选中。
+- **卡片布局（资料库页）**: 删 T:CT 比分（score 块 + CSS）；日期字号 10→13px 加粗；语音 Tag（语音/无语音/待检测·扫描）从 mid 行移到日期右边（.date-row flex）；地图名/文件名/底部 stats（时长/回合/大小/选手）不变；菜单按钮 margin-left:auto 保持右对齐。
+- **聊天头像**: 详情页 chat 行补 avatar 传参（转写页 ChatRow 已有）。
+- 回归: typecheck ✓ / build ✓ / dist:zip ✓（146.9MB）。待用户实机验证。
+
 ## 本轮十四补3（demo not found 根因：解析未完成即转写/AI）✅ 待 git 提交
 - **场景**: 用户本地新加 demo 后立刻转写/分割/AI 对话 → 报 "demo not found"。根因: demo 加入后处于 pending/parsing，`library.detail()` 返回 null（无缓存 / parserVersion 不匹配 / 缓存被清理），转写/分割/AI 三处入口直接抛英文错误。
 - **修复**: ① `LibraryService.waitDetail(id, timeout=180s)`——解析中自动轮询等待解析队列完成；ready 但缓存缺失自动触发重解析；解析失败/超时返回 null；② 转写/分割入口改用 waitDetail，失败抛友好中文提示（区分"解析失败/未完成"）；③ `ai:ask` 同样改用 waitDetail（AI 对话不再报 demo not found，自动等解析完成再回答）；④ 转写页按钮：选中 demo 未 ready 时禁用 + hover 提示"尚未解析完成"（runTranscribe/runSplit 内也加守卫）；⑤ i18n zh/en 新增 notReadyHint/transcribeHint。

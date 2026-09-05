@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
   type SVGProps
@@ -379,8 +380,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((ts) => [...ts.slice(-3), { id, kind, text }])
     setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), 3400)
   }, [])
+  // ★value 必须稳定（useMemo）：否则 provider 每次渲染都下发新对象 → 所有 useToast
+  //  消费者重渲染 → 依赖 toast 的 useCallback/useEffect 反复重建/重跑（曾导致
+  //  资料库 load() 每 ~4s 重跑、SCANNING/卡片列表往返闪烁）
+  const value = useMemo(() => ({ push }), [push])
   return (
-    <ToastContext.Provider value={{ push }}>
+    <ToastContext.Provider value={value}>
       {children}
       <div className="toasts">
         {toasts.map((t) => (

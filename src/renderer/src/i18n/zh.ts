@@ -161,6 +161,7 @@ export const zh = {
   'transcript.splitting': '分割中…',
   'transcript.splitDone': '已分割出 {n} 段语音，可直接播放收听（转写后才有文字）',
   'transcript.notReadyHint': '该 Demo 尚未解析完成，请稍候再试',
+  'transcript.demoGoneHint': '该 Demo 已不在资料库中（可能已被移除或目录变化），请回到资料库重新选择',
   'transcript.transcribeHint': '将语音转写为文字（已分割过则直接复用切分结果）',
   'transcript.noText': '[语音片段]',
   'transcript.filterPlayers': '筛选玩家',

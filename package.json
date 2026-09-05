@@ -1,7 +1,7 @@
 {
   "name": "cs2-demo-analyst",
   "productName": "CS2 Demo Analyst",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "CS2 Demo Analyst — 挂接 CS2 播放进程的 Demo 分析师：语音转写、一键跳转、苹果风毛玻璃界面",
   "main": "out/main/index.js",
   "private": true,

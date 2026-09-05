@@ -331,7 +331,12 @@ export function DemoDetailPage({
                   <div key={i} className="tline" onClick={() => jump(c.tick)}>
                     <span className="tm">{fmtTick(c.tick, meta.tickRate ?? 64)}</span>
                     <span className="who">
-                      <Avatar name={c.playerName} team={playerTeam(c, meta.players)} size={16} />
+                      <Avatar
+                        name={c.playerName}
+                        team={playerTeam(c, meta.players)}
+                        size={16}
+                        avatar={(meta.players ?? []).find((x) => x.name === c.playerName)?.avatar}
+                      />
                       <span className="nm">{c.playerName}</span>
                     </span>
                     <span className="txt">{c.text}</span>

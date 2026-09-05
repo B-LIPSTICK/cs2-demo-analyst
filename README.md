@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo/csicon-512.png" width="160" alt="CS2 Demo Analyst" />
+</p>
+
 # CS2 Demo Analyst
 
 > 挂接 CS2 的 Demo 分析师 —— 拖入 .dem 即刻分析 · 游戏语音一键转写 · 苹果风毛玻璃界面

@@ -28,24 +28,6 @@ export function TitleBar({
   return (
     <header className="titlebar">
       <div className="brand">
-        <span className="logo">
-          <svg viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="11" r="7" stroke="#3f9cff" strokeWidth="1.6" />
-            <path
-              d="M12 4.5v3M12 14.5v3M4.5 11h3M14.5 11h3"
-              stroke="#e5b567"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-            />
-            <circle cx="12" cy="11" r="1.4" fill="#3f9cff" />
-            <path
-              d="M6.5 19.5c1.8 1 3.5 1.5 5.5 1.5s3.7-.5 5.5-1.5"
-              stroke="#e5b567"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-        </span>
         <div className="wordmark">
           Demo Analyst
           <span className="ver">{t('titlebar.version')}{version}</span>

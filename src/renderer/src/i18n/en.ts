@@ -157,6 +157,7 @@ export const en: Record<keyof ZhDict, string> = {
   'transcript.splitting': 'Splitting…',
   'transcript.splitDone': '{n} voice segments extracted — play them directly (text appears after transcription)',
   'transcript.notReadyHint': 'This demo is still parsing — please wait a moment',
+  'transcript.demoGoneHint': 'This demo is no longer in the library (removed or folder changed) — please pick it again from the library',
   'transcript.transcribeHint': 'Transcribe voice to text (reuses split segments when available)',
   'transcript.noText': '[voice]',
   'transcript.filterPlayers': 'Filter players',

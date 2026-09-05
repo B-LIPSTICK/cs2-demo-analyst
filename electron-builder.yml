@@ -17,11 +17,16 @@ asar: true
 win:
   icon: build/icon.ico
   target:
-    - target: portable
+    - target: nsis
       arch: [x64]
-  artifactName: ${productName}-${version}-portable-${arch}.${ext}
-portable:
-  artifactName: ${productName}-${version}-portable-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: CS2 Demo Analyst
+  artifactName: CS2-Demo-Analyst-${version}-setup.${ext}
 npmRebuild: false
 electronDownload:
   cache: true

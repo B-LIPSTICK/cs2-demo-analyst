@@ -62,6 +62,8 @@ function initialRoute(): Route {
 
 export default function App() {
   const [route, setRoute] = useState<Route>(initialRoute)
+  // 导航序号（navigate 每次 +1）：页面常驻下重复跳转同一 demo 时目标页也能感知
+  const [navSeq, setNavSeq] = useState(0)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [live, setLive] = useState<LiveStatus>({
     state: 'idle',
@@ -69,7 +71,7 @@ export default function App() {
     vconsoleConnected: false,
     gsiActive: false
   })
-  const [version, setVersion] = useState('0.1.0')
+  const [version, setVersion] = useState('1.0.0')
 
   // 初始数据
   useEffect(() => {
@@ -97,16 +99,10 @@ export default function App() {
     }
   }, [])
 
-  // 实况状态轮询（Phase 3 后由主进程事件驱动）
-  useEffect(() => {
-    const timer = setInterval(() => {
-      window.api.live.getStatus().then(setLive).catch(() => {})
-    }, 4000)
-    return () => clearInterval(timer)
-  }, [])
-
   const navigate = useCallback((page: Page, demoId?: string) => {
     setRoute({ page, demoId })
+    // 导航序号：同一 demo 重复导航时也递增，让目标页能感知「再次跳转」并重新同步选中
+    setNavSeq((s) => s + 1)
   }, [])
 
   const onLangChange = useCallback((lang: Lang) => {
@@ -158,7 +154,7 @@ export default function App() {
                   />
                 </div>
                 <div style={{ display: route.page === 'transcript' ? undefined : 'none' }}>
-                  <TranscriptPage initialDemoId={route.demoId} onOpenDemo={(id) => navigate('transcript', id)} />
+                  <TranscriptPage initialDemoId={route.demoId} navSeq={navSeq} onOpenDemo={(id) => navigate('transcript', id)} />
                 </div>
                 <div style={{ display: route.page === 'live' ? undefined : 'none' }}>
                   <LivePage />
@@ -167,7 +163,7 @@ export default function App() {
                   <AiPage onGoSettings={() => navigate('settings')} />
                 </div>
                 <div style={{ display: route.page === 'settings' ? undefined : 'none' }}>
-                  <SettingsPage settings={settings} />
+                  <SettingsPage settings={settings} version={version} />
                 </div>
               </main>
             </div>

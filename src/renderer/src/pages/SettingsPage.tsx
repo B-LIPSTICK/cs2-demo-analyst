@@ -69,7 +69,7 @@ const ENGINE_ROWS: { kind: string; label: string }[] = [
   { kind: 'model-medium', label: 'settings.engModelMedium' }
 ]
 
-export function SettingsPage({ settings }: { settings: Settings }) {
+export function SettingsPage({ settings, version }: { settings: Settings; version?: string }) {
   const t = useT()
   const toast = useToast()
   const [draft, setDraft] = useState<Settings>(settings)
@@ -762,7 +762,7 @@ export function SettingsPage({ settings }: { settings: Settings }) {
             {t.t('settings.aboutText')}
           </div>
           <div className="flex" style={{ gap: 8, marginTop: 10 }}>
-            <Tag tone="ghost">v0.1.0</Tag>
+            <Tag tone="ghost">v{version ?? '1.0.0'}</Tag>
             <Tag tone="ghost">MIT</Tag>
             <Tag tone="ghost">Electron 路 React 路 deadem</Tag>
           </div>

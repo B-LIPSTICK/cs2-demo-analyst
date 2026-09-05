@@ -392,21 +392,6 @@ body {
   -webkit-app-region: no-drag;
 }
 
-.titlebar .brand .logo {
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  background: linear-gradient(135deg, rgba(10, 132, 255, 0.22), rgba(10, 132, 255, 0.06));
-  border: 1px solid rgba(10, 132, 255, 0.35);
-}
-
-.titlebar .brand .logo svg {
-  width: 15px;
-  height: 15px;
-}
-
 .titlebar .wordmark {
   display: flex;
   align-items: baseline;
@@ -1114,12 +1099,21 @@ body {
   white-space: nowrap;
 }
 
+.card .date-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 5px;
+  min-height: 18px;
+}
+
 .card .date {
   font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-2);
-  margin-top: 3px;
-  opacity: 0.8;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  opacity: 0.9;
 }
 
 /* ─── 回合结束栏（爆炸/拆除/全死/超时） ────────────────────────────────────── */
@@ -1302,32 +1296,6 @@ body {
   font-size: 12px;
 }
 
-.card .score {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 28px;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.card .score .t {
-  color: var(--t);
-}
-
-.card .score .ct {
-  color: var(--ct);
-}
-
-.card .score .sep {
-  font-size: 15px;
-  color: var(--text-2);
-  font-weight: 500;
-}
-
 .card .mid {
   display: flex;
   align-items: center;
@@ -1403,7 +1371,7 @@ body {
 
 .card-menu-wrap {
   position: relative;
-  margin-left: 6px;
+  margin-left: auto; /* 无比分后仍靠右（原来靠 score 的 margin-left:auto 顶开） */
   align-self: center;
   z-index: 4;
 }

@@ -585,19 +585,17 @@ function DemoCard({
       {/* 选择模式：左上角勾选 */}
       {selectMode && <span className={`card-check ${selected ? 'on' : ''}`}>{selected ? '✓' : ''}</span>}
 
-      {/* 单卡操作菜单（⋯）：放在 top 行比分右侧，不遮挡比分/统计 */}
+      {/* 单卡操作菜单（⋯）：放在 top 行右侧，不遮挡比分/统计 */}
       <div className="top">
         <div style={{ minWidth: 0 }}>
           <div className="map">{mapName ?? '—'}</div>
           <div className="file" title={demo.path}>
             {demo.fileName}
           </div>
-          <div className="date">{fmtDate(demo.dateMs ?? demo.mtimeMs ?? demo.addedAt)}</div>
-        </div>
-        <div className="score">
-          <span className="t">{demo.scoreT ?? 0}</span>
-          <span className="sep">:</span>
-          <span className="ct">{demo.scoreCT ?? 0}</span>
+          <div className="date-row">
+            <div className="date">{fmtDate(demo.dateMs ?? demo.mtimeMs ?? demo.addedAt)}</div>
+            {voiceTag}
+          </div>
         </div>
         {!selectMode && (
           <div className="card-menu-wrap">
@@ -650,7 +648,6 @@ function DemoCard({
       <div className="mid">
         {demo.teamT && <Tag tone="t">{demo.teamT}</Tag>}
         {demo.teamCT && <Tag tone="ct">{demo.teamCT}</Tag>}
-        {voiceTag}
       </div>
 
       <div className="stats">
