@@ -1,87 +1,51 @@
-<p align="center">
-  <img src="assets/logo/csicon-512.png" width="160" alt="CS2 Demo Analyst" />
-</p>
-
 # CS2 Demo Analyst
 
-> 挂接 CS2 的 Demo 分析师 —— 拖入 .dem 即刻分析 · 游戏语音一键转写 · 苹果风毛玻璃界面
+[English](README.en.md) | 简体中文
 
-![UI](docs/screenshots/apple-detail.png)
+CS2 录像复盘工具。把 .dem 拖进来，解析出比分、回合、击杀和选手数据；局内语音可以转写成文字，按回合和时间对齐，点一下就能让 CS2 跳到对应时刻。
 
-CS2 Demo Analyst 帮助你像看职业比赛一样复盘自己的录像：**地图/比分/回合/击杀/选手数据自动解析**，**游戏内语音转成可搜索的文字**，还能在播放 demo 时**一键跳转到任意回合、击杀或语音时刻**。
+Windows 桌面应用。自带 CS2 内置播放器驱动，可选注入游戏内语音 HUD（谁在说话直接显示在画面里），退出后自动还原，不改游戏文件。
 
-这是一款作者长期自用的 CS2 复盘工具，现已开源：**不替换 CS2 播放器**，Windows 桌面绿色便携版（零安装）。可选「游戏内语音 HUD」会临时注入 VPK 并在退出后自动恢复，不影响正常游戏。
+## 功能
 
-## ✨ 功能
+- 解析 .dem：比分、回合时间轴、击杀（武器/爆头/穿烟）、选手 K/D/HS
+- 语音转写：逐位玩家局内语音 → 可搜索文字，时间与回合对齐（本地 whisper 或云端 API 二选一）
+- 跳转：点击转写行 / 击杀 / 回合，播放中的 CS2 直接跳过去
+- 游戏内语音 HUD：播放 demo 时画面左下角显示正在说话的队友
+- AI 提问：整局数据喂给任意 OpenAI 兼容模型，问高光、找转折
 
-| 功能 | 说明 |
-| --- | --- |
-| 🗂️ Demo 资料库 | 拖入 / 选择 / 扫描 `.dem`，本地秒级解析（76MB ≈ 1.3s） |
-| 📊 自动分析 | 地图、比分、回合时间轴、击杀记录（武器/爆头/穿烟）、选手 K/D/HS/MVP |
-| 🎙️ 语音检测 | 自动标记哪些 demo 含录制语音（FACEIT / 完美平台 / 本地录制通常有） |
-| 📝 语音转写 | 每位玩家语音 → 带时间戳文字，与回合对齐；文字聊天同屏；一键导出 |
-| 🎯 一键跳转 | 点击转写行 / 击杀 / 回合 → 向正在播放的 CS2 注入 `demo_gototick` 等指令（需工具模式 `-tools`；普通模式为内置播放器，无跳转） |
-| 🤖 AI 分析 | 自己配置 Key 与模型（OpenAI 兼容），用自然语言问这局：找高光、找破防、找转折，答案时间点可点击跳转 |
-| 🖥️ 实况注入 | 检测 cs2.exe，VConsole2（`-tools`）读写控制台；GSI 读取当前回合/比分/炸弹 |
-| 🎮 游戏内语音 HUD | 普通模式播放 demo 时，CS2 画面内直接显示说话者（名字+阵营色+声波），数据来自 demo 语音消息，暂停/跳转/倍速实时同步；VPK 注入，退出后自动恢复 |
-| 🎨 苹果风界面 | macOS 风格毛玻璃面板、iOS 蓝强调色、红绿灯窗口按钮、SF 系系统字体，深色/浅色双主题，中英双语 |
-
-## 📸 界面
+## 截图
 
 | 资料库 | Demo 详情 | 语音转写 |
 | --- | --- | --- |
-| ![资料库](docs/screenshots/apple-library.png) | ![详情](docs/screenshots/apple-detail.png) | ![转写](docs/screenshots/apple-transcript.png) |
+| ![library](docs/screenshots/1.0-library.png) | ![detail](docs/screenshots/1.0-detail.png) | ![transcript](docs/screenshots/1.0-transcript.png) |
 
-| 实况注入 | 语音转写 | AI 分析 |
-| --- | --- | --- |
-| ![实况](docs/screenshots/apple-live.png) | ![转写](docs/screenshots/apple-transcript.png) | ![AI](docs/screenshots/apple-ai.png) |
+## 安装
 
-## 🚀 快速开始（Windows 绿色便携版）
+从 Releases 下载其一：
 
-1. 下载 `CS2-Demo-Analyst-<version>-win64-portable.zip`
-2. 解压到任意目录，双击 `CS2 Demo Analyst.exe` 运行（免安装）
-3. 「添加目录」选择你的 demo 文件夹，自动扫描解析
-4. 详情页「CS2 中播放」→ 普通模式内置播放器秒播；设置页开启「游戏内语音 HUD」后播放时 CS2 画面内显示说话者
+- `CS2-Demo-Analyst-1.0.0-setup.exe`：安装包，可选安装目录，带桌面快捷方式
+- `CS2-Demo-Analyst-1.0.0-win64-portable.zip`：绿色版，解压即用
 
-> 小白从 0 到会的完整配置教程见 [docs/GUIDE.md](docs/GUIDE.md)（云端转写一键 Key、本地引擎下载、实况注入等）。
+用法：
 
-## 🎙️ 语音转写引擎（可一键配置）
+1. 打开软件，添加包含 .dem 的目录
+2. 等待解析完成，进详情页点「在 CS2 中播放」
+3. 语音转写需要带语音的 demo（FACEIT、完美平台等第三方录像）；Valve 天梯 demo 不含语音
 
-| 引擎 | 速度 | 成本 | 说明 |
-| --- | --- | --- | --- |
-| ☁️ 云端（默认推荐） | 秒级 | 免费额度（Groq） | 设置页一键获取免费 Key，whisper-large-v3-turbo |
-| 💻 本地 Whisper | 较慢（CPU） | 免费离线 | whisper.cpp + 模型按需下载，隐私优先 |
+## 开发
 
-> 注意：**Valve 天梯（MM）demo 不包含语音数据**，语音转写仅对 FACEIT / 完美平台 / 本地录制等 demo 有效。
-
-## 🛠️ 开发
+接手的人先读 [AGENTS.md](AGENTS.md)（项目现状、架构、踩坑记录都在里面）。
 
 ```bash
 npm install
-npm run dev            # 桌面版开发（Electron，HMR）
-npm run build          # 桌面版构建
-npm run dist:zip       # 桌面版绿色 zip 打包（离线，秒级，免安装）
-npm run smoke          # 无头冒烟测试
+npm run dev          # 开发
+npm run build        # 构建
+npm run dist:zip     # 绿色 zip 打包
 ```
 
-技术栈：React 19 + Vite + TypeScript · [deadem](https://github.com/Igor-Losev/deadem)（纯 JS Source2 解析）· Electron（桌面壳）· whisper.cpp / Groq（转写）· csgove（语音提取）。
+技术栈：Electron + React + TypeScript。demo 解析用 [deadem](https://github.com/Igor-Losev/deadem)（纯 JS），语音提取 csgove，转写 whisper.cpp / Groq。
 
-架构说明与模块文档见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+## 许可
 
-## ❓ 常见问题
-
-- **MM demo 转写没结果？** 天梯 demo 不录制语音，属正常现象。
-- **语音转写很慢？** 换云端引擎（设置页一键配置），或本地模型升级 small/medium + N 卡 CUDA。
-- **「实况注入」连不上？** 需要 CS2 以 `-tools` 模式启动（免费 Workshop Tools DLC），设置页可一键引导。
-- **demo 拖进来没反应？** 确认文件后缀是 `.dem`；超大文件请耐心等待解析进度条。
-
-## ⚖️ 兼容与声明
-
-- 解析基于 CS2 demo 格式（`PBDEMS2`），游戏更新后可能需要适配。
-- 本工具与 Valve / FACEIT / 完美世界**无任何关联**，非官方产品。
-- 请遵守 [CS2 Fair Play Guidelines](https://blog.counter-strike.net/index.php/fair-play-guidelines/)；注入功能仅用于本地 demo 复盘。
-- 所有解析、语音提取、转写均在本地完成（云端转写仅上传该段音频到你所配置的 API 服务）。
-
-## 📄 许可
-
-MIT。第三方组件与游戏资产遵循各自许可；本项目不包含 Valve 资源。
+MIT。仅支持 Windows。
