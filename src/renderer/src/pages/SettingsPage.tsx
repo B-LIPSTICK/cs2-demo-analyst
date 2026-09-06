@@ -764,7 +764,6 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           <div className="flex" style={{ gap: 8, marginTop: 10 }}>
             <Tag tone="ghost">v{version ?? '1.0.0'}</Tag>
             <Tag tone="ghost">MIT</Tag>
-            <Tag tone="ghost">Electron 路 React 路 deadem</Tag>
           </div>
         </div>
       </Panel>

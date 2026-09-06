@@ -1,5 +1,5 @@
 import { Component, useCallback, useEffect, useState, type ReactNode } from 'react'
-import { I18nProvider, type Lang } from './i18n'
+import { I18nProvider, useTKey, type Lang } from './i18n'
 import { ToastProvider } from './components/ui'
 import { TitleBar } from './components/TitleBar'
 import { NavRail, type Page } from './components/NavRail'
@@ -61,6 +61,7 @@ function initialRoute(): Route {
 }
 
 export default function App() {
+  const t = useTKey()
   const [route, setRoute] = useState<Route>(initialRoute)
   // 导航序号（navigate 每次 +1）：页面常驻下重复跳转同一 demo 时目标页也能感知
   const [navSeq, setNavSeq] = useState(0)
@@ -72,6 +73,7 @@ export default function App() {
     gsiActive: false
   })
   const [version, setVersion] = useState('1.0.0')
+  const [update, setUpdate] = useState<{ version: string; url: string } | null>(null)
 
   // 初始数据
   useEffect(() => {
@@ -93,9 +95,13 @@ export default function App() {
       setSettings((s) => e.settings ?? s)
     })
     const offLive = window.api.onEvent('live:status', (e) => setLive(e.status))
+    const offUpd = window.api.onEvent('update:available', (e) =>
+      setUpdate({ version: e.version, url: e.url })
+    )
     return () => {
       offSettings()
       offLive()
+      offUpd()
     }
   }, [])
 
@@ -135,6 +141,17 @@ export default function App() {
       <I18nProvider lang={settings.language} onLangChange={onLangChange}>
         <ToastProvider>
           <div className="app">
+            {update && (
+              <div className="update-banner">
+                <span className="ub-txt">{t('update.available').replace('{ver}', update.version)}</span>
+                <button className="btn primary" style={{ height: 24, fontSize: 12 }} onClick={() => window.api.app.openUrl(update.url)}>
+                  {t('update.go')}
+                </button>
+                <button className="icon-btn" style={{ width: 24, height: 24 }} onClick={() => setUpdate(null)} title={t('update.dismiss')}>
+                  ✕
+                </button>
+              </div>
+            )}
             <TitleBar
               status={live}
               version={version}
@@ -142,7 +159,7 @@ export default function App() {
               onToggleTheme={onToggleTheme}
             />
             <div className="app-body">
-              <NavRail page={route.page} onNavigate={(p) => navigate(p)} version={version} />
+              <NavRail page={route.page} onNavigate={(p) => navigate(p)} />
               <main className="page-scroll">
                 {/* 页面常驻（display 显隐而非卸载）：切换页面后保留原页面状态
                     （选中的 demo、筛选、转写进度等不再丢失） */}

@@ -387,6 +387,8 @@ export interface Api {
     version: () => Promise<string>
     revealInFolder: (path: string) => Promise<void>
     pickDirectory: () => Promise<string | null>
+    /** 用系统浏览器打开外部链接（更新下载页等） */
+    openUrl: (url: string) => Promise<void>
   }
 }
 
@@ -412,6 +414,7 @@ export type MainEvent =
   | { type: 'overlay:state'; state: OverlayState }
   | { type: 'voice:detected'; id: string; hasVoice: boolean; voiceSec: number }
   | { type: 'settings:changed'; settings: Settings }
+  | { type: 'update:available'; version: string; url: string }
 
 export type MainEventType = MainEvent['type']
 

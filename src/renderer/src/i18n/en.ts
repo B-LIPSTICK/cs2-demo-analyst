@@ -19,6 +19,7 @@ export const en: Record<keyof ZhDict, string> = {
   'nav.live': 'Live',
   'nav.liveTag': 'INJECT',
   'nav.settings': 'Settings',
+  'nav.credit': 'built by LIPSTICK',
 
   'common.search': 'Search',
   'common.cancel': 'Cancel',
@@ -340,8 +341,10 @@ export const en: Record<keyof ZhDict, string> = {
   'settings.engDownload': 'Download',
   'settings.engDownloading': 'Downloading {pct}%',
   'settings.about': 'ABOUT',
-  'settings.aboutText':
-    'CS2 Demo Analyst — a personal CS2 replay tool by the author, now open source. Not affiliated with Valve.',
+  'settings.aboutText': 'CS2 Demo Analyst. Not a Valve product and not affiliated with Valve, FACEIT or Wanmei.',
+  'update.available': 'New version v{ver} available',
+  'update.go': 'Get it',
+  'update.dismiss': 'Dismiss',
   'settings.save': 'Save',
 
   'pos.bottom-left': 'Bottom-left',

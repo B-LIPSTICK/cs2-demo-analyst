@@ -86,7 +86,8 @@ const api: ApiWithEvents = {
   app: {
     version: () => ipcRenderer.invoke('app:version'),
     revealInFolder: (path: string) => ipcRenderer.invoke('app:revealInFolder', path),
-    pickDirectory: () => ipcRenderer.invoke('app:pickDirectory')
+    pickDirectory: () => ipcRenderer.invoke('app:pickDirectory'),
+    openUrl: (url: string) => ipcRenderer.invoke('app:openUrl', url)
   },
   onEvent: <T extends MainEventType>(
     type: T,

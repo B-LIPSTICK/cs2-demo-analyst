@@ -19,6 +19,7 @@ export const zh = {
   'nav.live': '实况',
   'nav.liveTag': '注入',
   'nav.settings': '设置',
+  'nav.credit': 'built by LIPSTICK',
 
   // 通用
   'common.search': '搜索',
@@ -346,7 +347,10 @@ export const zh = {
   'settings.engDownload': '下载',
   'settings.engDownloading': '下载中 {pct}%',
   'settings.about': '关于',
-  'settings.aboutText': 'CS2 Demo Analyst — 作者长期自用的 CS2 复盘工具，现开源。非 Valve 官方产品。',
+  'settings.aboutText': 'CS2 Demo Analyst。非 Valve 官方产品，与 Valve / FACEIT / 完美世界无任何关联。',
+  'update.available': '发现新版本 v{ver}',
+  'update.go': '前往下载',
+  'update.dismiss': '忽略',
   'settings.save': '保存',
 
   // 悬浮层位置

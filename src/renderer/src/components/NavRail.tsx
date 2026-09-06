@@ -14,12 +14,10 @@ const ITEMS: { id: Page; icon: (p: { size?: number }) => ReactNode; tagKey?: TKe
 
 export function NavRail({
   page,
-  onNavigate,
-  version
+  onNavigate
 }: {
   page: Page
   onNavigate: (p: Page) => void
-  version: string
 }) {
   const t = useTKey()
   return (
@@ -36,11 +34,7 @@ export function NavRail({
         </div>
       ))}
       <div className="nav-foot">
-        <div className="mini">
-          Demo Analyst
-          <br />
-          BUILD 0.1 · {version}
-        </div>
+        <div className="mini">{t('nav.credit')}</div>
       </div>
     </nav>
   )

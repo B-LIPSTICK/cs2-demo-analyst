@@ -1,7 +1,7 @@
 /**
  * 主进程入口：窗口、IPC 装配、冒烟模式。
  */
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net, shell } from 'electron'
 import { join } from 'node:path'
 import type { Settings } from '@shared/types'
 import { createLibraryService } from './services/library'
@@ -261,6 +261,9 @@ function registerIpc(): void {
   ipcMain.handle('app:revealInFolder', (_e, path: string) => {
     shell.showItemInFolder(path)
   })
+  ipcMain.handle('app:openUrl', (_e, url: string) => {
+    if (typeof url === 'string' && /^https?:\/\//.test(url)) return shell.openExternal(url)
+  })
   // 目录选择（设置页选 CS2 安装路径等）
   ipcMain.handle('app:pickDirectory', async () => {
     const res = await dialog.showOpenDialog(mainWindow!, {
@@ -269,6 +272,45 @@ function registerIpc(): void {
     })
     return res.canceled ? null : (res.filePaths[0] ?? null)
   })
+}
+
+// ─── 更新检测（GitHub Releases）─────────────────────────────────────────────
+
+const UPDATE_REPO = 'B-LIPSTICK/cs2-demo-analyst'
+
+/** 'v1.2.3' / '1.2.3' → [1,2,3]；解析失败返回 null */
+function parseVer(v: string): number[] | null {
+  const m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(v.trim())
+  if (!m) return null
+  return [Number(m[1]), Number(m[2]), Number(m[3])]
+}
+
+function newerVer(a: number[], b: number[]): boolean {
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0)
+  }
+  return false
+}
+
+/** 启动后延迟检查 GitHub 最新 Release；有新版 → 发 update:available（离线/被墙静默） */
+async function checkForUpdate(): Promise<void> {
+  try {
+    const res = await net.fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'cs2-demo-analyst' },
+      signal: AbortSignal.timeout(8000)
+    })
+    if (!res.ok) return
+    const data = (await res.json()) as { tag_name?: string; html_url?: string }
+    const latest = parseVer(data.tag_name ?? '')
+    const cur = parseVer(app.getVersion())
+    if (!latest || !cur || !newerVer(latest, cur)) return
+    mainWindow?.webContents.send('update:available', {
+      version: String(data.tag_name).replace(/^v/, ''),
+      url: data.html_url ?? `https://github.com/${UPDATE_REPO}/releases`
+    })
+  } catch {
+    /* 静默 */
+  }
 }
 
 // ─── 生命周期 ──────────────────────────────────────────────────────────────
@@ -287,6 +329,8 @@ if (!gotLock) {
   app.whenReady().then(() => {
     registerIpc()
     createWindow()
+    // 启动 8s 后检查更新（避开启动高峰；版本相同/无网都静默）
+    setTimeout(() => void checkForUpdate(), 8000)
     void library.init()
     void getSettings().then((s) => {
       live.setPorts(s.cs2.vconsolePort, s.cs2.gsiPort)
