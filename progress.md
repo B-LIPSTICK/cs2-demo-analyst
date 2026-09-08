@@ -1,5 +1,27 @@
 # progress.md — 会话日志
 
+## 本轮十七（新增 ADR、KAST、Rating 2.0、首杀对决与回合经济系统分析）✅
+- **核心电竞数据补全**:
+  1. **伤害与 ADR**: 拦截 `player_hurt` 事件，过滤队友误伤，实现前置生命值截断（不溢出），输出每位选手场均有效伤害（ADR）与全场总伤害。
+  2. **高阶战力指标 (KAST / Rating 2.0 / 首杀首死)**:
+     - 追踪每回合首个击杀（Opening Duel），输出全场首杀/首死（FK/FD）。
+     - 实现换人头判定（Traded，受害者阵亡后 3 秒内队友击杀凶手）、助攻伤害贡献（>=41 伤害）、击杀与存活判定，输出 KAST 贡献率（%）。
+     - 引入社区成熟的 HLTV Rating 2.0 多元线性回归拟合算法（基于 KPR, DPR, KAST, ADR, Impact 加权）。
+  3. **回合经济系统 (Economy)**:
+     - 拦截 `round_freeze_end`，从 `CCSPlayerController` 实体读取 `m_pInGameMoneyServices`（开局资金、本回合消费）。
+     - 实现 MR12 官方连败补偿状态机（$1400~$3400，每胜-1，每负+1，R13 换边重置）。
+     - 判定双方每回合买枪类型（长枪满配 Full Buy / 强起 Force Buy / 半起 Semi Buy / 纯抗 Eco）。
+  4. **版本与缓存控制**: `PARSER_VERSION` 从 4 升级至 5，旧 Demo 打开详情自动无缝触发重解析回填新数据。
+  5. **UI 与 Bug 修复**:
+     - 选手面板扩充 Rating、ADR、KAST、FK/FD 列，加高亮配色；`PlayerModal` 弹出卡片同步升级。
+     - 回合详情条增加首杀与双方买枪经济条目。
+     - 修复 `DemoDetailPage` 中 `meta` 变量未初始化的潜在作用域报错风险。
+     - 双语 i18n（zh/en）全面补齐对应词条。
+- **验证**:
+  - `scripts/verify-stats-economy.mjs` 对真实 103MB Demo 验证：21 回合全绿，Rating (0.46~1.98)、ADR (50.8~179.9)、KAST (42.9%~81%)、经济买枪分类全部正确，断言 0 错误。
+  - `npm run typecheck`（Node + Web 双工程零报错）✓
+  - `npm run build` 打包构建成功 ✓
+
 ## 本轮十六（1.0 发布 + 界面 4s 闪烁根因修复）✅ 待 git 提交
 - **1.0 正式版**: package.json/package-lock version → 1.0.0（App 版本默认值与设置页 About v 标签动态化）；electron-builder.yml win.target → nsis（oneClick:false + 可选安装目录 + 桌面/开始菜单快捷方式，artifact CS2-Demo-Analyst-1.0.0-setup.exe 92MB）；移除 TitleBar 左上角 logo（只留 Demo Analyst 字标）；dist: zip 147MB + setup 安装包齐。
 - **★界面每 ~4s "从下弹出"闪烁根因（DOM 探针实证）**: 资料库页 `.page` 内 `card-grid` ↔ `empty(SCANNING)` 每 4.0s 往返切换（卡片重建 → fadeUp 重放）。链路: ToastProvider `value={{ push }}` **每次渲染新建对象** → 所有 useToast 消费者每次 provider 渲染获得新引用 → `LibraryPage.load` 的 `useCallback([toast])` 依赖随之变 → `useEffect([load])` 反复重跑 → load()（setLoading(true)→SCANNING→list→恢复）。修复: ToastProvider value 用 `useMemo` 稳定化（顺带避免全树 context 重渲染风暴）。

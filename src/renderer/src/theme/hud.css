@@ -2853,3 +2853,19 @@ body {
 .ai-input-row .input {
   background: var(--field-bg);
 }
+
+/* ─── 电竞指标高亮 (Rating / ADR / Economy) ────────────────────────── */
+.win-rating {
+  color: #34c759 !important; /* 绿色 / 高 Rating */
+}
+.low-rating {
+  color: #ff453a !important; /* 红色 / 低 Rating */
+}
+.player-row {
+  transition: background 0.12s var(--ease-out);
+}
+.player-row:hover {
+  background: var(--hover-bg);
+  cursor: pointer;
+}
+

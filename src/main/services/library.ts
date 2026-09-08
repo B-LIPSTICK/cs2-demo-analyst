@@ -96,8 +96,8 @@ export function createLibraryService(
   }
 
   // 解析器版本：解析逻辑变更（如击杀阵营实时跟踪）时 +1，旧详情缓存自动失效重解析
-  // v4: 保留隐式首回合（CS2 首回合无 round_prestart，此前手枪局整局丢失）
-  const PARSER_VERSION = 4
+  // v5: 引入 ADR、KAST、Rating 2.0、首杀对决与回合经济系统分析
+  const PARSER_VERSION = 5
 
   const libDir = () => join(app.getPath('userData'), 'library')
   const indexPath = () => join(libDir(), 'index.json')

@@ -21,10 +21,12 @@ import {
   StringTableType
 } from '@deademx/cs2'
 import type {
+  BuyType,
   ChatChannel,
   ChatMessage,
   KillEvent,
   PlayerInfo,
+  RoundEconomy,
   RoundEndType,
   RoundInfo,
   RoundWinner,
@@ -163,6 +165,8 @@ interface RoundAcc {
   bombPlantedTick?: number
   bombDefusedTick?: number
   bombExplodedTick?: number
+  economy?: RoundEconomy
+  firstKill?: KillEvent
 }
 
 interface EventKey {
@@ -283,6 +287,22 @@ export async function parseDemo(
   let mapName: string | undefined
   let userInfoLoaded = false
 
+  // ★伤害统计（player_hurt 事件累加，截断至有效伤害，过滤队友误伤）
+  const playerDamage = new Map<string, number>()
+  const damageByName = new Map<string, number>()
+  // roundVictimDamage: `${roundNum}:${victimKey}` -> attackerKey -> dmg（用于助攻与 KAST 判定）
+  const roundVictimDamage = new Map<string, Map<string, number>>()
+
+  // ★首杀 / 首死统计
+  const firstKillsByName = new Map<string, number>()
+  const firstDeathsByName = new Map<string, number>()
+
+  // ★连败补偿状态机（MR12 官方规则：$1400~$3400，每胜-1，每负+1；R13换边重置）
+  const LOSS_BONUS_TABLE = [1400, 1900, 2400, 2900, 3400]
+  const getLossBonus = (level: number) => LOSS_BONUS_TABLE[Math.max(0, Math.min(4, level))]
+  let lossStreakT = 0
+  let lossStreakCT = 0
+
   // 回合累积: 首回合从 firstTick 隐式开始
   let currentRound: RoundAcc = {
     roundNum: 1,
@@ -295,6 +315,66 @@ export async function parseDemo(
   let roundsStarted = false
   let lastBeginNewMatchTick = -1
   let lastMatchStartTick = -1
+
+  /** 从 CCSPlayerController 实体采样当前回合双方装备消费与资金 */
+  const sampleEconomy = (round: RoundAcc) => {
+    if (round.economy) return
+    try {
+      const demo = parser.getDemo()
+      const controllers = demo.getEntitiesByClassName('CCSPlayerController') as unknown as {
+        _index: number
+        getField(name: string): unknown
+      }[]
+      let tSpent = 0, tStart = 0
+      let ctSpent = 0, ctStart = 0
+      for (const c of controllers) {
+        const name = str(c.getField('m_iszPlayerName'))
+        if (!name || name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV' || name === '完美世界竞技平台CSTV') continue
+        const uid = c._index
+        const team = roundTeamByName.get(name) ?? roundTeamByUid.get(uid) ?? (int(c.getField('m_iTeamNum')) === 2 ? 'T' : int(c.getField('m_iTeamNum')) === 3 ? 'CT' : 'NONE')
+        const spent = int(c.getField('m_pInGameMoneyServices.m_iCashSpentThisRound'))
+        const start = int(c.getField('m_pInGameMoneyServices.m_iStartAccount'))
+        if (team === 'T') {
+          tSpent += spent
+          tStart += start
+        } else if (team === 'CT') {
+          ctSpent += spent
+          ctStart += start
+        }
+      }
+
+      const isPistol = round.roundNum === 1 || round.roundNum === 13
+      const getBuyType = (spent: number, start: number, isPistolRound: boolean): BuyType => {
+        if (isPistolRound) return 'eco'
+        if (spent >= 16000) return 'full'
+        if (spent < 6000 && start > 12000) return 'eco'
+        if (spent < 4000) return 'eco'
+        if (start > 0 && spent / start >= 0.7 && spent < 16000) return 'force'
+        return 'semi'
+      }
+
+      round.economy = {
+        t: {
+          equipValue: tSpent,
+          startCash: tStart,
+          spentCash: tSpent,
+          buyType: getBuyType(tSpent, tStart, isPistol),
+          lossBonusLevel: lossStreakT,
+          lossBonusAmount: getLossBonus(lossStreakT)
+        },
+        ct: {
+          equipValue: ctSpent,
+          startCash: ctStart,
+          spentCash: ctSpent,
+          buyType: getBuyType(ctSpent, ctStart, isPistol),
+          lossBonusLevel: lossStreakCT,
+          lossBonusAmount: getLossBonus(lossStreakCT)
+        }
+      }
+    } catch {
+      /* 实体读取失败时兜底 */
+    }
+  }
 
   const closeRound = (endTick: number) => {
     const r = currentRound
@@ -316,6 +396,47 @@ export async function parseDemo(
         r.endType = r.kills.length ? 'elimination' : 'timeout'
       }
     }
+
+    // 经济采样收尾
+    if (!r.economy) {
+      sampleEconomy(r)
+    }
+    if (!r.economy) {
+      const isPistol = r.roundNum === 1 || r.roundNum === 13
+      r.economy = {
+        t: {
+          equipValue: 0,
+          startCash: 0,
+          spentCash: 0,
+          buyType: isPistol ? 'eco' : 'semi',
+          lossBonusLevel: lossStreakT,
+          lossBonusAmount: getLossBonus(lossStreakT)
+        },
+        ct: {
+          equipValue: 0,
+          startCash: 0,
+          spentCash: 0,
+          buyType: isPistol ? 'eco' : 'semi',
+          lossBonusLevel: lossStreakCT,
+          lossBonusAmount: getLossBonus(lossStreakCT)
+        }
+      }
+    }
+
+    // 连败状态机更新
+    if (r.winner === 'T') {
+      lossStreakT = Math.max(0, lossStreakT - 1)
+      lossStreakCT = Math.min(4, lossStreakCT + 1)
+    } else if (r.winner === 'CT') {
+      lossStreakCT = Math.max(0, lossStreakCT - 1)
+      lossStreakT = Math.min(4, lossStreakT + 1)
+    }
+    // R12 结束（即上半场打完）：连败等级重置
+    if (r.roundNum === 12) {
+      lossStreakT = 0
+      lossStreakCT = 0
+    }
+
     rounds.push(r)
   }
 
@@ -477,8 +598,72 @@ export async function parseDemo(
             lastBeginNewMatchTick >= 0 ? lastBeginNewMatchTick : lastMatchStartTick
           if (matchStartForImplicit >= 0 && tick < matchStartForImplicit) break
         }
+
+        // ★首杀/首死追踪（排除热身阶段与自杀/阵营未知的非正常击杀）
+        if (
+          !currentRound.firstKill &&
+          kill.attackerTeam !== 'NONE' &&
+          kill.victimTeam !== 'NONE' &&
+          kill.attackerTeam !== kill.victimTeam
+        ) {
+          currentRound.firstKill = kill
+          if (kill.attackerName) {
+            firstKillsByName.set(kill.attackerName, (firstKillsByName.get(kill.attackerName) ?? 0) + 1)
+          }
+          if (kill.victimName) {
+            firstDeathsByName.set(kill.victimName, (firstDeathsByName.get(kill.victimName) ?? 0) + 1)
+          }
+        }
+
         // 中途不做统计（5E 的 USER_INFO/实体编号可能错位，统计在解析完成后统一按最终玩家表计算）
         currentRound.kills.push(kill)
+        break
+      }
+      case 'player_hurt': {
+        const attacker = int(ev.attacker)
+        const victim = int(ev.userid)
+        if (attacker === 65535 || attacker === victim) break
+
+        const aInfo = playersByUserid.get(attacker)
+        const vInfo = playersByUserid.get(victim)
+        const aName = aInfo?.name
+        const vName = vInfo?.name
+        const aPawnTeam = pawnIdxTeam.get(int(ev.attacker_pawn) & 0xfff)
+        const vPawnTeam = pawnIdxTeam.get(int(ev.userid_pawn) & 0xfff)
+        const aTeam = (aName ? roundTeamByName.get(aName) : undefined) ?? aPawnTeam ?? 'NONE'
+        const vTeam = (vName ? roundTeamByName.get(vName) : undefined) ?? vPawnTeam ?? 'NONE'
+
+        // 过滤友军伤害
+        if (aTeam !== 'NONE' && vTeam !== 'NONE' && aTeam === vTeam) break
+
+        const rawDmg = int(ev.dmg_health)
+        const postHealth = int(ev.health)
+        const preHealth = postHealth + rawDmg
+        const effectiveDmg = Math.max(0, Math.min(preHealth, rawDmg))
+        if (effectiveDmg <= 0) break
+
+        const aKey = aInfo?.steamId || aName
+        if (aKey) {
+          playerDamage.set(aKey, (playerDamage.get(aKey) ?? 0) + effectiveDmg)
+          if (aName) {
+            damageByName.set(aName, (damageByName.get(aName) ?? 0) + effectiveDmg)
+          }
+        }
+
+        if (aKey && (vInfo?.steamId || vName)) {
+          const vKey = vInfo?.steamId || vName!
+          const assistKey = `${currentRound.roundNum}:${vKey}`
+          let aMap = roundVictimDamage.get(assistKey)
+          if (!aMap) {
+            aMap = new Map()
+            roundVictimDamage.set(assistKey, aMap)
+          }
+          aMap.set(aKey, (aMap.get(aKey) ?? 0) + effectiveDmg)
+        }
+        break
+      }
+      case 'round_freeze_end': {
+        sampleEconomy(currentRound)
         break
       }
       case 'bomb_planted': {
@@ -958,6 +1143,91 @@ export async function parseDemo(
       const m = killTeamByName.get(p.name)
       if (m) p.team = m.CT >= m.T ? 'CT' : 'T'
     }
+
+    // ─── 计算 KAST、Rating 2.0、首杀/首死 与 ADR ─────────────────────────
+    const totalRoundsCount = Math.max(1, realRounds.length)
+    const kastRoundsByName = new Map<string, number>()
+
+    for (const r of realRounds) {
+      const roundVictimNames = new Set<string>()
+      const roundKillerNames = new Set<string>()
+
+      for (const k of r.kills) {
+        if (k.victimName) roundVictimNames.add(k.victimName)
+        if (k.attackerName) roundKillerNames.add(k.attackerName)
+      }
+
+      // 换人头判定：受害者死亡后 192 ticks（3.0 秒）内，其队友击杀了凶手
+      const tradedVictimNames = new Set<string>()
+      for (let i = 0; i < r.kills.length; i++) {
+        const k1 = r.kills[i]
+        if (!k1.victimName || k1.victimTeam === 'NONE') continue
+        const killerName = k1.attackerName
+        for (let j = i + 1; j < r.kills.length; j++) {
+          const k2 = r.kills[j]
+          if (k2.tick - k1.tick > 192) break
+          if (
+            k2.attackerTeam === k1.victimTeam &&
+            killerName &&
+            k2.victimName === killerName
+          ) {
+            tradedVictimNames.add(k1.victimName)
+            break
+          }
+        }
+      }
+
+      // 助攻伤害：受害者在回合内被杀，且攻击者对其造成 >= 41 伤害（且不是终结者）
+      const assistContributors = new Set<string>()
+      for (const victimName of roundVictimNames) {
+        const assistMap = roundVictimDamage.get(`${r.roundNum}:${victimName}`)
+        if (assistMap) {
+          for (const [attackerKey, dmg] of assistMap) {
+            if (dmg >= 41) {
+              assistContributors.add(attackerKey)
+            }
+          }
+        }
+      }
+
+      for (const p of finalPlayers) {
+        const name = p.name
+        const steamId = p.steamId
+        const hadKill = roundKillerNames.has(name)
+        const survived = !roundVictimNames.has(name)
+        const wasTraded = tradedVictimNames.has(name)
+        const hadAssist = assistContributors.has(name) || (steamId ? assistContributors.has(steamId) : false)
+
+        if (hadKill || hadAssist || survived || wasTraded) {
+          kastRoundsByName.set(name, (kastRoundsByName.get(name) ?? 0) + 1)
+        }
+      }
+    }
+
+    for (const p of finalPlayers) {
+      const totalDmg = damageByName.get(p.name) ?? (p.steamId ? playerDamage.get(p.steamId) : 0) ?? 0
+      const adr = Math.round((totalDmg / totalRoundsCount) * 10) / 10
+      const kastRounds = kastRoundsByName.get(p.name) ?? 0
+      const kast = Math.round((kastRounds / totalRoundsCount) * 1000) / 10
+      const fk = firstKillsByName.get(p.name) ?? 0
+      const fd = firstDeathsByName.get(p.name) ?? 0
+
+      // HLTV Rating 2.0 拟合公式
+      const kpr = p.kills / totalRoundsCount
+      const dpr = p.deaths / totalRoundsCount
+      const apr = p.assists / totalRoundsCount
+      const impact = 2.13 * kpr + 0.42 * apr - 0.41 + (fk / totalRoundsCount) * 0.25
+      const rawRating = 0.0073 * kast + 0.3591 * kpr - 0.5329 * dpr + 0.2372 * impact + 0.0032 * adr + 0.1587
+      const rating = Math.max(0.05, Math.min(3.5, Math.round(rawRating * 100) / 100))
+
+      p.adr = adr
+      p.totalDamage = totalDmg
+      p.kast = kast
+      p.rating = rating
+      p.firstKills = fk
+      p.firstDeaths = fd
+    }
+
     players.length = 0
     players.push(...finalPlayers)
   }
@@ -977,7 +1247,9 @@ export async function parseDemo(
       kills: r.kills.sort((a, b) => a.tick - b.tick),
       bombPlantedTick: r.bombPlantedTick,
       bombDefusedTick: r.bombDefusedTick,
-      bombExplodedTick: r.bombExplodedTick
+      bombExplodedTick: r.bombExplodedTick,
+      economy: r.economy,
+      firstKill: r.firstKill
     })),
     chat: chat.sort((a, b) => a.tick - b.tick),
     hasVoice: voiceCount > 0,

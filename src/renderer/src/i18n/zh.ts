@@ -113,6 +113,10 @@ export const zh = {
   'library.removeWithFileHint': '彻底删除源文件（zip 内的 demo：连同压缩包一起删）',
 
   // 详情
+  'detail.hud.rating': 'Rating',
+  'detail.hud.adr': 'ADR',
+  'detail.hud.kast': 'KAST',
+  'detail.hud.fkfd': '首杀/首死',
   'detail.hud.kills': '击杀',
   'detail.hud.deaths': '阵亡',
   'detail.hud.hs': '爆头',
@@ -120,6 +124,12 @@ export const zh = {
   'detail.timeline': '回合时间轴',
   'detail.killfeed': '击杀记录',
   'detail.players': '选手数据',
+  'detail.economy': '经济与买枪',
+  'detail.firstKill': '首杀',
+  'detail.buyType.full': '长枪满配',
+  'detail.buyType.force': '强起局',
+  'detail.buyType.semi': '半起局',
+  'detail.buyType.eco': '纯抗局',
   'detail.rounds': '回合',
   'detail.voice': '语音',
   'detail.chat': '文字聊天',

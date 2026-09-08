@@ -37,22 +37,26 @@ export function DemoDetailPage({
   useEffect(() => {
     let alive = true
     setDetail(null)
-    window.api.library.detail(id).then((d) => {
+    window.api.library.detail(id).then(async (d) => {
       if (!alive) return
       if (d) {
         setDetail(d)
-      } else if (meta?.status === 'ready') {
-        // 详情缓存失效（解析器升级）→ 自动重新解析，完成后回填
-        window.api.library.parse(id).then(() => {
-          const poll = setInterval(async () => {
-            const nd = await window.api.library.detail(id)
-            if (nd) {
-              clearInterval(poll)
-              if (alive) setDetail(nd)
-            }
-          }, 500)
-          setTimeout(() => clearInterval(poll), 60000)
-        })
+      } else {
+        // 详情缓存失效（解析器升级）→ 检查 index 中 meta 状态并自动重新解析
+        const list = await window.api.library.list().catch(() => [])
+        const m = list.find((item) => item.id === id)
+        if (m?.status === 'ready') {
+          window.api.library.parse(id).then(() => {
+            const poll = setInterval(async () => {
+              const nd = await window.api.library.detail(id)
+              if (nd) {
+                clearInterval(poll)
+                if (alive) setDetail(nd)
+              }
+            }, 500)
+            setTimeout(() => clearInterval(poll), 60000)
+          })
+        }
       }
     })
     return () => {
@@ -67,11 +71,12 @@ export function DemoDetailPage({
 
   /** 播放：普通模式 = CS2 内置播放器（+exec cfg）；工具模式 = VConsole 注入；voiceHud = 游戏内语音 HUD */
   const playInCs2 = async () => {
+    if (!detail) return
     const s = await window.api.settings.get()
     const toolsMode = !!s.cs2?.useToolsMode
     const voiceHud = !toolsMode && !!s.cs2?.voiceHud
     if (voiceHud) toast.push(t('detail.voiceHudPreparing'))
-    const r = await window.api.live.launch({ toolsMode, playDemoPath: meta.path, voiceHud })
+    const r = await window.api.live.launch({ toolsMode, playDemoPath: detail.meta.path, voiceHud })
     if (r.ok) {
       if (r.starting) toast.push(t('detail.playStarting'))
       else toast.push(r.injected ? t('detail.playInjected') : t('detail.playLaunched'))
@@ -235,16 +240,20 @@ export function DemoDetailPage({
                 <tr>
                   <th>#</th>
                   <th>{t('detail.players')}</th>
+                  <th>{t('detail.hud.rating')}</th>
+                  <th>{t('detail.hud.adr')}</th>
+                  <th>{t('detail.hud.kast')}</th>
                   <th>{t('detail.hud.kills')}</th>
                   <th>{t('detail.hud.deaths')}</th>
                   <th>{t('detail.hud.hs')}</th>
+                  <th>{t('detail.hud.fkfd')}</th>
                   <th>{t('detail.hud.mvp')}</th>
                 </tr>
               </thead>
               <tbody>
                 {(meta.players ?? []).map((p, i) => (
                   <tr
-                    key={p.steamId}
+                    key={p.steamId || p.name}
                     className="player-row"
                     onClick={() => setPlayer(p)}
                     title={t('detail.playerDetail')}
@@ -256,9 +265,18 @@ export function DemoDetailPage({
                         <span className={`nm ${p.team === 'T' ? 't' : p.team === 'CT' ? 'ct' : ''}`}>{p.name}</span>
                       </span>
                     </td>
+                    <td
+                      className={`num ${p.rating && p.rating >= 1.2 ? 'win-rating' : p.rating && p.rating < 0.85 ? 'low-rating' : ''}`}
+                      style={{ fontWeight: 700 }}
+                    >
+                      {p.rating !== undefined ? p.rating.toFixed(2) : '—'}
+                    </td>
+                    <td className="num" style={{ fontWeight: 600 }}>{p.adr !== undefined ? p.adr : '—'}</td>
+                    <td className="num">{p.kast !== undefined ? `${p.kast}%` : '—'}</td>
                     <td className="num">{p.kills}</td>
                     <td className="num">{p.deaths}</td>
                     <td className="num">{p.hsp}%</td>
+                    <td className="num">{p.firstKills !== undefined ? `${p.firstKills}/${p.firstDeaths ?? 0}` : '—'}</td>
                     <td className="num">{p.mvp}</td>
                   </tr>
                 ))}
@@ -537,7 +555,25 @@ function PlayerModal({
           </Btn>
         </div>
 
-        <div className="pm-stats">
+        <div className="pm-stats" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+          <div className="pm-stat">
+            <span>{t('detail.hud.rating')}</span>
+            <b style={{ color: player.rating && player.rating >= 1.2 ? '#34c759' : 'inherit' }}>
+              {player.rating !== undefined ? player.rating.toFixed(2) : '—'}
+            </b>
+          </div>
+          <div className="pm-stat">
+            <span>{t('detail.hud.adr')}</span>
+            <b>{player.adr !== undefined ? player.adr : '—'}</b>
+          </div>
+          <div className="pm-stat">
+            <span>{t('detail.hud.kast')}</span>
+            <b>{player.kast !== undefined ? `${player.kast}%` : '—'}</b>
+          </div>
+          <div className="pm-stat">
+            <span>{t('detail.hud.fkfd')}</span>
+            <b>{player.firstKills !== undefined ? `${player.firstKills}/${player.firstDeaths ?? 0}` : '—'}</b>
+          </div>
           <div className="pm-stat">
             <span>{t('detail.hud.kills')}</span>
             <b>{player.kills}</b>
@@ -623,9 +659,17 @@ function RoundStrip({
         return t('detail.unknownEnd')
     }
   })()
+  const buyTypeLabel = (bt?: string) => {
+    if (bt === 'full') return t('detail.buyType.full')
+    if (bt === 'force') return t('detail.buyType.force')
+    if (bt === 'semi') return t('detail.buyType.semi')
+    if (bt === 'eco') return t('detail.buyType.eco')
+    return ''
+  }
+
   return (
     <Panel raised style={{ marginTop: 16 }}>
-      <div className="panel-bd flex" style={{ alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+      <div className="panel-bd flex" style={{ alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         <Tag tone={round.winner === 'T' ? 't' : 'ct'} dot>
           R{round.roundNum} · {round.winner === 'T' ? 'T' : round.winner === 'CT' ? 'CT' : '—'}
         </Tag>
@@ -635,6 +679,30 @@ function RoundStrip({
         <span className="mono muted" style={{ fontSize: 11 }}>
           {fmtTick(round.startTick, tickRate)} → {fmtTick(round.endTick, tickRate)}
         </span>
+
+        {/* 首杀 */}
+        {round.firstKill && (
+          <span className="flex gap-4" style={{ alignItems: 'center', fontSize: 12 }}>
+            <span className="muted">{t('detail.firstKill')}:</span>
+            <span className={round.firstKill.attackerTeam === 'T' ? 't' : 'ct'} style={{ fontWeight: 600 }}>
+              {round.firstKill.attackerName}
+            </span>
+            <span className="muted">({round.firstKill.weapon})</span>
+          </span>
+        )}
+
+        {/* 经济与买枪 */}
+        {round.economy && (
+          <span className="flex gap-8" style={{ alignItems: 'center', fontSize: 12, marginLeft: 'auto' }}>
+            <span className="tag t" title={`T 消费 $${round.economy.t.spentCash} / 初始 $${round.economy.t.startCash}`}>
+              T: {buyTypeLabel(round.economy.t.buyType)} (${round.economy.t.spentCash})
+            </span>
+            <span className="tag ct" title={`CT 消费 $${round.economy.ct.spentCash} / 初始 $${round.economy.ct.startCash}`}>
+              CT: {buyTypeLabel(round.economy.ct.buyType)} (${round.economy.ct.spentCash})
+            </span>
+          </span>
+        )}
+
         {round.bombPlantedTick && (
           <Btn size="sm" variant="ghost" onClick={() => onJump(round.bombPlantedTick!)}>
             {t('detail.bombPlanted')} {fmtTick(round.bombPlantedTick, tickRate)}

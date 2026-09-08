@@ -52,6 +52,18 @@ export interface PlayerInfo {
   hsp: number
   /** Steam 头像 data URI（demo 内嵌，可能缺失） */
   avatar?: string
+  /** 场均伤害 (Average Damage per Round) */
+  adr?: number
+  /** 总有效伤害 (Total Damage Dealt) */
+  totalDamage?: number
+  /** KAST 达成百分比 (0 - 100) */
+  kast?: number
+  /** HLTV Rating 2.0 近似评分 */
+  rating?: number
+  /** 首杀次数 (First Kills / Opening Kills) */
+  firstKills?: number
+  /** 首死次数 (First Deaths / Opening Deaths) */
+  firstDeaths?: number
 }
 
 export interface KillEvent {
@@ -82,6 +94,28 @@ export type RoundEndType =
   | 'surrender'
   | 'unknown'
 
+export type BuyType = 'full' | 'semi' | 'force' | 'eco'
+
+export interface TeamRoundEconomy {
+  /** 装备总价值 (Equipment Value) */
+  equipValue: number
+  /** 回合开始总剩余现金 (Start Cash) */
+  startCash: number
+  /** 本回合消费 (Cash Spent) */
+  spentCash: number
+  /** 买枪类型判定 */
+  buyType: BuyType
+  /** 连败补偿等级 (0 - 4，对应 $1400~$3400) */
+  lossBonusLevel: number
+  /** 本回合连败补偿金额 ($1400, $1900, $2400, $2900, $3400) */
+  lossBonusAmount: number
+}
+
+export interface RoundEconomy {
+  t: TeamRoundEconomy
+  ct: TeamRoundEconomy
+}
+
 export interface RoundInfo {
   roundNum: number
   startTick: number
@@ -92,6 +126,8 @@ export interface RoundInfo {
   bombPlantedTick?: number
   bombDefusedTick?: number
   bombExplodedTick?: number
+  economy?: RoundEconomy
+  firstKill?: KillEvent
 }
 
 export type ChatChannel = 'ALL' | 'CT' | 'T' | 'DEAD' | 'SPEC' | 'ALLCHAT'
