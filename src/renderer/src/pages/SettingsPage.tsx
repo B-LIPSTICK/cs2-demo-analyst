@@ -5,6 +5,29 @@ import { useT, type Lang } from '@/i18n'
 import type { Settings } from '@shared/types'
 import { formatRootLabel } from './LibraryPage'
 
+const OFFLINE_SOURCES = [
+  {
+    title: 'whisper.cpp 模型仓库（HuggingFace）',
+    desc: '官方模型源：下载 ggml-base.bin / small.bin / medium.bin',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/tree/main'
+  },
+  {
+    title: 'HF-Mirror 国内镜像加速',
+    desc: '国内直连免翻墙镜像：高速下载 whisper 语音模型',
+    url: 'https://hf-mirror.com/ggerganov/whisper.cpp/tree/main'
+  },
+  {
+    title: 'whisper.cpp Releases',
+    desc: '官方程序包：下载 whisper-cli.exe（解压放入 whisper/ 根目录）',
+    url: 'https://github.com/ggml-org/whisper.cpp/releases'
+  },
+  {
+    title: 'csgove Releases',
+    desc: '官方提取器：下载 csgove.exe（解压放入 csgove/ 根目录）',
+    url: 'https://github.com/akiver/csgo-voice-extractor/releases'
+  }
+]
+
 /** 弹窗：createPortal 到 body，fixed 相对视口居中（避免被 .page 的 transform 动画干扰） */
 function Modal({
   title,
@@ -15,7 +38,7 @@ function Modal({
   extraButton
 }: {
   title: string
-  body: string
+  body: ReactNode
   onClose: () => void
   onConfirm: () => void
   confirmLabel: string
@@ -28,29 +51,60 @@ function Modal({
         position: 'fixed',
         inset: 0,
         zIndex: 999,
-        background: 'rgba(0,0,0,0.55)',
+        background: 'rgba(0,0,0,0.65)',
+        backdropFilter: 'blur(4px)',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center'
+        justifyContent: 'center',
+        padding: 16
       }}
       onClick={onClose}
     >
       <div
         style={{
-          width: 500,
+          width: 560,
           maxWidth: '92vw',
+          maxHeight: '88vh',
+          display: 'flex',
+          flexDirection: 'column',
           background: 'var(--bg-2)',
-          border: '1px solid var(--line-1)',
-          borderRadius: 12,
-          padding: 22
+          border: '1px solid var(--line-2)',
+          borderRadius: 14,
+          padding: 24,
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+          userSelect: 'text'
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 10 }}>{title}</div>
-        <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.8, whiteSpace: 'pre-line' }}>
-          {body}
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14, userSelect: 'text' }}>{title}</div>
+        <div
+          style={{
+            fontSize: 12.5,
+            lineHeight: 1.7,
+            overflowY: 'auto',
+            paddingRight: 4,
+            userSelect: 'text'
+          }}
+        >
+          {typeof body === 'string' ? (
+            <div className="muted" style={{ whiteSpace: 'pre-line', userSelect: 'text' }}>
+              {body}
+            </div>
+          ) : (
+            body
+          )}
         </div>
-        <div className="flex" style={{ gap: 8, marginTop: 18, justifyContent: 'flex-end', alignItems: 'center' }}>
+        <div
+          className="flex"
+          style={{
+            gap: 8,
+            marginTop: 20,
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            userSelect: 'none',
+            flexShrink: 0
+          }}
+        >
           {extraButton}
           <div style={{ flex: 1 }} />
           <Btn variant="ghost" size="sm" onClick={onClose}>
@@ -134,6 +188,13 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
   }
 
   const [showOfflineModal, setShowOfflineModal] = useState(false)
+
+  const copyUrl = (url: string) => {
+    navigator.clipboard.writeText(url).then(
+      () => toast.push('已复制链接到剪贴板', 'ok'),
+      () => toast.push('复制失败，请手动选择复制', 'warn')
+    )
+  }
 
   const save = async (patch: Partial<Settings>) => {
     const next = await window.api.settings.set(patch)
@@ -849,23 +910,6 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
       {showOfflineModal && (
         <Modal
           title={t.t('settings.offlineGuideTitle')}
-          body={`【本地模型离线安装步骤】
-
-1. 点击下方「打开模型目录」按钮（进入 %APPDATA%/cs2-demo-analyst/engines/）。
-2. 将下载好的文件放入对应子目录：
-   • whisper 语音模型（ggml-base.bin / ggml-small.bin / ggml-medium.bin）
-     👉 放入 whisper/models/ 目录中
-   • whisper-cli.exe（本地转写执行程序）
-     👉 放入 whisper/ 目录中
-   • csgove.exe（CS2 语音提取工具）
-     👉 放入 csgove/ 目录中
-3. 放置完成后回到此界面，点击「刷新」按钮，对应项即刻显示为「就绪」！
-
-【常用下载源】：
-• 官方模型仓库：https://huggingface.co/ggerganov/whisper.cpp/tree/main
-• 国内镜像加速：https://hf-mirror.com/ggerganov/whisper.cpp/tree/main
-• whisper.cpp Releases：https://github.com/ggml-org/whisper.cpp/releases
-• csgove Releases：https://github.com/akiver/csgo-voice-extractor/releases`}
           confirmLabel={t.t('common.confirm')}
           extraButton={
             <Btn variant="ghost" size="sm" onClick={openEnginesDir}>
@@ -875,6 +919,88 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           }
           onClose={() => setShowOfflineModal(false)}
           onConfirm={() => setShowOfflineModal(false)}
+          body={
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--text-0)' }}>
+                  【本地模型与引擎离线放置步骤】
+                </div>
+                <div style={{ color: 'var(--text-1)', lineHeight: 1.8 }}>
+                  <div>
+                    1. 点击下方「打开模型目录」按钮（或资源管理器直接进入{' '}
+                    <code style={{ userSelect: 'text', background: 'var(--field-bg)', padding: '2px 6px', borderRadius: 4 }}>
+                      %APPDATA%/cs2-demo-analyst/engines/
+                    </code>
+                    ）。
+                  </div>
+                  <div>2. 将下载好的对应文件放入子目录：</div>
+                  <div style={{ paddingLeft: 12 }}>
+                    <div>
+                      • <b>whisper 语音模型</b>（<code>ggml-base.bin</code> / <code>ggml-small.bin</code> / <code>ggml-medium.bin</code>）<br />
+                      👉 放入 <code>whisper/models/</code> 目录中
+                    </div>
+                    <div>
+                      • <b>whisper-cli.exe</b>（本地转写执行程序）<br />
+                      👉 放入 <code>whisper/</code> 根目录中
+                    </div>
+                    <div>
+                      • <b>csgove.exe</b>（CS2 语音提取工具）<br />
+                      👉 放入 <code>csgove/</code> 根目录中
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 4 }}>3. 放置完成后回到设置页，点击「刷新」按钮，对应项即刻显示为「就绪」！</div>
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 8, color: 'var(--text-0)' }}>
+                  【下载源推荐（支持一键访问或复制链接）】
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {OFFLINE_SOURCES.map((s) => (
+                    <div
+                      key={s.url}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 10,
+                        padding: '8px 12px',
+                        background: 'var(--field-bg)',
+                        border: '1px solid var(--line-1)',
+                        borderRadius: 8
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text-0)' }}>{s.title}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 2 }}>{s.desc}</div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: 'var(--accent)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            userSelect: 'text'
+                          }}
+                        >
+                          {s.url}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                        <Btn variant="ghost" size="sm" onClick={() => copyUrl(s.url)}>
+                          复制
+                        </Btn>
+                        <Btn variant="primary" size="sm" onClick={() => window.api.app.openUrl(s.url)}>
+                          访问
+                        </Btn>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          }
         />
       )}
 

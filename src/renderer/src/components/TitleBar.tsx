@@ -66,24 +66,30 @@ export function TitleBar({
       </div>
       {/* 窗口控制（右上角） */}
       <div className="win-btns">
-        <button className="win-btn min" onClick={() => window.api.window.minimize()} title="Minimize">
-          <svg viewBox="0 0 12 12">
-            <path d="M2 6h8" />
-          </svg>
+        <button className="win-btn min" onClick={() => window.api.window.minimize()} title="最小化 (Minimize)">
+          <span className="dot">
+            <svg viewBox="0 0 12 12">
+              <path d="M2 6h8" />
+            </svg>
+          </span>
         </button>
         <button
           className="win-btn max"
           onClick={() => window.api.window.toggleMaximize()}
-          title="Maximize"
+          title="最大化 / 还原 (Maximize)"
         >
-          <svg viewBox="0 0 12 12">
-            <path d="M4 4l4 4M5 4h3v3" />
-          </svg>
+          <span className="dot">
+            <svg viewBox="0 0 12 12">
+              <path d="M4 4l4 4M5 4h3v3" />
+            </svg>
+          </span>
         </button>
-        <button className="win-btn close" onClick={() => window.api.window.close()} title="Close">
-          <svg viewBox="0 0 12 12">
-            <path d="M3 3l6 6M9 3L3 9" />
-          </svg>
+        <button className="win-btn close" onClick={() => window.api.window.close()} title="关闭 (Close)">
+          <span className="dot">
+            <svg viewBox="0 0 12 12">
+              <path d="M3 3l6 6M9 3L3 9" />
+            </svg>
+          </span>
         </button>
       </div>
     </header>

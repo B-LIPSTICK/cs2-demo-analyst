@@ -37,8 +37,8 @@ export function NavRail({
         <button
           type="button"
           className="nav-credit-btn"
-          onClick={() => window.api.app.openUrl('https://space.bilibili.com/1424174623')}
-          title="访问 宙斯ZeusX27 的 Bilibili 空间"
+          onClick={() => window.api.app.openUrl('https://space.bilibili.com/3632307015518585')}
+          title="访问 B-LIPSTICK 的 Bilibili 空间"
         >
           {t('nav.credit')}
         </button>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Btn, IcPlus, IcSend, IcSpark, IcStop, Panel, Tag, useToast } from '@/components/ui'
+import { Btn, CustomSelect, IcPlus, IcSend, IcSpark, IcStop, Panel, Tag, useToast } from '@/components/ui'
 import { useTKey } from '@/i18n'
 import type { AiChatSession, DemoDetail, DemoMeta, RoundInfo } from '@shared/types'
 
@@ -116,55 +116,7 @@ function newSession(demoId: string): AiChatSession {
   }
 }
 
-/** 统一样式的选择下拉（按钮触发 + 浮层列表，图标/文本自适应） */
-function AiSelect({
-  label,
-  value,
-  options,
-  onChange,
-  width
-}: {
-  label: string
-  value: string
-  options: { value: string; label: string }[]
-  onChange: (v: string) => void
-  width: number
-}) {
-  const [open, setOpen] = useState(false)
-  useEffect(() => {
-    if (!open) return
-    const close = () => setOpen(false)
-    document.addEventListener('click', close)
-    return () => document.removeEventListener('click', close)
-  }, [open])
-  return (
-    <div className="root-select" onClick={(e) => e.stopPropagation()}>
-      <button className="input root-select-btn" style={{ width }} onClick={() => setOpen((v) => !v)}>
-        <span className="grow" style={{ textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {label}
-        </span>
-        <span style={{ color: 'var(--text-2)', fontSize: 10 }}>▾</span>
-      </button>
-      {open && (
-        <div className="root-menu">
-          {options.map((o) => (
-            <button
-              key={o.value}
-              className={`root-item ${o.value === value ? 'on' : ''}`}
-              title={o.label}
-              onClick={() => {
-                onChange(o.value)
-                setOpen(false)
-              }}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
+
 
 export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
   const t = useTKey()
@@ -360,10 +312,10 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
         <div className="actions ai-actions">
           {/* 会话组 */}
           <div className="ai-group">
-            <AiSelect
+            <CustomSelect
               width={180}
-              label={`💬 ${current?.title ?? '…'}`}
               value={currentId}
+              placeholder="新对话"
               options={sessions.map((s) => ({ value: s.id, label: s.title }))}
               onChange={(v) => setCurrentId(v)}
             />
@@ -378,16 +330,22 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
           <div className="ai-group-sep" />
           {/* Demo 组 */}
           <div className="ai-group">
-            <AiSelect
-              width={230}
-              label={`🎬 ${sampleDemo ? (sampleDemo.mapName ?? sampleDemo.fileName) : t('ai.selectDemo')}`}
+            <CustomSelect
+              width={240}
               value={selectedId}
+              placeholder={t('ai.selectDemo')}
               options={demos.map((d) => ({
                 value: d.id,
-                label: `${d.mapName ?? '—'} · ${d.fileName}${d.hasVoice === true ? ' 🎙️' : ''}`
+                label: d.mapName ? `${d.mapName} · ${d.fileName}` : d.fileName,
+                sublabel: d.hasVoice === true ? '含语音' : undefined
               }))}
               onChange={(v) => setSelectedId(v)}
             />
+            {sampleDemo && (
+              <Tag tone={sampleDemo.hasVoice ? 'voice' : 'ghost'} dot={Boolean(sampleDemo.hasVoice)}>
+                {sampleDemo.hasVoice ? t('ai.voiceYes') : t('ai.voiceNo')}
+              </Tag>
+            )}
             {!hasKey && (
               <Btn variant="ghost" size="sm" onClick={onGoSettings}>
                 {t('ai.configureKey')} →
@@ -400,11 +358,6 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
       <Panel className="ai-panel grow" raised>
         {messages.length === 0 ? (
           <div className="ai-empty">
-            <div className="ai-empty-ic">
-              <IcSpark size={30} />
-            </div>
-            <div className="ai-empty-title">{t('ai.emptyTitle')}</div>
-            <div className="ai-empty-sub">{t('ai.emptySub')}</div>
             <div className="ai-quick">
               {quickQs.map((q, i) => (
                 <button key={i} className="ai-quick-chip" onClick={() => ask(q)}>
@@ -463,12 +416,6 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
           )}
         </div>
       </Panel>
-
-      <div className="flex" style={{ gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-        <Tag tone="ghost">{t('ai.tag1')}</Tag>
-        <Tag tone="ghost">{t('ai.tag2')}</Tag>
-        {sampleDemo?.hasVoice === true && <Tag tone="voice" dot>{t('ai.tagVoice')}</Tag>}
-      </div>
     </div>
   )
 }
