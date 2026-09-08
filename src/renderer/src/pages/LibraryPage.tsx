@@ -80,11 +80,16 @@ function LibraryPageInner({
       })
       setDemos((ds) => ds.map((d) => (d.id === e.id ? e.meta : d)))
     })
+    const offSettings = window.api.onEvent('settings:changed', (e) => {
+      const rs = e.settings.libraryRoots ?? []
+      setRoots(rs)
+    })
     return () => {
       off()
       offLib()
       offProg()
       offItem()
+      offSettings()
     }
   }, [])
 
@@ -117,6 +122,31 @@ function LibraryPageInner({
       /* noop */
     }
   }, [rootFilter])
+
+  const onAddRoot = async () => {
+    try {
+      const newRoots = await window.api.library.addRoot()
+      if (newRoots && newRoots.length > 0) {
+        setRoots(newRoots)
+        // 自动选中新添加的目录
+        const lastAdded = newRoots[newRoots.length - 1]
+        if (lastAdded) setRootFilter(lastAdded)
+      }
+      await load()
+    } catch {
+      toast.push(t('common.error'), 'err')
+    }
+  }
+
+  const onRescan = async () => {
+    try {
+      await window.api.library.rescan()
+      await load()
+      toast.push(t('library.rescanDone'))
+    } catch {
+      toast.push(t('common.error'), 'err')
+    }
+  }
 
   const toggleFav = async (id: string) => {
     if (favIds.has(id)) {
@@ -195,11 +225,14 @@ function LibraryPageInner({
 
   const filtered = useMemo(() => {
     let list = demos
-    // 目录过滤（zip 容器条目按其容器路径归属）
+    // 目录过滤（zip 容器条目按其容器路径归属；Windows 路径做斜杠与大小写归一化）
     if (rootFilter) {
-      list = list.filter(
-        (d) => d.path.startsWith(rootFilter) || (d.containerPath?.startsWith(rootFilter) ?? false)
-      )
+      const rf = rootFilter.replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '')
+      list = list.filter((d) => {
+        const p = d.path.replace(/\\/g, '/').toLowerCase()
+        const cp = d.containerPath ? d.containerPath.replace(/\\/g, '/').toLowerCase() : ''
+        return p.startsWith(rf) || cp.startsWith(rf)
+      })
     }
     // 排序：按日期（默认，新的在前）或按加入时间
     list = [...list].sort((a, b) => {
@@ -314,18 +347,11 @@ function LibraryPageInner({
                 <option value="date">{t('library.sortDate')}</option>
                 <option value="added">{t('library.sortAdded')}</option>
               </select>
-              <Btn variant="ghost" onClick={async () => {
-                await window.api.library.addRoot()
-                load()
-              }}>
+              <Btn variant="ghost" onClick={onAddRoot}>
                 <IcPlus size={13} />
                 {t('library.addRoot')}
               </Btn>
-              <Btn variant="ghost" onClick={async () => {
-                // 真正重新扫描磁盘（旧实现只读内存缓存，新下载的 demo 不出现）
-                await window.api.library.rescan()
-                load()
-              }}>
+              <Btn variant="ghost" onClick={onRescan}>
                 <IcRefresh size={13} />
                 {t('library.rescan')}
               </Btn>
@@ -355,20 +381,28 @@ function LibraryPageInner({
         <Empty ghost="SCANNING" hint="…" />
       ) : filtered.length === 0 && demos.length === 0 ? (
         <Empty ghost="NO DEMOS" hint={t('library.emptyHint')}>
-          <Btn
-            variant="ghost"
-            onClick={async () => {
-              await window.api.library.addRoot()
-              load()
-            }}
-            style={{ marginTop: 6 }}
-          >
-            <IcPlus size={13} />
-            {t('library.addRoot')}
-          </Btn>
+          <div className="row" style={{ gap: 8, marginTop: 8 }}>
+            <Btn variant="ghost" onClick={onAddRoot}>
+              <IcPlus size={13} />
+              {t('library.addRoot')}
+            </Btn>
+            <Btn variant="ghost" onClick={onRescan}>
+              <IcRefresh size={13} />
+              {t('library.rescan')}
+            </Btn>
+          </div>
         </Empty>
       ) : filtered.length === 0 ? (
-        <Empty ghost="NO DEMOS" hint={query ? t('common.search') : ''} />
+        <Empty
+          ghost="NO DEMOS"
+          hint={query ? t('common.search') : (rootFilter ? `当前目录下暂无 Demo（${rootName(rootFilter)}）` : '')}
+        >
+          {rootFilter && (
+            <Btn variant="ghost" size="sm" onClick={() => setRootFilter('')} style={{ marginTop: 8 }}>
+              {t('library.allRoots')}
+            </Btn>
+          )}
+        </Empty>
       ) : (
         <div className="card-grid">
           {filtered.map((d, i) => (

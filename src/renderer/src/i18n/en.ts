@@ -44,6 +44,7 @@ export const en: Record<keyof ZhDict, string> = {
   'library.subtitle': 'Local demo collection · auto scanned & analyzed',
   'library.addRoot': 'Add folder',
   'library.rescan': 'Rescan',
+  'library.rescanDone': 'Scan completed',
   'library.empty': 'No demos yet',
   'library.emptyHint': 'Add a folder containing .dem files to start analyzing',
   'library.voice': 'VOICE',

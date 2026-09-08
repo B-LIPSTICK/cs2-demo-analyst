@@ -1,5 +1,30 @@
 # progress.md — 会话日志
 
+## 本轮十八（修复添加目录与重新扫描失效、黑名单阻断及路径归一化）✅
+- **根因诊断（为什么添加目录和重新扫描扫描不出 demo）**:
+  1. **黑名单永久阻断 (`ignored.json`)**: 用户此前曾将 Demo 从资料库移出（仅从资料库移除），文件路径被持久化写入 `ignored.json`。即便用户后续重新下载该 Demo，由于旧扫描逻辑在读取文件属性前直接以原始字符串匹配（`if (ignoredSet.has(zp)) continue`），导致重新下载的同名 demo 被永久静默过滤。
+  2. **异步未等待 (`void scan()`)**: `setRoots` 中 `void scan()` 未 `await`，导致用户点击「添加目录」时主进程立即返回，前端紧接着调用 `list()` 拿到的是尚未扫描的空列表。
+  3. **前端状态未刷新**: `LibraryPage` 在 `addRoot` 完成后未用返回值更新 `roots` 状态，且未响应主进程的目录设置变更；且 `rootFilter` 若保留在旧目录，新添加的 Demo 会被前端 `filtered` 过滤掉。
+  4. **Windows 路径大小写与斜杠比对**: `rootFilter` 筛选时使用了区分大小写的 `startsWith`，在 Windows 盘符大小写或斜杠不一致时导致卡片隐藏。
+- **修复方案**:
+  1. **智能忽略映射 (`ignoredMap`)**:
+     - 升级为包含文件 `mtimeMs` 与 `ignoredAt` 的数据模型。
+     - 若文件在磁盘上的修改时间晚于被忽略时间（重新下载或有更新），自动解除忽略并移出黑名单。
+     - 用户主动「添加目录」(`addRoot`) 时，自动清理解除所选目录下的所有忽略记录。
+     - 用户主动「重新扫描」(`rescan`) 时，清理解除当前所有已配置 roots 下的忽略记录，确保盘内 Demo 均可被重新入库。
+  2. **主进程完整等待**: `setRoots` 与 `addRoot` 改为 `await scan()`，确保扫描落盘完成后再向渲染进程返回。
+  3. **前端目录联动与重扫提示**:
+     - `onAddRoot` 自动将新目录加入 `roots` 状态，并将下拉筛选切到最新添加的目录。
+     - `LibraryPage` 监听 `settings:changed` 保持多页面目录配置实时同步。
+     - 空状态与筛选为空状态友好化（增加全部目录切换按钮与重扫按钮）。
+     - 增加 `library.rescanDone` 提示双语词条。
+  4. **路径归一化**: `filtered` 在筛选前对 `path`、`containerPath`、`rootFilter` 统一进行 `/` 斜杠与小写转换。
+- **本地环境与全流程验证**:
+  - 用户本地 `ignored.json` 中的历史阻断条目已彻底清理。
+  - 用户新下载的 `C:\Users\LIPSTICK\AppData\Roaming\Wmpvp\demo\9210321652853299852_0.zip`（内含 105MB 真实比赛 Demo）经脚本实跑解析验证通过（22 回合，de_inferno，🗲LIPSTICK🗲 5/10/2 55.9 ADR 81.8% KAST 0.80 Rating，双方 22 回合经济全部吻合）。
+  - `npm run typecheck` ✓
+  - `npm run build` ✓
+
 ## 本轮十七（新增 ADR、KAST、Rating 2.0、首杀对决与回合经济系统分析）✅
 - **核心电竞数据补全**:
   1. **伤害与 ADR**: 拦截 `player_hurt` 事件，过滤队友误伤，实现前置生命值截断（不溢出），输出每位选手场均有效伤害（ADR）与全场总伤害。

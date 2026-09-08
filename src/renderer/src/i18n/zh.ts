@@ -46,6 +46,7 @@ export const zh = {
   'library.subtitle': '本地 Demo 集合 · 自动扫描与解析',
   'library.addRoot': '添加目录',
   'library.rescan': '重新扫描',
+  'library.rescanDone': '扫描完成',
   'library.empty': '暂无 Demo',
   'library.emptyHint': '添加一个包含 .dem 文件的目录开始分析',
   'library.voice': '语音',

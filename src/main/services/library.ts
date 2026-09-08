@@ -104,20 +104,81 @@ export function createLibraryService(
   const detailPath = (id: string) => join(libDir(), `${id}.json`)
   const ignoredPath = () => join(libDir(), 'ignored.json')
 
-  /** 用户手动从库移除的路径黑名单（删除后不会因扫描重新入库） */
-  let ignored: string[] = []
+  /** 用户手动从库移除的路径黑名单（删除后不会因扫描重新入库；文件更新/重下或主动重扫时自动解禁） */
+  interface IgnoredEntry {
+    path: string
+    mtimeMs?: number
+    ignoredAt: number
+  }
+  const ignoredMap = new Map<string, IgnoredEntry>()
+  let ignoredFileMtime = 0
+
+  const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '')
+
   const loadIgnored = async () => {
     try {
-      ignored = JSON.parse(await fs.readFile(ignoredPath(), 'utf-8')) as string[]
+      const st = await fs.stat(ignoredPath()).catch(() => null)
+      if (st) ignoredFileMtime = st.mtimeMs
+      const raw = await fs.readFile(ignoredPath(), 'utf-8')
+      const parsed = JSON.parse(raw)
+      ignoredMap.clear()
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (typeof item === 'string') {
+            ignoredMap.set(normPath(item), { path: item, ignoredAt: ignoredFileMtime })
+          } else if (item && typeof item === 'object' && typeof item.path === 'string') {
+            ignoredMap.set(normPath(item.path), {
+              path: item.path,
+              mtimeMs: item.mtimeMs,
+              ignoredAt: item.ignoredAt ?? ignoredFileMtime
+            })
+          }
+        }
+      }
     } catch {
-      ignored = []
+      ignoredMap.clear()
     }
   }
+
   const saveIgnored = async () => {
     await fs.mkdir(libDir(), { recursive: true })
     const tmp = ignoredPath() + '.tmp'
-    await fs.writeFile(tmp, JSON.stringify(ignored), 'utf-8')
+    const arr = Array.from(ignoredMap.values())
+    await fs.writeFile(tmp, JSON.stringify(arr, null, 2), 'utf-8')
     await fs.rename(tmp, ignoredPath())
+  }
+
+  /** 清理指定目录下的忽略项（用户主动添加目录或重新扫描时使用） */
+  const unignoreUnder = (dirs: string[]) => {
+    const normDirs = dirs.map(normPath)
+    let changed = false
+    for (const [normKey] of ignoredMap) {
+      if (normDirs.some((nd) => normKey === nd || normKey.startsWith(nd + '/'))) {
+        ignoredMap.delete(normKey)
+        changed = true
+      }
+    }
+    if (changed) {
+      void saveIgnored().catch(() => {})
+    }
+  }
+
+  /** 判断是否被忽略：若文件已被重新下载或修改（mtime 晚于被忽略的时间），自动解除忽略 */
+  const isIgnored = (filePath: string, currentMtimeMs: number): boolean => {
+    const norm = normPath(filePath)
+    const entry = ignoredMap.get(norm)
+    if (!entry) return false
+    if (entry.mtimeMs && currentMtimeMs > entry.mtimeMs) {
+      ignoredMap.delete(norm)
+      void saveIgnored().catch(() => {})
+      return false
+    }
+    if (entry.ignoredAt && currentMtimeMs > entry.ignoredAt) {
+      ignoredMap.delete(norm)
+      void saveIgnored().catch(() => {})
+      return false
+    }
+    return true
   }
 
   const persistIndex = async () => {
@@ -289,19 +350,18 @@ export function createLibraryService(
           await walkZip(r, foundZips)
         })
       )
-      const ignoredSet = new Set(ignored)
       dbg(`scan found ${foundDems.length} demos + ${foundZips.length} zips in ${store.roots.length} roots`)
       const seen = new Set<string>()
 
       // ── 普通 .dem ──
       for (const path of foundDems) {
-        if (ignoredSet.has(path)) continue
         let st
         try {
           st = await fs.stat(path)
         } catch {
           continue
         }
+        if (isIgnored(path, st.mtimeMs)) continue
         const id = demoid(path, st.size, st.mtimeMs)
         seen.add(id)
         const existing = store.index[id]
@@ -321,13 +381,13 @@ export function createLibraryService(
 
       // ── .zip 容器：把其中 .dem 提取到缓存，直接入库解析 ──
       for (const zp of foundZips) {
-        if (ignoredSet.has(zp)) continue
         let zst
         try {
           zst = await fs.stat(zp)
         } catch {
           continue
         }
+        if (isIgnored(zp, zst.mtimeMs)) continue
         let zip: AdmZip
         try {
           zip = new AdmZip(zp)
@@ -542,6 +602,8 @@ export function createLibraryService(
       })
       if (res.canceled) return []
       const merged = [...new Set([...store.roots, ...res.filePaths])]
+      // 用户主动添加目录：清理所选目录下的忽略黑名单，确保新添加的目录可以完整扫描入库
+      unignoreUnder(res.filePaths)
       await this.setRoots(merged)
       return merged
     },
@@ -553,11 +615,13 @@ export function createLibraryService(
     async setRoots(roots: string[]) {
       store.roots = roots
       await updateSettings({ libraryRoots: roots })
-      // 用户主动添加/移除目录 → 立即扫描（这是手动行为）
-      void scan()
+      // 用户主动添加/移除目录 → 立即等待扫描完成
+      await scan()
     },
 
     async rescan() {
+      // 重新扫描：用户主动全量刷新，清理当前监控 roots 下的忽略黑名单，确保所有本地 demo 都能被扫描到
+      unignoreUnder(store.roots)
       // 等扫描完成再返回（renderer await 后重新 list 能拿到新结果）
       await scan()
     },
@@ -620,7 +684,18 @@ export function createLibraryService(
         }
       }
       const ignoreKey = container ?? meta.path
-      if (!ignored.includes(ignoreKey)) ignored.push(ignoreKey)
+      const norm = normPath(ignoreKey)
+      if (!opts?.deleteFile) {
+        // 仅移出资料库时记入忽略列表，记录修改时间与当前时间
+        ignoredMap.set(norm, {
+          path: ignoreKey,
+          mtimeMs: meta.mtimeMs,
+          ignoredAt: Date.now()
+        })
+      } else {
+        // 彻底删除文件时，从忽略列表中清除（防止未来重新下载同名文件被屏蔽）
+        ignoredMap.delete(norm)
+      }
       const jobs: Promise<void>[] = [saveIgnored(), persistIndex()]
       if (opts?.deleteFile) {
         // 连本地源文件一起删：普通 demo 删 .dem；zip 条目删容器 zip
