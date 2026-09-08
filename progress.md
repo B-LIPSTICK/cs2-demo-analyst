@@ -1,5 +1,37 @@
 # progress.md — 会话日志
 
+## 本轮二十五（UI 体验精细化：毛玻璃自定义下拉框、主页面副标题清理、离线模型安装与下载取消控制、作者 B 站与 GitHub 主页直达）✅
+- **用户需求与痛点诊断**:
+  1. **下载控制与离线安装通道**: 梯子环境下外网下载可能速度较慢或卡顿，需要支持随时「取消下载」；同时支持用户手动在 GitHub Releases / 镜像源下载模型，并提供「打开模型目录」快捷按钮，放入即用；
+  2. **下拉栏白框丑陋问题**: 用户截图反馈设置页转写语言的 Windows 原生 `<select>` 下拉框弹出刺眼的纯白方框，且外框粗糙违和；
+  3. **去除主页面副标题小字**: 资料库「本地 Demo 集合 · 自动扫描与解析」、转写「游戏内语音 → 文字」以及其他页面标题下方的小字统统删掉，消除过度 AI 感；
+  4. **创作者主页与签名优化**:
+     - 左下角 `built by lipstick` 放大加粗并绑定点击跳转 B 站主页（核实：宙斯ZeusX27 空间链接 `https://space.bilibili.com/1424174623` 准确无误）；
+     - 右上角日月切换按钮旁增加 GitHub 按钮，点击直达 GitHub 主页（`https://github.com/B-LIPSTICK`）。
+- **重构与优化实施**:
+  1. **下载控制与取消机制 (`download.ts` & `engines.ts`)**:
+     - `downloadFile` 与 `downloadWithMirrors` 全链路接入 `AbortSignal`；当收到取消信号时，立即销毁 HTTP 管道与文件写入流，自动清理临时 `.tmp`，并在多镜像循环中立刻抛错终止后续重试；
+     - `engines.ts` 维护 `activeControllers` 任务池，新增 `cancelEngine(kind)` IPC 接口；
+     - 新增 `openEnginesFolder()` IPC 接口，自动校验并递归创建 `userData/engines/whisper/models` 等子目录，调用 `shell.openPath` 快速唤起资源管理器；
+  2. **高颜值毛玻璃自定义下拉选择器 (`CustomSelect` & `hud.css`)**:
+     - 彻底摒弃 Windows 原生 `<select>`，打造专为 HUD 苹果磨砂质感定制的 `CustomSelect` 通用组件；
+     - 包含圆角触发框、旋转动效 Chevron 箭头、深色亚克力磨砂浮层、悬浮柔光选中项、右侧 Checkmark 对勾与副标题标识（Auto / zh / en 等）；
+     - 支持点击外部失焦自动收起与 Esc 键退出；
+     - 已全面覆盖：设置页转写语言、AI 候选模型选择、CS2 播放模式与分辨率选择、转写页 Demo 选择器与回合切换器、资料库排序模式切换器；
+  3. **全主页面副标题清理**:
+     - 从 `LibraryPage.tsx`、`TranscriptPage.tsx`、`LivePage.tsx`、`AiPage.tsx`、`SettingsPage.tsx` 中全面移除 `<div className="sub">` 副标题，页面头部呈现现代极简专业 HUD 风格；
+  4. **创作者主页与导航直达**:
+     - 侧栏左下角 `built by LIPSTICK` 升级为交互式按钮，字号加大至 12.5px，粗体，增加悬停渐变蓝发光微动效，点击唤起默认浏览器跳转 B 站主页；
+     - 标题栏右侧状态集群新增圆角方形 `<IcGithub />` 图标按钮，与日月主题切换按钮尺寸及动效严格对齐，点击直达 GitHub 主页；
+  5. **引擎管理面板增强**:
+     - 顶部新增「💡 离线安装说明」与「📁 打开模型目录」按钮；
+     - 提供离线模型安装说明弹窗，详列 Whisper 模型（base/small/medium）、whisper-cli.exe、csgove.exe 对应存放目录与官方/国内镜像下载链接；
+     - 下载过程中百分比旁提供「取消」按钮，随时停止任务。
+- **验证与测试**:
+  - `npm run typecheck` ✓（0 报错）
+  - `npm run smoke` ✓（`[smoke] renderer loaded OK`）
+  - 离屏渲染截图验证：自定义下拉框、GitHub 按钮、B 站签名按钮、离线与取消下载面板均呈现顶尖视觉品质。
+
 ## 本轮二十四（紧急修复 DemoDetailPage React Error #310：Hooks 执行顺序因早期返回改变而崩溃）✅
 - **问题诊断**:
   - 用户报告界面出现「UI 渲染异常」红白弹窗：`Error: Minified React error #310; visit https://react.dev/errors/310`；

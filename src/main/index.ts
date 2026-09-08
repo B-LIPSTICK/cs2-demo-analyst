@@ -257,6 +257,14 @@ function registerIpc(): void {
         throw new Error(`unknown engine kind ${kind}`)
     }
   })
+  ipcMain.handle('engines:cancel', async (_e, kind: string) => {
+    const { cancelEngine } = await import('./services/engines')
+    return cancelEngine(kind)
+  })
+  ipcMain.handle('engines:openFolder', async () => {
+    const { openEnginesFolder } = await import('./services/engines')
+    return openEnginesFolder()
+  })
 
   // 通用
   ipcMain.handle('app:version', () => app.getVersion())

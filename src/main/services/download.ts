@@ -12,9 +12,12 @@ export interface DownloadProgress {
   url: string
 }
 
-function get(url: string): Promise<http.IncomingMessage> {
+function get(url: string, signal?: AbortSignal): Promise<http.IncomingMessage> {
   const mod = url.startsWith('https:') ? https : http
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      return reject(new Error('下载已取消'))
+    }
     const req = mod.get(url, { headers: { 'User-Agent': 'CS2DemoAnalyst/1.0' } }, (res) => {
       // 成功收到响应头后，清除连接超时，避免大文件传输被强制杀死
       req.setTimeout(0)
@@ -28,6 +31,15 @@ function get(url: string): Promise<http.IncomingMessage> {
     req.setTimeout(30000, () => {
       req.destroy(new Error(`连接超时: ${url}`))
     })
+
+    if (signal) {
+      const onAbort = () => {
+        req.destroy(new Error('下载已取消'))
+        reject(new Error('下载已取消'))
+      }
+      if (signal.aborted) onAbort()
+      else signal.addEventListener('abort', onAbort, { once: true })
+    }
   })
 }
 
@@ -37,15 +49,27 @@ function get(url: string): Promise<http.IncomingMessage> {
 export async function downloadFile(
   url: string,
   dest: string,
-  onProgress?: (p: DownloadProgress) => void
+  onProgress?: (p: DownloadProgress) => void,
+  signal?: AbortSignal
 ): Promise<void> {
+  if (signal?.aborted) {
+    throw new Error('下载已取消')
+  }
   await fs.mkdir(dirname(dest), { recursive: true })
   const tmpDest = `${dest}.tmp`
   await fs.unlink(tmpDest).catch(() => {})
 
   let current = url
   for (let hop = 0; hop < 6; hop++) {
-    const res = await get(current)
+    if (signal?.aborted) {
+      throw new Error('下载已取消')
+    }
+    const res = await get(current, signal)
+    if (signal?.aborted) {
+      res.destroy()
+      throw new Error('下载已取消')
+    }
+
     if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
       res.resume()
       current = new URL(res.headers.location, current).toString()
@@ -62,7 +86,25 @@ export async function downloadFile(
 
     try {
       await new Promise<void>((resolve, reject) => {
+        const onAbort = () => {
+          res.destroy()
+          out.destroy()
+          reject(new Error('下载已取消'))
+        }
+
+        if (signal?.aborted) {
+          onAbort()
+          return
+        }
+        if (signal) {
+          signal.addEventListener('abort', onAbort, { once: true })
+        }
+
         res.on('data', (chunk: Buffer) => {
+          if (signal?.aborted) {
+            onAbort()
+            return
+          }
           received += chunk.length
           const now = Date.now()
           if (now - lastProgressTime >= 100 || (total > 0 && received >= total)) {
@@ -100,15 +142,22 @@ export async function downloadFile(
 export async function downloadWithMirrors(
   urls: string[],
   dest: string,
-  onProgress?: (p: DownloadProgress) => void
+  onProgress?: (p: DownloadProgress) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   let lastErr: unknown = null
   for (const url of urls) {
+    if (signal?.aborted) {
+      throw new Error('下载已取消')
+    }
     try {
-      await downloadFile(url, dest, onProgress)
+      await downloadFile(url, dest, onProgress, signal)
       return
     } catch (err) {
       lastErr = err
+      if (signal?.aborted || (err instanceof Error && err.message.includes('下载已取消'))) {
+        throw err
+      }
       console.warn(`[download] mirror failed ${url}: ${err instanceof Error ? err.message : err}`)
     }
   }

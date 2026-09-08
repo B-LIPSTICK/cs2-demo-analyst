@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Avatar,
   Btn,
+  CustomSelect,
   Empty,
   IcChevron,
   IcDownload,
@@ -224,27 +225,32 @@ export function TranscriptPage({
           <div className="title">
             {t('transcript.title')}
           </div>
-          <div className="sub">{t('transcript.subtitle')}</div>
         </div>
         <div className="actions">
-          <select
-            className="input select"
+          <CustomSelect
+            width={240}
             value={demoId ?? ''}
-            onChange={(e) => {
-              const v = e.target.value
+            placeholder={t('transcript.selectDemo')}
+            options={[
+              { value: '', label: t('transcript.selectDemo') },
+              ...demos.map((d) => ({
+                value: d.id,
+                label: d.fileName,
+                sublabel:
+                  d.status === 'ready' && d.mapName
+                    ? d.mapName
+                    : d.status === 'pending'
+                      ? '待解析'
+                      : d.status === 'error'
+                        ? '失败'
+                        : undefined
+              }))
+            ]}
+            onChange={(v) => {
               setDemoId(v || undefined)
-              // 只更新本地状态，不回写路由（避免页面常驻下路由 demoId 干扰其他入口）
               if (v) onOpenDemo(v)
             }}
-          >
-            <option value="">{t('transcript.selectDemo')}</option>
-            {demos.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.fileName}
-                {d.status === 'ready' && d.mapName ? ` · ${d.mapName}` : d.status === 'pending' ? ' · 待解析' : d.status === 'error' ? ' · 解析失败' : ''}
-              </option>
-            ))}
-          </select>
+          />
           {/* 先分割（提取语音片段），再转写（生成文字） */}
           <Btn
             variant="accent"
@@ -338,19 +344,18 @@ export function TranscriptPage({
               )}
             </div>
             <div className="grow" />
-            <select
-              className="input select"
-              style={{ width: 130 }}
+            <CustomSelect
+              width={140}
               value={String(round)}
-              onChange={(e) => setRound(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-            >
-              <option value="all">{t('common.round')} · {t('common.all')}</option>
-              {rounds.map((r) => (
-                <option key={r.roundNum} value={r.roundNum}>
-                  R{r.roundNum}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: 'all', label: `${t('common.round')} · ${t('common.all')}` },
+                ...rounds.map((r) => ({
+                  value: String(r.roundNum),
+                  label: `R${r.roundNum}`
+                }))
+              ]}
+              onChange={(v) => setRound(v === 'all' ? 'all' : Number(v))}
+            />
             <div className="row">
               <IcSearch size={14} />
               <input

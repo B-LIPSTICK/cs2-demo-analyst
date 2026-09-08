@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Btn,
+  CustomSelect,
   Empty,
   IcPlus,
   IcRefresh,
@@ -323,7 +324,6 @@ function LibraryPageInner({
           <div className="title">
             {t('library.title')}
           </div>
-          <div className="sub">{t('library.subtitle')}</div>
         </div>
         <div className="actions">
           {selectedIds.size > 0 ? (
@@ -467,16 +467,15 @@ function LibraryPageInner({
                   onChange={(e) => setQuery(e.target.value)}
                 />
               </div>
-              <select
-                className="input select"
-                style={{ width: 110 }}
+              <CustomSelect
+                width={125}
                 value={sortMode}
-                onChange={(e) => setSortMode(e.target.value as 'date' | 'added')}
-                title={t('library.sortBy')}
-              >
-                <option value="date">{t('library.sortDate')}</option>
-                <option value="added">{t('library.sortAdded')}</option>
-              </select>
+                options={[
+                  { value: 'date', label: t('library.sortDate') },
+                  { value: 'added', label: t('library.sortAdded') }
+                ]}
+                onChange={(v) => setSortMode(v as 'date' | 'added')}
+              />
               <Btn variant="ghost" onClick={onAddRoot}>
                 <IcPlus size={13} />
                 {t('library.addRoot')}

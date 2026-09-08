@@ -1,4 +1,4 @@
-import { Led } from './ui'
+import { Led, IcGithub } from './ui'
 import type { LiveStatus } from '@shared/types'
 import { useTKey } from '@/i18n'
 
@@ -38,6 +38,14 @@ export function TitleBar({
         <Led state={ledFor(status, 'cs2')} label={t('status.cs2')} />
         <Led state={ledFor(status, 'vcon')} label={t('status.vcon')} />
         <Led state={ledFor(status, 'gsi')} label={t('status.gsi')} />
+        <button
+          className="theme-btn"
+          onClick={() => window.api.app.openUrl('https://github.com/B-LIPSTICK')}
+          title="GitHub: B-LIPSTICK"
+          aria-label="GitHub: B-LIPSTICK"
+        >
+          <IcGithub size={15} />
+        </button>
         <button
           className="theme-btn"
           onClick={onToggleTheme}

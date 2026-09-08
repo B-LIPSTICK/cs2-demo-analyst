@@ -449,6 +449,8 @@ export interface Api {
   engines: {
     status: () => Promise<Record<string, boolean>>
     ensure: (kind: EngineKind) => Promise<void>
+    cancel: (kind: string) => Promise<boolean>
+    openFolder: () => Promise<string>
   }
   app: {
     version: () => Promise<string>

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Btn, IcFolder, IcPlus, IcRefresh, Panel, SectionHead, Tag, Toggle, useToast } from '@/components/ui'
+import { Btn, CustomSelect, IcFolder, IcPlus, IcRefresh, Panel, SectionHead, Tag, Toggle, useToast } from '@/components/ui'
 import { useT, type Lang } from '@/i18n'
 import type { Settings } from '@shared/types'
 import { formatRootLabel } from './LibraryPage'
@@ -11,13 +11,15 @@ function Modal({
   body,
   onClose,
   onConfirm,
-  confirmLabel
+  confirmLabel,
+  extraButton
 }: {
   title: string
   body: string
   onClose: () => void
   onConfirm: () => void
   confirmLabel: string
+  extraButton?: ReactNode
 }) {
   const t = useT()
   return createPortal(
@@ -35,12 +37,12 @@ function Modal({
     >
       <div
         style={{
-          width: 460,
+          width: 500,
           maxWidth: '92vw',
           background: 'var(--bg-2)',
           border: '1px solid var(--line-1)',
           borderRadius: 12,
-          padding: 20
+          padding: 22
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -48,7 +50,9 @@ function Modal({
         <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.8, whiteSpace: 'pre-line' }}>
           {body}
         </div>
-        <div className="flex" style={{ gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+        <div className="flex" style={{ gap: 8, marginTop: 18, justifyContent: 'flex-end', alignItems: 'center' }}>
+          {extraButton}
+          <div style={{ flex: 1 }} />
           <Btn variant="ghost" size="sm" onClick={onClose}>
             {t.t('common.cancel')}
           </Btn>
@@ -108,6 +112,28 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
       setDownloadingKind(null)
     }
   }
+
+  const cancelEngineDownload = async (kind: string) => {
+    try {
+      await window.api.engines.cancel(kind)
+      toast.push(t.t('settings.cancelDownload'))
+    } catch {
+      /* ignore */
+    } finally {
+      refreshEngines()
+    }
+  }
+
+  const openEnginesDir = async () => {
+    try {
+      await window.api.engines.openFolder()
+      toast.push(t.t('settings.openEnginesDir'))
+    } catch (err) {
+      toast.push(err instanceof Error ? err.message : String(err), 'err')
+    }
+  }
+
+  const [showOfflineModal, setShowOfflineModal] = useState(false)
 
   const save = async (patch: Partial<Settings>) => {
     const next = await window.api.settings.set(patch)
@@ -235,7 +261,6 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           <div className="title">
             {t.t('settings.title')}
           </div>
-          <div className="sub">{t.t('settings.subtitle')}</div>
         </div>
       </div>
 
@@ -357,24 +382,24 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             <div className="t">{t.t('settings.asrLanguage')}</div>
             <div className="d">{t.t('settings.asrLanguageHint')}</div>
           </div>
-          <select
-            className="select"
-            style={{ width: 220 }}
+          <CustomSelect
+            width={220}
             value={draft.asr.language ?? 'auto'}
-            onChange={(e) => setAsr({ language: e.target.value })}
-          >
-            <option value="auto">{t.t('settings.langAuto')}</option>
-            <option value="zh">简体中文</option>
-            <option value="en">English</option>
-            <option value="ja">日本語</option>
-            <option value="ko">한국어</option>
-            <option value="ru">Русский</option>
-            <option value="fr">Français</option>
-            <option value="de">Deutsch</option>
-            <option value="es">Español</option>
-            <option value="pt">Português</option>
-            <option value="it">Italiano</option>
-          </select>
+            options={[
+              { value: 'auto', label: t.t('settings.langAuto'), sublabel: 'Auto' },
+              { value: 'zh', label: '简体中文', sublabel: 'zh' },
+              { value: 'en', label: 'English', sublabel: 'en' },
+              { value: 'ja', label: '日本語', sublabel: 'ja' },
+              { value: 'ko', label: '한국어', sublabel: 'ko' },
+              { value: 'ru', label: 'Русский', sublabel: 'ru' },
+              { value: 'fr', label: 'Français', sublabel: 'fr' },
+              { value: 'de', label: 'Deutsch', sublabel: 'de' },
+              { value: 'es', label: 'Español', sublabel: 'es' },
+              { value: 'pt', label: 'Português', sublabel: 'pt' },
+              { value: 'it', label: 'Italiano', sublabel: 'it' }
+            ]}
+            onChange={(v) => setAsr({ language: v })}
+          />
         </div>
 
         {draft.asr.engine === 'local' ? (
@@ -533,21 +558,15 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                 <div className="d">{t.t('settings.aiModelHint')}</div>
               </div>
               {aiModels ? (
-                <select
-                  className="input select"
-                  style={{ width: 280 }}
+                <CustomSelect
+                  width={280}
                   value={draft.ai.model}
-                  onChange={(e) => setAi({ model: e.target.value })}
-                >
-                  {!aiModels.includes(draft.ai.model) && (
-                    <option value={draft.ai.model}>{draft.ai.model}</option>
-                  )}
-                  {aiModels.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    ...(!aiModels.includes(draft.ai.model) ? [{ value: draft.ai.model, label: draft.ai.model }] : []),
+                    ...aiModels.map((m) => ({ value: m, label: m }))
+                  ]}
+                  onChange={(v) => setAi({ model: v })}
+                />
               ) : (
                 <input
                   className="input"
@@ -619,48 +638,38 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             <div className="d">{t.t('settings.playDisplayHint')}</div>
           </div>
           <div className="flex" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <select
-              className="input select"
-              style={{ width: 150 }}
+            <CustomSelect
+              width={150}
               value={draft.cs2.playMode ?? 'auto'}
-              onChange={(e) => setCs2({ playMode: e.target.value as never })}
-            >
-              <option value="auto">{t.t('settings.playModeAuto')}</option>
-              <option value="fullscreen">{t.t('settings.playModeFullscreen')}</option>
-              <option value="borderless">{t.t('settings.playModeBorderless')}</option>
-              <option value="windowed">{t.t('settings.playModeWindowed')}</option>
-            </select>
-            <select
-              className="input select"
-              style={{ width: 130 }}
+              options={[
+                { value: 'auto', label: t.t('settings.playModeAuto') },
+                { value: 'fullscreen', label: t.t('settings.playModeFullscreen') },
+                { value: 'borderless', label: t.t('settings.playModeBorderless') },
+                { value: 'windowed', label: t.t('settings.playModeWindowed') }
+              ]}
+              onChange={(v) => setCs2({ playMode: v as never })}
+            />
+            <CustomSelect
+              width={145}
               value={draft.cs2.playResolution ?? 'auto'}
-              onChange={(e) => setCs2({ playResolution: e.target.value })}
-            >
-              <option value="auto">{t.t('settings.playResAuto')}</option>
-              <optgroup label="16:9">
-                <option value="1280x720">1280×720</option>
-                <option value="1920x1080">1920×1080</option>
-                <option value="2560x1440">2560×1440</option>
-                <option value="3840x2160">3840×2160</option>
-              </optgroup>
-              <optgroup label="16:10">
-                <option value="1280x800">1280×800</option>
-                <option value="1680x1050">1680×1050</option>
-                <option value="1920x1200">1920×1200</option>
-              </optgroup>
-              <optgroup label="4:3">
-                <option value="1024x768">1024×768</option>
-                <option value="1280x960">1280×960</option>
-                <option value="1440x1080">1440×1080</option>
-              </optgroup>
-              <optgroup label="5:4">
-                <option value="1280x1024">1280×1024</option>
-              </optgroup>
-              <optgroup label="21:9">
-                <option value="2560x1080">2560×1080</option>
-                <option value="3440x1440">3440×1440</option>
-              </optgroup>
-            </select>
+              options={[
+                { value: 'auto', label: t.t('settings.playResAuto') },
+                { value: '1920x1080', label: '1920×1080', sublabel: '16:9' },
+                { value: '2560x1440', label: '2560×1440', sublabel: '16:9' },
+                { value: '3840x2160', label: '3840×2160', sublabel: '16:9' },
+                { value: '1280x720', label: '1280×720', sublabel: '16:9' },
+                { value: '1280x960', label: '1280×960', sublabel: '4:3' },
+                { value: '1024x768', label: '1024×768', sublabel: '4:3' },
+                { value: '1440x1080', label: '1440×1080', sublabel: '4:3' },
+                { value: '1280x1024', label: '1280×1024', sublabel: '5:4' },
+                { value: '1920x1200', label: '1920×1200', sublabel: '16:10' },
+                { value: '1680x1050', label: '1680×1050', sublabel: '16:10' },
+                { value: '1280x800', label: '1280×800', sublabel: '16:10' },
+                { value: '2560x1080', label: '2560×1080', sublabel: '21:9' },
+                { value: '3440x1440', label: '3440×1440', sublabel: '21:9' }
+              ]}
+              onChange={(v) => setCs2({ playResolution: v })}
+            />
           </div>
         </div>
         <div className="set-row">
@@ -745,9 +754,19 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           <div className="info">
             <div className="d">{t.t('settings.enginesHint')}</div>
           </div>
-          <Btn variant="ghost" size="sm" onClick={refreshEngines}>
-            {t.t('common.refresh')}
-          </Btn>
+          <div className="flex" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <Btn variant="ghost" size="sm" onClick={() => setShowOfflineModal(true)}>
+              💡 {t.t('settings.offlineGuide')}
+            </Btn>
+            <Btn variant="ghost" size="sm" onClick={openEnginesDir}>
+              <IcFolder size={12} />
+              {t.t('settings.openEnginesDir')}
+            </Btn>
+            <Btn variant="ghost" size="sm" onClick={refreshEngines}>
+              <IcRefresh size={12} />
+              {t.t('common.refresh')}
+            </Btn>
+          </div>
         </div>
         {ENGINE_ROWS.map((row) => {
           const installed = engStatus[row.kind]
@@ -792,9 +811,14 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                   {t.t('settings.engInstalled')}
                 </Tag>
               ) : prog !== null || downloadingKind === row.kind ? (
-                <span className="mono muted" style={{ fontSize: 11 }}>
-                  {prog !== null ? `${prog}%` : '准备中…'}
-                </span>
+                <div className="flex" style={{ gap: 8, alignItems: 'center' }}>
+                  <span className="mono muted" style={{ fontSize: 11 }}>
+                    {prog !== null ? `${prog}%` : '准备中…'}
+                  </span>
+                  <Btn variant="ghost" size="sm" onClick={() => cancelEngineDownload(row.kind)}>
+                    {t.t('settings.cancelDownload')}
+                  </Btn>
+                </div>
               ) : (
                 <div className="flex" style={{ gap: 8, alignItems: 'center' }}>
                   <Tag tone="ghost">{t.t('settings.engMissing')}</Tag>
@@ -820,6 +844,39 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           </div>
         </div>
       </Panel>
+
+      {/* 离线模型安装说明弹窗 */}
+      {showOfflineModal && (
+        <Modal
+          title={t.t('settings.offlineGuideTitle')}
+          body={`【本地模型离线安装步骤】
+
+1. 点击下方「打开模型目录」按钮（进入 %APPDATA%/cs2-demo-analyst/engines/）。
+2. 将下载好的文件放入对应子目录：
+   • whisper 语音模型（ggml-base.bin / ggml-small.bin / ggml-medium.bin）
+     👉 放入 whisper/models/ 目录中
+   • whisper-cli.exe（本地转写执行程序）
+     👉 放入 whisper/ 目录中
+   • csgove.exe（CS2 语音提取工具）
+     👉 放入 csgove/ 目录中
+3. 放置完成后回到此界面，点击「刷新」按钮，对应项即刻显示为「就绪」！
+
+【常用下载源】：
+• 官方模型仓库：https://huggingface.co/ggerganov/whisper.cpp/tree/main
+• 国内镜像加速：https://hf-mirror.com/ggerganov/whisper.cpp/tree/main
+• whisper.cpp Releases：https://github.com/ggml-org/whisper.cpp/releases
+• csgove Releases：https://github.com/akiver/csgo-voice-extractor/releases`}
+          confirmLabel={t.t('common.confirm')}
+          extraButton={
+            <Btn variant="ghost" size="sm" onClick={openEnginesDir}>
+              <IcFolder size={12} />
+              {t.t('settings.openEnginesDir')}
+            </Btn>
+          }
+          onClose={() => setShowOfflineModal(false)}
+          onConfirm={() => setShowOfflineModal(false)}
+        />
+      )}
 
       {/* 推荐免费（Groq）声明弹窗 */}
       {showRecModal && (

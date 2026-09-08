@@ -1,7 +1,7 @@
 /**
  * 引擎/模型管理：csgove、whisper-cli、ggml 模型 的按需下载与缓存
  */
-import { app } from 'electron'
+import { app, shell } from 'electron'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import AdmZip from 'adm-zip'
@@ -81,6 +81,30 @@ export interface EngineEnsureProgress {
 }
 
 const locks = new Map<string, Promise<unknown>>()
+const activeControllers = new Map<string, AbortController>()
+
+/** 取消正在执行的下载任务 */
+export function cancelEngine(kind: string): boolean {
+  let cancelled = false
+  for (const [key, ctrl] of activeControllers.entries()) {
+    if (kind === 'all' || key === kind || (kind === 'whisper' && key === 'whisper-cli')) {
+      ctrl.abort()
+      activeControllers.delete(key)
+      cancelled = true
+    }
+  }
+  return cancelled
+}
+
+/** 在资源管理器中打开引擎与模型根目录（自动确保 whisper/models 子目录存在） */
+export async function openEnginesFolder(): Promise<string> {
+  const dir = enginesDir()
+  await fs.mkdir(dir, { recursive: true })
+  await fs.mkdir(join(whisperDir(), 'models'), { recursive: true })
+  await fs.mkdir(csgoveDir(), { recursive: true })
+  await shell.openPath(dir)
+  return dir
+}
 
 function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prev = locks.get(key) ?? Promise.resolve()
@@ -96,26 +120,33 @@ function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
 export function ensureCsgove(onProgress?: (p: EngineEnsureProgress) => void): Promise<void> {
   return withLock('csgove', async () => {
     if (await isValidFile(csgoveExe(), 100 * 1024)) return
-    const zipPath = join(csgoveDir(), 'csgove.zip')
-    await downloadWithMirrors(
-      ghUrls(`akiver/csgo-voice-extractor/releases/download/${CSGOVE_VERSION}/win32-x64.zip`),
-      zipPath,
-      (p) => onProgress?.({ what: 'csgove', received: p.received, total: p.total })
-    )
-    const zip = new AdmZip(zipPath)
-    zip.extractAllTo(csgoveDir(), true)
-    // 把 zip 内 win32-x64/ 下的文件平铺
-    const inner = join(csgoveDir(), 'win32-x64')
+    const ctrl = new AbortController()
+    activeControllers.set('csgove', ctrl)
     try {
-      const entries = await fs.readdir(inner)
-      for (const e of entries) {
-        await fs.rename(join(inner, e), join(csgoveDir(), e)).catch(() => {})
+      const zipPath = join(csgoveDir(), 'csgove.zip')
+      await downloadWithMirrors(
+        ghUrls(`akiver/csgo-voice-extractor/releases/download/${CSGOVE_VERSION}/win32-x64.zip`),
+        zipPath,
+        (p) => onProgress?.({ what: 'csgove', received: p.received, total: p.total }),
+        ctrl.signal
+      )
+      const zip = new AdmZip(zipPath)
+      zip.extractAllTo(csgoveDir(), true)
+      // 把 zip 内 win32-x64/ 下的文件平铺
+      const inner = join(csgoveDir(), 'win32-x64')
+      try {
+        const entries = await fs.readdir(inner)
+        for (const e of entries) {
+          await fs.rename(join(inner, e), join(csgoveDir(), e)).catch(() => {})
+        }
+        await fs.rmdir(inner).catch(() => {})
+      } catch {
+        /* 已平铺 */
       }
-      await fs.rmdir(inner).catch(() => {})
-    } catch {
-      /* 已平铺 */
+      await fs.unlink(zipPath).catch(() => {})
+    } finally {
+      activeControllers.delete('csgove')
     }
-    await fs.unlink(zipPath).catch(() => {})
   })
 }
 
@@ -123,31 +154,38 @@ export function ensureCsgove(onProgress?: (p: EngineEnsureProgress) => void): Pr
 export function ensureWhisperCli(onProgress?: (p: EngineEnsureProgress) => void): Promise<void> {
   return withLock('whisper-cli', async () => {
     if (await isValidFile(whisperExe(), 100 * 1024)) return
-    const zipPath = join(whisperDir(), 'whisper.zip')
-    await downloadWithMirrors(
-      ghUrls(`ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}/whisper-bin-x64.zip`),
-      zipPath,
-      (p) => onProgress?.({ what: 'whisper', received: p.received, total: p.total })
-    )
-    const zip = new AdmZip(zipPath)
-    zip.extractAllTo(whisperDir(), true)
-    // 平铺
-    const dirs = (await fs.readdir(whisperDir())).filter(async (d) => {
-      try {
-        return (await fs.stat(join(whisperDir(), d))).isDirectory()
-      } catch {
-        return false
+    const ctrl = new AbortController()
+    activeControllers.set('whisper-cli', ctrl)
+    try {
+      const zipPath = join(whisperDir(), 'whisper.zip')
+      await downloadWithMirrors(
+        ghUrls(`ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}/whisper-bin-x64.zip`),
+        zipPath,
+        (p) => onProgress?.({ what: 'whisper', received: p.received, total: p.total }),
+        ctrl.signal
+      )
+      const zip = new AdmZip(zipPath)
+      zip.extractAllTo(whisperDir(), true)
+      // 平铺
+      const dirs = (await fs.readdir(whisperDir())).filter(async (d) => {
+        try {
+          return (await fs.stat(join(whisperDir(), d))).isDirectory()
+        } catch {
+          return false
+        }
+      })
+      for (const d of dirs) {
+        const inner = join(whisperDir(), d)
+        const entries = await fs.readdir(inner).catch(() => [])
+        for (const e of entries) {
+          await fs.rename(join(inner, e), join(whisperDir(), e)).catch(() => {})
+        }
+        await fs.rmdir(inner).catch(() => {})
       }
-    })
-    for (const d of dirs) {
-      const inner = join(whisperDir(), d)
-      const entries = await fs.readdir(inner).catch(() => [])
-      for (const e of entries) {
-        await fs.rename(join(inner, e), join(whisperDir(), e)).catch(() => {})
-      }
-      await fs.rmdir(inner).catch(() => {})
+      await fs.unlink(zipPath).catch(() => {})
+    } finally {
+      activeControllers.delete('whisper-cli')
     }
-    await fs.unlink(zipPath).catch(() => {})
   })
 }
 
@@ -156,18 +194,26 @@ export function ensureWhisperModel(
   model: LocalWhisperModel,
   onProgress?: (p: EngineEnsureProgress) => void
 ): Promise<void> {
-  return withLock(`model-${model}`, async () => {
+  const lockKey = `model-${model}`
+  return withLock(lockKey, async () => {
     const dest = whisperModelPath(model)
     if (await isValidFile(dest, MODEL_SIZES[model] * 0.85)) return
-    const file = MODEL_FILES[model]
-    await downloadWithMirrors(
-      [
-        `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${file}`,
-        `https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/${file}`
-      ],
-      dest,
-      (p) => onProgress?.({ what: `model-${model}`, received: p.received, total: p.total })
-    )
+    const ctrl = new AbortController()
+    activeControllers.set(lockKey, ctrl)
+    try {
+      const file = MODEL_FILES[model]
+      await downloadWithMirrors(
+        [
+          `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${file}`,
+          `https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/${file}`
+        ],
+        dest,
+        (p) => onProgress?.({ what: lockKey, received: p.received, total: p.total }),
+        ctrl.signal
+      )
+    } finally {
+      activeControllers.delete(lockKey)
+    }
   })
 }
 

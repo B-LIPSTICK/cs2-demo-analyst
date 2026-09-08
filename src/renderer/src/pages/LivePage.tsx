@@ -90,7 +90,6 @@ export function LivePage() {
           <div className="title">
             {t('live.title')}
           </div>
-          <div className="sub">{t('live.subtitle')}</div>
         </div>
         <div className="actions">
           <span className={`phase-pill ${live ? 'live' : ''}`}>

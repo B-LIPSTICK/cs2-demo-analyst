@@ -7,7 +7,9 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
   type SVGProps
 } from 'react'
@@ -34,6 +36,25 @@ function Base({ size = 14, children, ...rest }: IcProps & { children: ReactNode 
     </svg>
   )
 }
+
+export const IcGithub = (p: IcProps) => (
+  <svg
+    className="ic"
+    width={p.size ?? 14}
+    height={p.size ?? 14}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    stroke="none"
+    aria-hidden="true"
+    {...p}
+  >
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
+    />
+  </svg>
+)
 
 export const IcLibrary = (p: IcProps) => (
   <Base {...p}>
@@ -550,5 +571,122 @@ export function VoicePlayButton({
     >
       {playing ? <IcPause size={size} /> : <IcPlay size={size} />}
     </button>
+  )
+}
+
+// ─── 自定义高颜值亚克力下拉选择器 ──────────────────────────────────────────
+
+export interface CustomSelectOption<T extends string = string> {
+  value: T
+  label: ReactNode
+  sublabel?: string
+  icon?: ReactNode
+}
+
+export function CustomSelect<T extends string = string>({
+  value,
+  options,
+  onChange,
+  placeholder,
+  width,
+  style,
+  disabled
+}: {
+  value: T
+  options: CustomSelectOption<T>[]
+  onChange: (val: T) => void
+  placeholder?: string
+  width?: number | string
+  style?: CSSProperties
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDocClick = (e: MouseEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('mousedown', onDocClick, true)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onDocClick, true)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const cur = options.find((o) => o.value === value)
+
+  return (
+    <div
+      ref={containerRef}
+      className={`custom-select ${disabled ? 'disabled' : ''} ${open ? 'open' : ''}`}
+      style={{ width: width ?? '100%', ...style }}
+    >
+      <button
+        type="button"
+        className="cs-trigger"
+        onClick={() => !disabled && setOpen((v) => !v)}
+        disabled={disabled}
+      >
+        <span className="cs-label">
+          {cur ? (
+            <span className="cs-val">
+              {cur.icon && <span className="cs-icon">{cur.icon}</span>}
+              <span>{cur.label}</span>
+            </span>
+          ) : (
+            <span className="cs-placeholder">{placeholder ?? '请选择…'}</span>
+          )}
+        </span>
+        <svg
+          className={`cs-arrow ${open ? 'open' : ''}`}
+          width="10"
+          height="6"
+          viewBox="0 0 10 6"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M1 1l4 4 4-4" />
+        </svg>
+      </button>
+      {open && (
+        <div className="custom-select-menu">
+          {options.map((opt) => {
+            const isSelected = opt.value === value
+            return (
+              <div
+                key={opt.value}
+                className={`cs-item ${isSelected ? 'selected' : ''}`}
+                onClick={() => {
+                  onChange(opt.value)
+                  setOpen(false)
+                }}
+              >
+                <div className="cs-item-content">
+                  {opt.icon && <span className="cs-icon">{opt.icon}</span>}
+                  <span className="cs-item-label">{opt.label}</span>
+                  {opt.sublabel && <span className="cs-item-sub">{opt.sublabel}</span>}
+                </div>
+                {isSelected && (
+                  <svg className="cs-check" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M2.5 6.5l2.5 2.5 4.5-5" />
+                  </svg>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }

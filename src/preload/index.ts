@@ -83,7 +83,9 @@ const api: ApiWithEvents = {
   },
   engines: {
     status: () => ipcRenderer.invoke('engines:status'),
-    ensure: (kind: string) => ipcRenderer.invoke('engines:ensure', kind)
+    ensure: (kind: string) => ipcRenderer.invoke('engines:ensure', kind),
+    cancel: (kind: string) => ipcRenderer.invoke('engines:cancel', kind),
+    openFolder: () => ipcRenderer.invoke('engines:openFolder')
   },
   app: {
     version: () => ipcRenderer.invoke('app:version'),

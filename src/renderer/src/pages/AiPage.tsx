@@ -356,7 +356,6 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
           <div className="title">
             {t('ai.title')}
           </div>
-          <div className="sub">{t('ai.subtitle')}</div>
         </div>
         <div className="actions ai-actions">
           {/* 会话组 */}
