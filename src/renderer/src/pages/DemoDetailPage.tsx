@@ -98,6 +98,19 @@ export function DemoDetailPage({
     }
   }
 
+  // 保证所有 Hook 在组件顶层无条件执行（严禁放在 if (!detail) 之后，避免 React Error #310）
+  const allKills = useMemo(() => (detail ? detail.rounds.flatMap((r) => r.kills) : []), [detail])
+  const round = useMemo(
+    () =>
+      detail && selectedRound !== 'all'
+        ? detail.rounds.find((r) => r.roundNum === selectedRound) ?? null
+        : null,
+    [detail, selectedRound]
+  )
+  const feedKills = round ? round.kills : allKills
+  // 击杀流按时间正序：比赛开始 → 结束
+  const sortedKills = useMemo(() => [...feedKills].sort((a, b) => a.tick - b.tick), [feedKills])
+
   if (!detail) {
     return (
       <div className="page">
@@ -111,11 +124,6 @@ export function DemoDetailPage({
   }
 
   const { meta, rounds, chat, voice } = detail
-  const allKills = useMemo(() => rounds.flatMap((r) => r.kills), [rounds])
-  const round = selectedRound === 'all' ? null : rounds.find((r) => r.roundNum === selectedRound)
-  const feedKills = round ? round.kills : allKills
-  // 击杀流按时间正序：比赛开始 → 结束
-  const sortedKills = useMemo(() => [...feedKills].sort((a, b) => a.tick - b.tick), [feedKills])
   // 已转写：用转写段累计时长；未转写：回退用解析时检测到的语音时长（meta.voiceSec）
   const voiceSecs =
     voice.length > 0 ? voice.reduce((s, v) => s + (v.endSec - v.timeSec), 0) : (meta.voiceSec ?? 0)

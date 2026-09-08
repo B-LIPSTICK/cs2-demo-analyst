@@ -1,5 +1,26 @@
 # progress.md — 会话日志
 
+## 本轮二十四（紧急修复 DemoDetailPage React Error #310：Hooks 执行顺序因早期返回改变而崩溃）✅
+- **问题诊断**:
+  - 用户报告界面出现「UI 渲染异常」红白弹窗：`Error: Minified React error #310; visit https://react.dev/errors/310`；
+  - 堆栈明确指向：
+    - `at updateWorkInProgressHook (index-CS9hnVSn.js:4080:15)`
+    - `at Object.updateMemo [as useMemo] (index-CS9hnVSn.js:4626:16)`
+    - `at DemoDetailPage (index-CS9hnVSn.js:13700:33)`
+- **根因确认**:
+  - React Error #310 官方定义：“Rendered more hooks than during the previous render”（本次渲染调用的 Hook 数量多于上一次渲染）；
+  - 在 `DemoDetailPage.tsx` 中，存在早期返回保护：`if (!detail) { return <Empty ... /> }`；
+  - 但此前在 `if (!detail)` 之后放置了两个 `useMemo`（`allKills = useMemo(...)` 与 `sortedKills = useMemo(...)`）；
+  - 当组件初次挂载时 `detail` 尚为 `null`，执行了 `return`（此时只注册了前面的 6 个 Hook）；当详情数据异步返回后触发第二次渲染，跳过了 `return` 并继续执行了后方的 `useMemo`（Hook 计数变为 8）；
+  - React 判定前后两次渲染 Hook 调用数量不一致，严正抛出致命 Error #310 崩溃。
+- **修复措施**:
+  - 将所有 Hook（`allKills`、`round`、`sortedKills`）全部统一移至 `DemoDetailPage` 组件顶层无条件执行，严禁置于任何 `if (...) return` 之后；
+  - 当 `detail` 尚未就绪时，各 `useMemo` 均优雅返回默认空数组或 `null`，确保无论组件处于未加载还是已加载状态，每一次渲染调用的 Hook 数量和次序 100% 恒定不变。
+- **验证与打包**:
+  - `npm run typecheck` ✓
+  - `npm run smoke` ✓（`[smoke] renderer loaded OK`）
+  - 重新完整构建并打包 portable zip 与 setup.exe。
+
 ## 本轮二十三（对局切换横向交互全方位重构：增加可视左右步进滑动箭头与上一局/下一局快切、本地 Whisper 模型下载与进度条全链路深度修复）✅
 - **用户需求与痛点诊断**:
   1. **对局切换横向滑动交互问题**: 用户反馈部分鼠标没有左右倾斜滑轮（普通鼠标只有单向上下滚轮），在看 20 多局回合时难以发现或操作横向滚动，需要改良交互逻辑；
