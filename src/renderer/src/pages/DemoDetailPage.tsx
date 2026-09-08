@@ -397,43 +397,59 @@ export function DemoDetailPage({
   )
 }
 
-/** 击杀标记图标：爆头（红骷髅）+ 穿烟（灰云）+ 闪光助攻 + 穿墙 + 盲狙 */
+/** 击杀标记图标：爆头（CS2经典红骷髅）+ 闪光助攻（闪电）+ 穿烟（烟雾）+ 穿墙（穿透矢量）+ 盲狙（十字准星划线）+ 致盲反杀（高辨识眼睛划线） */
 function KillIcons({ kill }: { kill: KillEvent }) {
   return (
     <span className="kill-icons">
       {kill.headshot && (
-        <span title="爆头" className="kill-icon hs">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2a8 8 0 0 0-8 8c0 2.5 1.2 4.7 3 6v3a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-3c1.8-1.3 3-3.5 3-6a8 8 0 0 0-8-8zm-3.5 7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM9 16c.8.8 1.9 1.3 3 1.3s2.2-.5 3-1.3c-.9.6-1.9.9-3 .9s-2.1-.3-3-.9z" />
+        <span title="爆头击杀" className="kill-icon hs">
+          <svg viewBox="0 0 512 512" fill="currentColor">
+            <path d="M256 32C150 32 64 118 64 224c0 62 29.6 117.2 75.8 152.2V448c0 17.7 14.3 32 32 32h168.4c17.7 0 32-14.3 32-32v-71.8C418.4 341.2 448 286 448 224 448 118 362 32 256 32zm-64 160c22.1 0 40 17.9 40 40s-17.9 40-40 40-40-17.9-40-40 17.9-40 40-40zm128 0c22.1 0 40 17.9 40 40s-17.9 40-40 40-40-17.9-40-40 17.9-40 40-40zm-96 144h64v32h-64v-32zm-32 48h128v32H192v-32z" />
           </svg>
         </span>
       )}
       {kill.flashAssist && (
         <span title="闪光助攻" className="kill-icon flash">
-          ⚡
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+          </svg>
         </span>
       )}
       {kill.throughSmoke && (
-        <span title="穿烟" className="kill-icon smoke">
+        <span title="穿烟击杀" className="kill-icon smoke">
           <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M7.2 18a4.2 4.2 0 0 1-.3-8.4 5.2 5.2 0 0 1 10-1.8 4.6 4.6 0 0 1 .4 9.2 1 1 0 0 1-.2 0H7.2z" />
-            <path d="M10 21a1 1 0 0 1-.2-2h4.4a1 1 0 0 1-.2 2H10z" />
+            <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
           </svg>
         </span>
       )}
       {kill.penetrated && (
         <span title="穿墙击杀" className="kill-icon wallbang">
-          🧱
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="10" y="3" width="4" height="18" rx="1" fill="currentColor" fillOpacity="0.3" />
+            <line x1="2" y1="12" x2="22" y2="12" strokeWidth="2.2" />
+            <polyline points="17 7 22 12 17 17" strokeWidth="2.2" />
+          </svg>
         </span>
       )}
       {kill.noScope && (
-        <span title="盲狙击杀" className="kill-icon noscope">
-          🎯
+        <span title="盲狙击杀 (未开镜)" className="kill-icon noscope">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="7.5" />
+            <line x1="12" y1="1" x2="12" y2="5.5" />
+            <line x1="12" y1="18.5" x2="12" y2="23" />
+            <line x1="1" y1="12" x2="5.5" y2="12" />
+            <line x1="18.5" y1="12" x2="23" y2="12" />
+            <line x1="4" y1="4" x2="20" y2="20" strokeWidth="2.2" />
+          </svg>
         </span>
       )}
       {kill.attackerBlind && (
-        <span title="致盲反杀" className="kill-icon blindkill">
-          🕶️
+        <span title="致盲反杀 (被白状态下击杀)" className="kill-icon blindkill">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" fill="currentColor" fillOpacity="0.15" />
+            <circle cx="12" cy="12" r="3" fill="currentColor" />
+            <line x1="3" y1="3" x2="21" y2="21" strokeWidth="2.4" />
+          </svg>
         </span>
       )}
     </span>

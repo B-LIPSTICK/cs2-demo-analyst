@@ -1736,12 +1736,12 @@ body {
   grid-template-columns: 56px 1fr auto 1fr 48px;
   align-items: center;
   gap: 12px;
-  padding: 8px 14px;
+  padding: 7px 14px;
   margin: 3px 6px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
 }
@@ -1752,16 +1752,16 @@ body {
 
 .kill-row:hover {
   background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.18);
   transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
 }
 
 .kill-row .tk {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
-  color: var(--text-2);
+  color: #94a3b8;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.2px;
   justify-self: start;
@@ -1769,7 +1769,7 @@ body {
 
 .kill-row .nm {
   font-weight: 700;
-  font-size: 14.5px;
+  font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1792,13 +1792,13 @@ body {
 }
 
 .kill-row .nm.t {
-  color: var(--t);
-  text-shadow: 0 0 12px rgba(245, 166, 35, 0.35);
+  color: #fbbf24;
+  text-shadow: none;
 }
 
 .kill-row .nm.ct {
-  color: var(--ct);
-  text-shadow: 0 0 12px rgba(93, 173, 226, 0.35);
+  color: #38bdf8;
+  text-shadow: none;
 }
 
 /* 武器胶囊容器 */
@@ -1807,26 +1807,25 @@ body {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  height: 25px;
+  height: 26px;
   padding: 0 10px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 700;
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   overflow: hidden;
   white-space: nowrap;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.2px;
   justify-self: center;
   flex: none;
 }
 
 .kill-row:hover .wp {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
 .kill-row .wp-name {
@@ -1839,7 +1838,7 @@ body {
 .kill-icons {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   flex: none;
   margin-left: 2px;
 }
@@ -1848,50 +1847,68 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: none;
 }
 
-/* 爆头红骷髅 - 高亮霓虹猩红 */
+.kill-icon svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+/* 爆头红骷髅 - 高清晰度鲜红，无模糊无阴影 */
 .kill-icon.hs svg,
 .kill-row .hs {
-  width: 14px;
-  height: 14px;
-  color: #ff453a;
-  filter: drop-shadow(0 0 3px rgba(255, 69, 58, 0.75));
+  width: 15px;
+  height: 15px;
+  color: #ff3344;
+  filter: none;
 }
 
-/* 穿烟 - 明亮银白 */
+/* 穿烟 - 明亮灰白 */
 .kill-icon.smoke svg,
 .kill-icons .smoke {
-  width: 13px;
-  height: 13px;
-  color: #f1f5f9;
+  width: 15px;
+  height: 15px;
+  color: #e2e8f0;
   opacity: 1;
-  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.6));
+  filter: none;
 }
 
-/* 闪光助攻 - 亮黄雷电 */
+/* 闪光助攻 - 亮金黄 */
+.kill-icon.flash svg,
 .kill-icon.flash {
-  font-size: 12.5px;
-  color: #fbbf24;
-  filter: drop-shadow(0 0 3px rgba(250, 204, 21, 0.8));
+  width: 15px;
+  height: 15px;
+  color: #facc15;
+  filter: none;
 }
 
-/* 穿墙 */
+/* 穿墙 - 活力橙 */
+.kill-icon.wallbang svg,
 .kill-icon.wallbang {
-  font-size: 12px;
-  filter: drop-shadow(0 0 2px rgba(251, 146, 60, 0.6));
+  width: 15px;
+  height: 15px;
+  color: #fb923c;
+  filter: none;
 }
 
-/* 盲狙 */
+/* 盲狙 - 薄荷绿 */
+.kill-icon.noscope svg,
 .kill-icon.noscope {
-  font-size: 12px;
-  filter: drop-shadow(0 0 2px rgba(52, 211, 153, 0.6));
+  width: 15px;
+  height: 15px;
+  color: #34d399;
+  filter: none;
 }
 
-/* 致盲反杀 */
+/* 致盲反杀 (眼睛图标) - 亮天蓝，清晰显眼，尺寸与其它图标一致 */
+.kill-icon.blindkill svg,
 .kill-icon.blindkill {
-  font-size: 12px;
-  filter: drop-shadow(0 0 2px rgba(167, 139, 250, 0.6));
+  width: 16px;
+  height: 16px;
+  color: #38bdf8;
+  filter: none;
 }
 
 /* 回合胶囊 */
@@ -1899,12 +1916,12 @@ body {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-1);
+  color: #cbd5e1;
   text-align: center;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
   padding: 2px 7px;
   justify-self: end;
@@ -1912,44 +1929,75 @@ body {
 
 /* 亮色模式适配 */
 [data-theme='light'] .kill-row {
-  background: rgba(0, 0, 0, 0.02);
-  border-color: rgba(0, 0, 0, 0.06);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
 }
 
 [data-theme='light'] .kill-row:hover {
-  background: rgba(0, 0, 0, 0.05);
-  border-color: rgba(0, 0, 0, 0.12);
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme='light'] .kill-row .tk {
+  color: #64748b;
 }
 
 [data-theme='light'] .kill-row .wp {
-  background: rgba(0, 0, 0, 0.05);
-  border-color: rgba(0, 0, 0, 0.12);
-  color: #1f2937;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 [data-theme='light'] .kill-row .wp-name {
-  color: #111827;
+  color: #0f172a;
 }
 
 [data-theme='light'] .kill-row .nm.t {
-  color: #b45309;
+  color: #d97706;
   text-shadow: none;
 }
 
 [data-theme='light'] .kill-row .nm.ct {
-  color: #1d4ed8;
+  color: #0284c7;
   text-shadow: none;
 }
 
 [data-theme='light'] .kill-row .rn {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.08);
-  color: #6b7280;
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+[data-theme='light'] .kill-icon.hs svg {
+  color: #dc2626;
+  filter: none;
 }
 
 [data-theme='light'] .kill-icon.smoke svg {
   color: #64748b;
+  filter: none;
+}
+
+[data-theme='light'] .kill-icon.flash svg {
+  color: #d97706;
+  filter: none;
+}
+
+[data-theme='light'] .kill-icon.wallbang svg {
+  color: #ea580c;
+  filter: none;
+}
+
+[data-theme='light'] .kill-icon.noscope svg {
+  color: #059669;
+  filter: none;
+}
+
+[data-theme='light'] .kill-icon.blindkill svg {
+  color: #0284c7;
   filter: none;
 }
 
@@ -2146,11 +2194,19 @@ body {
   color: #ffffff;
 }
 
+[data-theme='light'] .pm-kill .wp {
+  color: #0f172a;
+}
+
 .pm-kill .vic {
   color: var(--text-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+[data-theme='light'] .pm-kill .vic {
+  color: #334155;
 }
 
 .pm-kill .rn {
