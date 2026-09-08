@@ -402,37 +402,37 @@ function KillIcons({ kill }: { kill: KillEvent }) {
   return (
     <span className="kill-icons">
       {kill.headshot && (
-        <span title="爆头">
-          <svg className="hs" viewBox="0 0 24 24" fill="currentColor">
+        <span title="爆头" className="kill-icon hs">
+          <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 2a8 8 0 0 0-8 8c0 2.5 1.2 4.7 3 6v3a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-3c1.8-1.3 3-3.5 3-6a8 8 0 0 0-8-8zm-3.5 7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM9 16c.8.8 1.9 1.3 3 1.3s2.2-.5 3-1.3c-.9.6-1.9.9-3 .9s-2.1-.3-3-.9z" />
           </svg>
         </span>
       )}
       {kill.flashAssist && (
-        <span title="闪光助攻" style={{ fontSize: 11, lineHeight: 1 }}>
+        <span title="闪光助攻" className="kill-icon flash">
           ⚡
         </span>
       )}
       {kill.throughSmoke && (
-        <span title="穿烟">
-          <svg className="smoke" viewBox="0 0 24 24" fill="currentColor">
+        <span title="穿烟" className="kill-icon smoke">
+          <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M7.2 18a4.2 4.2 0 0 1-.3-8.4 5.2 5.2 0 0 1 10-1.8 4.6 4.6 0 0 1 .4 9.2 1 1 0 0 1-.2 0H7.2z" />
             <path d="M10 21a1 1 0 0 1-.2-2h4.4a1 1 0 0 1-.2 2H10z" />
           </svg>
         </span>
       )}
       {kill.penetrated && (
-        <span title="穿墙击杀" style={{ fontSize: 11, lineHeight: 1 }}>
+        <span title="穿墙击杀" className="kill-icon wallbang">
           🧱
         </span>
       )}
       {kill.noScope && (
-        <span title="盲狙击杀" style={{ fontSize: 11, lineHeight: 1 }}>
+        <span title="盲狙击杀" className="kill-icon noscope">
           🎯
         </span>
       )}
       {kill.attackerBlind && (
-        <span title="致盲反杀" style={{ fontSize: 11, lineHeight: 1 }}>
+        <span title="致盲反杀" className="kill-icon blindkill">
           🕶️
         </span>
       )}
@@ -529,14 +529,20 @@ function KillRow({
   return (
     <div className="kill-row" onClick={() => onJump(kill.tick)}>
       <span className="tk">{fmtTick(kill.tick, tickRate)}</span>
-      <span className={`nm ${kill.attackerTeam === 'T' ? 't' : kill.attackerTeam === 'CT' ? 'ct' : ''}`}>
+      <span
+        className={`nm atk ${kill.attackerTeam === 'T' ? 't' : kill.attackerTeam === 'CT' ? 'ct' : ''}`}
+        title={attackerLabel}
+      >
         {attackerLabel}
       </span>
       <span className="wp">
-        {isSuicide ? '自杀' : kill.weapon}
+        <span className="wp-name">{isSuicide ? '自杀' : kill.weapon}</span>
         <KillIcons kill={kill} />
       </span>
-      <span className={`nm ${kill.victimTeam === 'T' ? 't' : kill.victimTeam === 'CT' ? 'ct' : ''}`}>
+      <span
+        className={`nm vic ${kill.victimTeam === 'T' ? 't' : kill.victimTeam === 'CT' ? 'ct' : ''}`}
+        title={victimLabel}
+      >
         {victimLabel}
       </span>
       <span className="rn">R{kill.roundNum}</span>
