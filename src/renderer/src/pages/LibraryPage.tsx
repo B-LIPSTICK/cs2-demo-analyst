@@ -16,6 +16,52 @@ import type { DemoMeta } from '@shared/types'
 import { DemoDetailPage } from './DemoDetailPage'
 import { fmtDate } from '@/components/ui'
 
+/** 格式化目录展示标签（识别常用对战平台与多层级路径，避免只显示 demo） */
+export function formatRootLabel(rootPath: string): {
+  title: string
+  subtitle: string
+  badge?: string
+  badgeClass?: string
+} {
+  const norm = rootPath.replace(/\\/g, '/').toLowerCase()
+  if (norm.includes('wmpvp/demo') || norm.includes('wmpvp\\demo') || norm.includes('/wmpvp')) {
+    return {
+      title: '完美世界对战平台',
+      subtitle: rootPath,
+      badge: 'Wmpvp',
+      badgeClass: 'root-badge-wmpvp'
+    }
+  }
+  if (norm.includes('5edemocache') || norm.includes('5eclient')) {
+    return {
+      title: '5E 对战平台',
+      subtitle: rootPath,
+      badge: '5EPlay',
+      badgeClass: 'root-badge-5e'
+    }
+  }
+  if (
+    norm.includes('game/csgo/demos') ||
+    norm.includes('game/csgo/replays') ||
+    norm.includes('counter-strike global offensive')
+  ) {
+    return {
+      title: 'CS2 官方录像',
+      subtitle: rootPath,
+      badge: 'Steam',
+      badgeClass: 'root-badge-steam'
+    }
+  }
+  const parts = rootPath.split(/[\\/]/).filter(Boolean)
+  const last2 = parts.length >= 2 ? parts.slice(-2).join(' / ') : parts[0] ?? rootPath
+  return {
+    title: last2,
+    subtitle: rootPath,
+    badge: 'Folder',
+    badgeClass: 'root-badge-custom'
+  }
+}
+
 function LibraryPageInner({
   onOpenDemo
 }: {
@@ -197,7 +243,26 @@ function LibraryPageInner({
     setSelectedIds(new Set())
   }
 
-  const rootName = (r: string) => r.split(/[\\/]/).filter(Boolean).at(-1) ?? r
+
+
+  /** 自动扫描本地对战平台（完美/5E/Steam）并一键添加到监控目录 */
+  const onAutoDetectRoots = async () => {
+    try {
+      const res = await window.api.library.autoAddPlatformRoots()
+      if (res.added.length > 0) {
+        setRoots(res.roots)
+        setRootFilter(res.added[0].path)
+        toast.push(
+          t('library.autoDetectDone').replace('{n}', String(res.added.length))
+        )
+      } else {
+        toast.push(t('library.autoDetectNone'))
+      }
+      await load()
+    } catch {
+      toast.push(t('common.error'), 'err')
+    }
+  }
 
   /** 从下拉里移除目录（主进程同步清理并扫描） */
   const removeRootAt = async (r: string) => {
@@ -279,54 +344,119 @@ function LibraryPageInner({
             </>
           ) : (
             <>
-              {roots.length > 0 && (
-                <div className="root-select" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    className="input root-select-btn"
-                    onClick={() => setRootOpen((v) => !v)}
-                    title={t('library.rootFilter')}
-                  >
-                    <span className="grow" style={{ textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {rootFilter ? rootName(rootFilter) : t('library.allRoots')}
-                    </span>
-                    <span style={{ color: 'var(--text-2)', fontSize: 10 }}>▾</span>
-                  </button>
-                  {rootOpen && (
-                    <div className="root-menu">
-                      <button
-                        className={`root-item ${rootFilter === '' ? 'on' : ''}`}
-                        onClick={() => {
-                          setRootFilter('')
-                          setRootOpen(false)
-                        }}
-                      >
-                        {t('library.allRoots')}
-                      </button>
-                      {roots.map((r) => (
-                        <div key={r} className={`root-item row ${rootFilter === r ? 'on' : ''}`}>
+              <div className="root-select" onClick={(e) => e.stopPropagation()}>
+                <button
+                  className={`root-select-btn ${rootOpen ? 'active' : ''}`}
+                  onClick={() => setRootOpen((v) => !v)}
+                  title={rootFilter ? formatRootLabel(rootFilter).subtitle : t('library.allRoots')}
+                >
+                  <span style={{ fontSize: 13, flex: 'none' }}>📁</span>
+                  <span className="grow" style={{ textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                    {rootFilter ? formatRootLabel(rootFilter).title : t('library.allRoots')}
+                  </span>
+                  <span style={{ color: 'var(--text-2)', fontSize: 10, flex: 'none' }}>▾</span>
+                </button>
+                {rootOpen && (
+                  <div className="root-menu">
+                    {/* 全部目录 */}
+                    <div
+                      className={`root-menu-item ${rootFilter === '' ? 'on' : ''}`}
+                      onClick={() => {
+                        setRootFilter('')
+                        setRootOpen(false)
+                      }}
+                    >
+                      <span style={{ fontSize: 14 }}>🌐</span>
+                      <div className="root-item-body">
+                        <div className="root-item-title">{t('library.allRoots')}</div>
+                        <div className="root-item-sub">
+                          {t('library.demosCount').replace('{n}', String(demos.length))}
+                        </div>
+                      </div>
+                      {rootFilter === '' && <span style={{ color: 'var(--accent)', fontSize: 12 }}>✓</span>}
+                    </div>
+
+                    {roots.length > 0 && <div className="root-menu-divider" />}
+
+                    {/* 平台/自定义目录列表 */}
+                    {roots.map((r) => {
+                      const info = formatRootLabel(r)
+                      const rf = r.replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '')
+                      const count = demos.filter((d) => {
+                        const p = d.path.replace(/\\/g, '/').toLowerCase()
+                        const cp = d.containerPath ? d.containerPath.replace(/\\/g, '/').toLowerCase() : ''
+                        return p.startsWith(rf) || cp.startsWith(rf)
+                      }).length
+                      const isCur = rootFilter === r
+                      return (
+                        <div
+                          key={r}
+                          className={`root-menu-item ${isCur ? 'on' : ''}`}
+                          onClick={() => {
+                            setRootFilter(r)
+                            setRootOpen(false)
+                          }}
+                        >
+                          {info.badge && (
+                            <span className={`root-platform-badge ${info.badgeClass}`}>
+                              {info.badge}
+                            </span>
+                          )}
+                          <div className="root-item-body">
+                            <div className="root-item-title">
+                              <span>{info.title}</span>
+                              <span className="muted" style={{ fontSize: 10.5, fontWeight: 'normal' }}>
+                                ({count})
+                              </span>
+                            </div>
+                            <div className="root-item-sub" title={r}>
+                              {info.subtitle}
+                            </div>
+                          </div>
                           <button
-                            className="grow root-name"
-                            title={r}
-                            onClick={() => {
-                              setRootFilter(r)
-                              setRootOpen(false)
-                            }}
-                          >
-                            {rootName(r)}
-                          </button>
-                          <button
-                            className="root-del"
+                            className="root-del-btn"
                             title={t('library.removeDir')}
-                            onClick={() => removeRootAt(r)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              removeRootAt(r)
+                            }}
                           >
                             ✕
                           </button>
                         </div>
-                      ))}
+                      )
+                    })}
+
+                    <div className="root-menu-divider" />
+
+                    {/* 底部动作栏：自动检测平台目录 + 手动添加目录 */}
+                    <div className="root-menu-actions">
+                      <button
+                        className="root-menu-action highlight"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setRootOpen(false)
+                          onAutoDetectRoots()
+                        }}
+                      >
+                        <span>⚡</span>
+                        <span>{t('library.autoDetect')}</span>
+                      </button>
+                      <button
+                        className="root-menu-action"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setRootOpen(false)
+                          onAddRoot()
+                        }}
+                      >
+                        <span>➕</span>
+                        <span>{t('library.addCustomDir')}</span>
+                      </button>
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
               <div className="row">
                 <IcSearch size={15} />
                 <input
@@ -382,6 +512,9 @@ function LibraryPageInner({
       ) : filtered.length === 0 && demos.length === 0 ? (
         <Empty ghost="NO DEMOS" hint={t('library.emptyHint')}>
           <div className="row" style={{ gap: 8, marginTop: 8 }}>
+            <Btn variant="accent" onClick={onAutoDetectRoots}>
+              ⚡ {t('library.autoDetect')}
+            </Btn>
             <Btn variant="ghost" onClick={onAddRoot}>
               <IcPlus size={13} />
               {t('library.addRoot')}
@@ -395,7 +528,7 @@ function LibraryPageInner({
       ) : filtered.length === 0 ? (
         <Empty
           ghost="NO DEMOS"
-          hint={query ? t('common.search') : (rootFilter ? `当前目录下暂无 Demo（${rootName(rootFilter)}）` : '')}
+          hint={query ? t('common.search') : (rootFilter ? `当前目录下暂无 Demo（${formatRootLabel(rootFilter).title}）` : '')}
         >
           {rootFilter && (
             <Btn variant="ghost" size="sm" onClick={() => setRootFilter('')} style={{ marginTop: 8 }}>

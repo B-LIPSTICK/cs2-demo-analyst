@@ -1,5 +1,35 @@
 # progress.md — 会话日志
 
+## 本轮十九（对战平台自动检测、路径下拉栏毛玻璃重构、投掷物伤害与闪光助攻/致盲统计）✅
+- **功能一：对战平台目录自动检测与手动管理双轨制**:
+  1. **平台路径探测引擎**: 主进程 `detectPlatformRoots` 自动扫描探测完美世界对战平台（`%APPDATA%\Wmpvp\demo`、`%LOCALAPPDATA%\Wmpvp\demo`）、5E 对战平台（多盘符 `5EDemocache`、`5EClient`）、Steam CS2 官方录像目录（`csgo/demos`、`replays` 以及 Steam 安装库探测）。
+  2. **一键自动添加与解除过滤**: `autoAddPlatformRoots` 找出未纳管的平台目录，自动加入 `libraryRoots`，清理解除误忽略记录，并全量扫描入库。
+  3. **保留手动添加入口**: 在下拉菜单底部提供「➕ 手动添加自定义目录...」入口，同时保留顶部「+ 目录」按钮，完全保留手动指定任意目录的功能。
+- **功能二：路径下拉栏暗黑毛玻璃美化与多级语义标签**:
+  1. **根治原生白底矩形**: 移除由于原生 `<button>` 嵌套在深色背景下继承浏览器默认 `buttonface` 控件白框/灰色边框的设计瑕疵，采用符合 Apple 风格的近黑磨砂亚克力设计（`.root-select-btn`, `.root-menu`, `.root-menu-item`）。
+  2. **智能路径识别展示**: 解决长路径被截断只剩 `demo` 的体验痛点，通过 `formatRootLabel` 自动识别对战平台语义名（如「完美世界对战平台」、「5E 对战平台」、「CS2 官方录像」）或提取最后两级目录（`Parent / Folder`），悬停显示完整系统绝对路径，并赋予品牌专属平台胶囊徽标（紫色 Wmpvp、橙色 5EPlay、蓝色 Steam、灰青 Folder），各目录实时展示 Demo 总数统计。
+- **功能三：投掷物伤害 (UD) 与闪光助攻 (FA) / 致盲分析**:
+  1. **投掷物伤害 (Utility Damage / UDR)**:
+     - 在 `player_hurt` 中拦截手雷（`hegrenade`）、火（`inferno`、`molotov`、`incgrenade`）、诱饵弹等投掷物，统计每位选手全场有效投掷伤害与局均伤害。
+  2. **闪光助攻与高阶击杀勋章 (Kill Badges)**:
+     - 精准捕获 `player_death` 中的 `assistedflash`（闪光助攻）、`thrusmoke`（穿烟击杀）、`penetrated`（穿墙击杀）、`noscope`（盲狙击杀）、`attackerblind`（致盲反杀）。
+     - 击杀记录中直观呈现爆头（HS）、闪光助攻（⚡）、穿烟（💨）、穿墙（🧱）、盲狙（🎯）、致盲反杀（🕶️）多勋章并存标记。
+  3. **闪光致盲效率统计 (Blind Efficiency)**:
+     - 拦截 `player_blind`，基于实时阵营快照严谨区分敌方致盲与队友误闪，统计全场每位选手致盲敌方次数/总时长（秒）以及误闪队友次数/总时长（秒）。
+  4. **UI 战力看板呈现**:
+     - 选手成绩单表格新增 `UD`（投掷伤害）与 `FA`（闪光助攻）核心指标列，鼠标悬停即看局均数据与致盲细分。
+     - 点击选手弹出的 `PlayerModal` 战力看板扩展投掷伤害（含局均）、闪光助攻、敌方致盲（次数/总时长）、误闪队友（次数/总时长）四项深度数据卡片。
+  5. **版本与缓存控制**: `PARSER_VERSION` 升级至 6，旧 Demo 打开详情自动无缝触发重解析回填新指标；中英双语（`zh.ts` / `en.ts`）补齐全部新增词条。
+- **验证与交付**:
+  - 用户本地真实 Demo（`de_inferno`，172 次击杀，105MB）全量测试：
+    - Micle.0: 317 UD (14.4/R), 致盲敌方 30 次 (86.3s), 误闪 1 次
+    - 扛枪的猪猪侠: 58 UD (2.6/R), 误闪队友 8 次 (15.2s)
+    - 穿烟击杀 9 次、穿墙击杀 5 次、致盲反杀 1 次全部精准入库。
+  - `npm run typecheck` ✓
+  - `npm run build` ✓
+  - `npm run dist:zip`（产出 `CS2-Demo-Analyst-1.0.0-win64-portable.zip` 147MB）✓
+  - `npx electron-builder --win nsis`（产出 `CS2-Demo-Analyst-1.0.0-setup.exe` 92MB）✓
+
 ## 本轮十八（修复添加目录与重新扫描失效、黑名单阻断及路径归一化）✅
 - **根因诊断（为什么添加目录和重新扫描扫描不出 demo）**:
   1. **黑名单永久阻断 (`ignored.json`)**: 用户此前曾将 Demo 从资料库移出（仅从资料库移除），文件路径被持久化写入 `ignored.json`。即便用户后续重新下载该 Demo，由于旧扫描逻辑在读取文件属性前直接以原始字符串匹配（`if (ignoredSet.has(zp)) continue`），导致重新下载的同名 demo 被永久静默过滤。

@@ -247,6 +247,8 @@ export function DemoDetailPage({
                   <th>{t('detail.hud.deaths')}</th>
                   <th>{t('detail.hud.hs')}</th>
                   <th>{t('detail.hud.fkfd')}</th>
+                  <th>{t('detail.hud.ud')}</th>
+                  <th>{t('detail.hud.fa')}</th>
                   <th>{t('detail.hud.mvp')}</th>
                 </tr>
               </thead>
@@ -277,6 +279,18 @@ export function DemoDetailPage({
                     <td className="num">{p.deaths}</td>
                     <td className="num">{p.hsp}%</td>
                     <td className="num">{p.firstKills !== undefined ? `${p.firstKills}/${p.firstDeaths ?? 0}` : '—'}</td>
+                    <td
+                      className="num"
+                      title={`总投掷伤害: ${p.utilityDamage ?? 0} · 局均: ${p.utilityDamagePerRound ?? 0}`}
+                    >
+                      {p.utilityDamage ?? 0}
+                    </td>
+                    <td
+                      className="num"
+                      title={`闪光助攻: ${p.flashAssists ?? 0} · 致盲敌方: ${p.enemiesBlinded ?? 0}次 (${p.enemyBlindDuration ?? 0}s) · 误闪队友: ${p.teammatesBlinded ?? 0}次 (${p.teamBlindDuration ?? 0}s)`}
+                    >
+                      {p.flashAssists ?? 0}
+                    </td>
                     <td className="num">{p.mvp}</td>
                   </tr>
                 ))}
@@ -383,7 +397,7 @@ export function DemoDetailPage({
   )
 }
 
-/** 击杀标记图标：爆头（红骷髅）+ 穿烟（灰云），一眼可辨 */
+/** 击杀标记图标：爆头（红骷髅）+ 穿烟（灰云）+ 闪光助攻 + 穿墙 + 盲狙 */
 function KillIcons({ kill }: { kill: KillEvent }) {
   return (
     <span className="kill-icons">
@@ -394,12 +408,32 @@ function KillIcons({ kill }: { kill: KillEvent }) {
           </svg>
         </span>
       )}
+      {kill.flashAssist && (
+        <span title="闪光助攻" style={{ fontSize: 11, lineHeight: 1 }}>
+          ⚡
+        </span>
+      )}
       {kill.throughSmoke && (
         <span title="穿烟">
           <svg className="smoke" viewBox="0 0 24 24" fill="currentColor">
             <path d="M7.2 18a4.2 4.2 0 0 1-.3-8.4 5.2 5.2 0 0 1 10-1.8 4.6 4.6 0 0 1 .4 9.2 1 1 0 0 1-.2 0H7.2z" />
             <path d="M10 21a1 1 0 0 1-.2-2h4.4a1 1 0 0 1-.2 2H10z" />
           </svg>
+        </span>
+      )}
+      {kill.penetrated && (
+        <span title="穿墙击杀" style={{ fontSize: 11, lineHeight: 1 }}>
+          🧱
+        </span>
+      )}
+      {kill.noScope && (
+        <span title="盲狙击杀" style={{ fontSize: 11, lineHeight: 1 }}>
+          🎯
+        </span>
+      )}
+      {kill.attackerBlind && (
+        <span title="致盲反杀" style={{ fontSize: 11, lineHeight: 1 }}>
+          🕶️
         </span>
       )}
     </span>
@@ -589,6 +623,39 @@ function PlayerModal({
           <div className="pm-stat">
             <span>{t('detail.hud.mvp')}</span>
             <b>{player.mvp}</b>
+          </div>
+          <div className="pm-stat">
+            <span>{t('detail.hud.ud')}</span>
+            <b>
+              {player.utilityDamage ?? 0}
+              {player.utilityDamagePerRound !== undefined && (
+                <span className="muted" style={{ fontSize: 11, fontWeight: 'normal', marginLeft: 4 }}>
+                  ({player.utilityDamagePerRound}/局)
+                </span>
+              )}
+            </b>
+          </div>
+          <div className="pm-stat">
+            <span>{t('detail.hud.fa')}</span>
+            <b>{player.flashAssists ?? 0}</b>
+          </div>
+          <div className="pm-stat">
+            <span>{t('detail.hud.blindEnemy')}</span>
+            <b>
+              {player.enemiesBlinded ?? 0}
+              <span className="muted" style={{ fontSize: 11, fontWeight: 'normal', marginLeft: 4 }}>
+                ({player.enemyBlindDuration ?? 0}s)
+              </span>
+            </b>
+          </div>
+          <div className="pm-stat">
+            <span>{t('detail.hud.blindTeam')}</span>
+            <b>
+              {player.teammatesBlinded ?? 0}
+              <span className="muted" style={{ fontSize: 11, fontWeight: 'normal', marginLeft: 4 }}>
+                ({player.teamBlindDuration ?? 0}s)
+              </span>
+            </b>
           </div>
         </div>
 

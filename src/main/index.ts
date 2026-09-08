@@ -108,6 +108,8 @@ function registerIpc(): void {
   )
   ipcMain.handle('library:parse', (_e, id: string, force?: boolean) => library.parse(id, force))
   ipcMain.handle('library:parseAll', () => library.parseAll())
+  ipcMain.handle('library:detectPlatformRoots', () => library.detectPlatformRoots())
+  ipcMain.handle('library:autoAddPlatformRoots', () => library.autoAddPlatformRoots())
 
   // 收藏
   ipcMain.handle('favorites:list', async () => {

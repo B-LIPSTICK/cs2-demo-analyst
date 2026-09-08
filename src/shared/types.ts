@@ -37,6 +37,13 @@ export interface DemoMeta {
   voiceSec?: number
 }
 
+export interface DetectedPlatformRoot {
+  platform: 'wmpvp' | '5eplay' | 'steam' | 'other'
+  name: string
+  path: string
+  demoCount: number
+}
+
 export type TeamSide = 'T' | 'CT' | 'SPEC' | 'NONE'
 
 export interface PlayerInfo {
@@ -64,6 +71,20 @@ export interface PlayerInfo {
   firstKills?: number
   /** 首死次数 (First Deaths / Opening Deaths) */
   firstDeaths?: number
+  /** 投掷物总伤害 (Utility Damage) */
+  utilityDamage?: number
+  /** 场均投掷物伤害 (Utility Damage per Round) */
+  utilityDamagePerRound?: number
+  /** 闪光助攻 (Flash Assists) */
+  flashAssists?: number
+  /** 致盲敌方次数 (Enemies Blinded) */
+  enemiesBlinded?: number
+  /** 致盲敌方总时长 (秒) */
+  enemyBlindDuration?: number
+  /** 误闪队友次数 (Teammates Blinded) */
+  teammatesBlinded?: number
+  /** 误闪队友总时长 (秒) */
+  teamBlindDuration?: number
 }
 
 export interface KillEvent {
@@ -82,6 +103,14 @@ export interface KillEvent {
   weapon: string
   headshot: boolean
   throughSmoke: boolean
+  /** 穿透 / 穿墙击杀 (Wallbang) */
+  penetrated?: boolean
+  /** 盲狙击杀 (No-Scope) */
+  noScope?: boolean
+  /** 闪光助攻 (Flash Assist) */
+  flashAssist?: boolean
+  /** 击杀者致盲中 (Attacker Blind) */
+  attackerBlind?: boolean
   roundNum: number
 }
 
@@ -360,6 +389,8 @@ export interface Api {
     remove: (id: string, opts?: { deleteFile?: boolean }) => Promise<void>
     parse: (id: string, force?: boolean) => Promise<void>
     parseAll: () => Promise<void>
+    detectPlatformRoots: () => Promise<DetectedPlatformRoot[]>
+    autoAddPlatformRoots: () => Promise<{ added: DetectedPlatformRoot[]; roots: string[] }>
   }
   favorites: {
     list: () => Promise<Favorite[]>

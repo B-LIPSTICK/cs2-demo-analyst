@@ -24,7 +24,9 @@ const api: ApiWithEvents = {
     remove: (id: string, opts?: { deleteFile?: boolean }) =>
       ipcRenderer.invoke('library:remove', id, opts),
     parse: (id: string, force?: boolean) => ipcRenderer.invoke('library:parse', id, force),
-    parseAll: () => ipcRenderer.invoke('library:parseAll')
+    parseAll: () => ipcRenderer.invoke('library:parseAll'),
+    detectPlatformRoots: () => ipcRenderer.invoke('library:detectPlatformRoots'),
+    autoAddPlatformRoots: () => ipcRenderer.invoke('library:autoAddPlatformRoots')
   },
   favorites: {
     list: () => ipcRenderer.invoke('favorites:list'),

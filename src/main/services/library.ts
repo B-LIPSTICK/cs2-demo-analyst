@@ -9,7 +9,7 @@ import { promises as fs } from 'node:fs'
 import { basename, dirname, join, extname } from 'node:path'
 import { createHash } from 'node:crypto'
 import AdmZip from 'adm-zip'
-import type { DemoDetail, DemoMeta, Settings } from '@shared/types'
+import type { DemoDetail, DemoMeta, DetectedPlatformRoot, Settings } from '@shared/types'
 import { parseDemo } from './parser'
 import { getMockDetail, getMockLibrary } from './mock'
 import { updateSettings } from './settings'
@@ -33,6 +33,8 @@ export interface LibraryService {
   splitVoice(id: string): Promise<number>
   transcribe(id: string, opts?: { players?: string[] }): Promise<void>
   cancelTranscribe(): void
+  detectPlatformRoots(): Promise<DetectedPlatformRoot[]>
+  autoAddPlatformRoots(): Promise<{ added: DetectedPlatformRoot[]; roots: string[] }>
 }
 
 interface Store {
@@ -96,8 +98,8 @@ export function createLibraryService(
   }
 
   // 解析器版本：解析逻辑变更（如击杀阵营实时跟踪）时 +1，旧详情缓存自动失效重解析
-  // v5: 引入 ADR、KAST、Rating 2.0、首杀对决与回合经济系统分析
-  const PARSER_VERSION = 5
+  // v6: 引入投掷物伤害 (UD)、闪光助攻 (FA) 与闪光致盲效率统计 (Enemies Blinded / Duration)
+  const PARSER_VERSION = 6
 
   const libDir = () => join(app.getPath('userData'), 'library')
   const indexPath = () => join(libDir(), 'index.json')
@@ -487,7 +489,13 @@ export function createLibraryService(
         return 0
       },
       async transcribe() {},
-      cancelTranscribe() {}
+      cancelTranscribe() {},
+      async detectPlatformRoots() {
+        return []
+      },
+      async autoAddPlatformRoots() {
+        return { added: [], roots: [] }
+      }
     }
   }
 
@@ -811,6 +819,79 @@ export function createLibraryService(
 
     cancelTranscribe() {
       cancelTranscribe()
+    },
+
+    /** 自动探测本地常见对战平台 Demo 目录（完美世界、5E 对战平台、Steam 官方） */
+    async detectPlatformRoots(): Promise<DetectedPlatformRoot[]> {
+      const results: DetectedPlatformRoot[] = []
+      const checked = new Set<string>()
+
+      const addCandidate = async (
+        platform: 'wmpvp' | '5eplay' | 'steam' | 'other',
+        name: string,
+        dir: string
+      ) => {
+        if (!dir) return
+        const norm = normPath(dir)
+        if (checked.has(norm)) return
+        checked.add(norm)
+        try {
+          const st = await fs.stat(dir).catch(() => null)
+          if (st && st.isDirectory()) {
+            const files = await fs.readdir(dir).catch(() => [] as string[])
+            const demoCount = files.filter((f) => /\.dem$|\.zip$/i.test(f)).length
+            results.push({ platform, name, path: dir, demoCount })
+          }
+        } catch {
+          /* noop */
+        }
+      }
+
+      // 1. 完美世界对战平台 (Wmpvp)
+      const appData = process.env.APPDATA || ''
+      const localAppData = process.env.LOCALAPPDATA || ''
+      if (appData) await addCandidate('wmpvp', '完美世界对战平台 (Wmpvp)', join(appData, 'Wmpvp', 'demo'))
+      if (localAppData) await addCandidate('wmpvp', '完美世界对战平台 (Local)', join(localAppData, 'Wmpvp', 'demo'))
+
+      // 2. 5E 对战平台 (5EPlay)
+      const drives = ['C', 'D', 'E', 'F', 'G']
+      for (const d of drives) {
+        await addCandidate('5eplay', `5E 对战平台 (${d}:\\5EDemocache)`, `${d}:\\5EDemocache`)
+      }
+      if (appData) await addCandidate('5eplay', '5E 对战平台 (Client)', join(appData, '5EClient', 'demo'))
+      if (localAppData) await addCandidate('5eplay', '5E 对战平台 (Local)', join(localAppData, '5EClient', 'demo'))
+
+      // 3. Steam CS2 录像目录
+      const settings = await getSettings()
+      if (settings.cs2?.installPath) {
+        await addCandidate('steam', 'CS2 官方录像 (demos)', join(settings.cs2.installPath, 'game', 'csgo', 'demos'))
+        await addCandidate('steam', 'CS2 官方录像 (replays)', join(settings.cs2.installPath, 'game', 'csgo', 'replays'))
+      }
+      const commonSteamPaths = [
+        'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive',
+        'D:\\Steam\\steamapps\\common\\Counter-Strike Global Offensive',
+        'E:\\Steam\\steamapps\\common\\Counter-Strike Global Offensive'
+      ]
+      for (const sp of commonSteamPaths) {
+        await addCandidate('steam', 'CS2 官方录像 (demos)', join(sp, 'game', 'csgo', 'demos'))
+        await addCandidate('steam', 'CS2 官方录像 (replays)', join(sp, 'game', 'csgo', 'replays'))
+      }
+
+      return results
+    },
+
+    /** 自动将探测到的平台目录加入监控列表（保留已有目录不覆盖）并触发扫描 */
+    async autoAddPlatformRoots(): Promise<{ added: DetectedPlatformRoot[]; roots: string[] }> {
+      const detected = await this.detectPlatformRoots()
+      const normExisting = new Set(store.roots.map(normPath))
+      const toAdd = detected.filter((d) => !normExisting.has(normPath(d.path)))
+      if (toAdd.length > 0) {
+        const merged = [...new Set([...store.roots, ...toAdd.map((d) => d.path)])]
+        unignoreUnder(toAdd.map((d) => d.path))
+        await this.setRoots(merged)
+        return { added: toAdd, roots: merged }
+      }
+      return { added: [], roots: store.roots }
     }
   }
 }

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Btn, IcFolder, IcPlus, IcRefresh, Panel, SectionHead, Tag, Toggle, useToast } from '@/components/ui'
 import { useT, type Lang } from '@/i18n'
 import type { Settings } from '@shared/types'
+import { formatRootLabel } from './LibraryPage'
 
 /** 弹窗：createPortal 到 body，fixed 相对视口居中（避免被 .page 的 transform 动画干扰） */
 function Modal({
@@ -180,8 +181,22 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
 
   const addRoot = async () => {
     const roots = await window.api.library.addRoot()
-    if (roots.length) {
+    if (roots && roots.length) {
       set({ libraryRoots: [...new Set([...draft.libraryRoots, ...roots])] })
+    }
+  }
+
+  const autoDetectRoots = async () => {
+    try {
+      const res = await window.api.library.autoAddPlatformRoots()
+      if (res.added.length > 0) {
+        set({ libraryRoots: res.roots })
+        toast.push(t.tf('library.autoDetectDone', { n: res.added.length }))
+      } else {
+        toast.push(t.t('library.autoDetectNone'))
+      }
+    } catch {
+      toast.push(t.t('common.error'), 'err')
     }
   }
 
@@ -262,26 +277,41 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             <div className="t">{t.t('settings.library')}</div>
             <div className="d">{t.t('settings.libraryHint')}</div>
           </div>
-          <Btn variant="ghost" size="sm" onClick={addRoot}>
-            <IcPlus size={12} />
-            {t.t('library.addRoot')}
-          </Btn>
+          <div className="row" style={{ gap: 8 }}>
+            <Btn variant="ghost" size="sm" onClick={autoDetectRoots}>
+              ⚡ {t.t('library.autoDetect')}
+            </Btn>
+            <Btn variant="ghost" size="sm" onClick={addRoot}>
+              <IcPlus size={12} />
+              {t.t('library.addRoot')}
+            </Btn>
+          </div>
         </div>
         {draft.libraryRoots.length > 0 && (
           <div className="set-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-            {draft.libraryRoots.map((r) => (
-              <div key={r} className="flex between" style={{ gap: 10 }}>
-                <span className="mono muted" style={{ fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r}>
-                  {r}
-                </span>
-                <Btn
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => set({ libraryRoots: draft.libraryRoots.filter((x) => x !== r) })}
-                >
-                  移除                </Btn>
-              </div>
-            ))}
+            {draft.libraryRoots.map((r) => {
+              const info = formatRootLabel(r)
+              return (
+                <div key={r} className="flex between" style={{ gap: 10, alignItems: 'center' }}>
+                  <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-0)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {info.badge && <span className={`root-platform-badge ${info.badgeClass}`}>{info.badge}</span>}
+                      <span>{info.title}</span>
+                    </div>
+                    <span className="mono muted" style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r}>
+                      {r}
+                    </span>
+                  </div>
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => set({ libraryRoots: draft.libraryRoots.filter((x) => x !== r) })}
+                  >
+                    移除
+                  </Btn>
+                </div>
+              )
+            })}
           </div>
         )}
       </Panel>

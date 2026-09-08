@@ -153,6 +153,7 @@ interface PlayerSlot {
   headshots: number
   mvp: number
   avatar?: string
+  flashAssists: number
 }
 
 interface RoundAcc {
@@ -292,6 +293,16 @@ export async function parseDemo(
   const damageByName = new Map<string, number>()
   // roundVictimDamage: `${roundNum}:${victimKey}` -> attackerKey -> dmg（用于助攻与 KAST 判定）
   const roundVictimDamage = new Map<string, Map<string, number>>()
+
+  // ★投掷物伤害统计（HE手雷、燃烧弹、火）
+  const playerUtilityDamage = new Map<string, number>()
+  const utilityDamageByName = new Map<string, number>()
+
+  // ★闪光致盲统计（敌方致盲 vs 队友误闪）
+  const enemyBlindCountByName = new Map<string, number>()
+  const enemyBlindDurationByName = new Map<string, number>()
+  const teamBlindCountByName = new Map<string, number>()
+  const teamBlindDurationByName = new Map<string, number>()
 
   // ★首杀 / 首死统计
   const firstKillsByName = new Map<string, number>()
@@ -589,6 +600,10 @@ export async function parseDemo(
           weapon: weaponName(ev.weapon),
           headshot: Boolean(ev.headshot),
           throughSmoke: Boolean(ev.thrusmoke),
+          penetrated: int(ev.penetrated) > 0,
+          noScope: Boolean(ev.noscope),
+          flashAssist: Boolean(ev.assistedflash),
+          attackerBlind: Boolean(ev.attackerblind),
           roundNum: currentRound.roundNum
         }
         // 隐式首回合（首个 prestart 到来前）只保留比赛开始后的击杀：
@@ -648,6 +663,18 @@ export async function parseDemo(
           if (aName) {
             damageByName.set(aName, (damageByName.get(aName) ?? 0) + effectiveDmg)
           }
+
+          // ★ 投掷物伤害判定（高爆手雷、燃烧弹、火）
+          const weaponStr = String(ev.weapon ?? '').toLowerCase()
+          const isUtility = ['hegrenade', 'inferno', 'molotov', 'incgrenade', 'decoy'].some((u) =>
+            weaponStr.includes(u)
+          )
+          if (isUtility) {
+            playerUtilityDamage.set(aKey, (playerUtilityDamage.get(aKey) ?? 0) + effectiveDmg)
+            if (aName) {
+              utilityDamageByName.set(aName, (utilityDamageByName.get(aName) ?? 0) + effectiveDmg)
+            }
+          }
         }
 
         if (aKey && (vInfo?.steamId || vName)) {
@@ -659,6 +686,49 @@ export async function parseDemo(
             roundVictimDamage.set(assistKey, aMap)
           }
           aMap.set(aKey, (aMap.get(aKey) ?? 0) + effectiveDmg)
+        }
+        break
+      }
+      case 'player_blind': {
+        if (!roundsStarted) {
+          const matchStartForImplicit =
+            lastBeginNewMatchTick >= 0 ? lastBeginNewMatchTick : lastMatchStartTick
+          if (matchStartForImplicit >= 0 && tick < matchStartForImplicit) break
+        }
+        const attacker = int(ev.attacker)
+        const victim = int(ev.userid)
+        if (attacker === 65535 || attacker === 0) break
+        const blindDur =
+          typeof ev.blind_duration === 'number'
+            ? ev.blind_duration
+            : Number(ev.blind_duration) || 0
+        if (blindDur <= 0.05) break
+
+        const aInfo = playersByUserid.get(attacker)
+        const vInfo = playersByUserid.get(victim)
+        const aName = aInfo?.name
+        const vName = vInfo?.name
+        const aPawnTeam = pawnIdxTeam.get(attacker & 0xfff)
+        const vPawnTeam = pawnIdxTeam.get(victim & 0xfff)
+        const aTeam = (aName ? roundTeamByName.get(aName) : undefined) ?? aPawnTeam ?? 'NONE'
+        const vTeam = (vName ? roundTeamByName.get(vName) : undefined) ?? vPawnTeam ?? 'NONE'
+
+        if (aName && aTeam !== 'NONE' && vTeam !== 'NONE') {
+          if (aTeam !== vTeam) {
+            // 敌方致盲
+            enemyBlindCountByName.set(aName, (enemyBlindCountByName.get(aName) ?? 0) + 1)
+            enemyBlindDurationByName.set(
+              aName,
+              (enemyBlindDurationByName.get(aName) ?? 0) + blindDur
+            )
+          } else if (attacker !== victim) {
+            // 友军误闪
+            teamBlindCountByName.set(aName, (teamBlindCountByName.get(aName) ?? 0) + 1)
+            teamBlindDurationByName.set(
+              aName,
+              (teamBlindDurationByName.get(aName) ?? 0) + blindDur
+            )
+          }
         }
         break
       }
@@ -711,7 +781,8 @@ export async function parseDemo(
               deaths: 0,
               assists: 0,
               headshots: 0,
-              mvp: 0
+              mvp: 0,
+              flashAssists: 0
             })
           }
         }
@@ -747,7 +818,8 @@ export async function parseDemo(
               deaths: 0,
               assists: 0,
               headshots: 0,
-              mvp: 0
+              mvp: 0,
+              flashAssists: 0
             })
           }
         }
@@ -811,7 +883,8 @@ export async function parseDemo(
               deaths: 0,
               assists: 0,
               headshots: 0,
-              mvp: 0
+              mvp: 0,
+              flashAssists: 0
             })
           }
         }
@@ -946,6 +1019,7 @@ export async function parseDemo(
       existing.deaths += slot.deaths
       existing.assists += slot.assists
       existing.headshots += slot.headshots
+      existing.flashAssists += slot.flashAssists
     }
     nameToSlot.set(slot.name, keep)
   }
@@ -980,12 +1054,13 @@ export async function parseDemo(
     }
   }
 
-  // 统一统计（对最终玩家表）：kills / deaths / assists / headshots
+  // 统一统计（对最终玩家表）：kills / deaths / assists / headshots / flashAssists
   for (const s of playersByUserid.values()) {
     s.kills = 0
     s.deaths = 0
     s.assists = 0
     s.headshots = 0
+    s.flashAssists = 0
   }
   for (const r of realRounds) {
     for (const k of r.kills) {
@@ -998,7 +1073,10 @@ export async function parseDemo(
       if (v) v.deaths++
       if (k.assisterUid !== undefined) {
         const as = slotForName(k.assisterUid)
-        if (as && k.assisterUid !== k.attackerUid) as.assists++
+        if (as && k.assisterUid !== k.attackerUid) {
+          as.assists++
+          if (k.flashAssist) as.flashAssists++
+        }
       }
     }
   }
@@ -1090,7 +1168,8 @@ export async function parseDemo(
     score: s.kills * 3 + s.assists,
     mvp: mvpBySteamId.get(s.steamId ?? '') ?? s.mvp,
     hsp: s.kills ? Math.round((s.headshots / s.kills) * 100) : 0,
-    avatar: s.avatar
+    avatar: s.avatar,
+    flashAssists: s.flashAssists
   }))
   // ★按 steamId 去重（实体名中途变化/uid 漂移会产生同名或同 steamId 重复条目）：
   //   同 steamId 保留 team 非 NONE 且击杀最多的；无 steamId 的同名条目也合并。
@@ -1103,7 +1182,7 @@ export async function parseDemo(
         byKey.set(key, p)
       } else if (existing.team === 'NONE' && p.team !== 'NONE') {
         // 优先保留有阵营的（实体采样版本；幽灵条目 team=NONE 但有击杀统计）
-        byKey.set(key, { ...p, kills: existing.kills, deaths: existing.deaths, assists: existing.assists, headshots: existing.headshots, mvp: existing.mvp, score: existing.score, hsp: existing.hsp })
+        byKey.set(key, { ...p, kills: existing.kills, deaths: existing.deaths, assists: existing.assists, headshots: existing.headshots, mvp: existing.mvp, score: existing.score, hsp: existing.hsp, flashAssists: existing.flashAssists })
       } else if (p.team !== 'NONE' && existing.team === p.team && p.kills > existing.kills) {
         byKey.set(key, p)
       }
@@ -1220,12 +1299,26 @@ export async function parseDemo(
       const rawRating = 0.0073 * kast + 0.3591 * kpr - 0.5329 * dpr + 0.2372 * impact + 0.0032 * adr + 0.1587
       const rating = Math.max(0.05, Math.min(3.5, Math.round(rawRating * 100) / 100))
 
+      const utDmg =
+        utilityDamageByName.get(p.name) ?? (p.steamId ? playerUtilityDamage.get(p.steamId) : 0) ?? 0
+      const utDmgPerRound = Math.round((utDmg / totalRoundsCount) * 10) / 10
+      const enBlinded = enemyBlindCountByName.get(p.name) ?? 0
+      const enBlindDur = Math.round((enemyBlindDurationByName.get(p.name) ?? 0) * 10) / 10
+      const tmBlinded = teamBlindCountByName.get(p.name) ?? 0
+      const tmBlindDur = Math.round((teamBlindDurationByName.get(p.name) ?? 0) * 10) / 10
+
       p.adr = adr
       p.totalDamage = totalDmg
       p.kast = kast
       p.rating = rating
       p.firstKills = fk
       p.firstDeaths = fd
+      p.utilityDamage = utDmg
+      p.utilityDamagePerRound = utDmgPerRound
+      p.enemiesBlinded = enBlinded
+      p.enemyBlindDuration = enBlindDur
+      p.teammatesBlinded = tmBlinded
+      p.teamBlindDuration = tmBlindDur
     }
 
     players.length = 0
