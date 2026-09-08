@@ -680,6 +680,7 @@ body {
   border: 1px solid var(--line-1);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-1);
+  overflow: hidden;
 }
 
 .panel.raised {
@@ -1690,6 +1691,112 @@ body {
 }
 
 /* ─── 击杀记录 ────────────────────────────────────────────────────────────── */
+
+/* 击杀流对局快速筛选条（防穿模横向滚动） */
+.round-filter-wrap {
+  position: relative;
+  margin: 0 12px 10px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  padding: 3px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.round-filter-scroll {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-behavior: smooth;
+}
+
+.round-filter-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.rf-item {
+  flex: none;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 27px;
+  height: 27px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-1);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  transition: all 0.12s;
+  box-sizing: border-box;
+}
+
+.rf-item:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.rf-item.on {
+  color: #ffffff;
+  background: var(--accent);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 1px 4px rgba(10, 132, 255, 0.4);
+}
+
+.rf-item.all-btn {
+  font-family: var(--font-body);
+  padding: 0 10px;
+  font-size: 11.5px;
+}
+
+.rf-dot {
+  width: 3.5px;
+  height: 3.5px;
+  border-radius: 50%;
+  margin-top: 1px;
+}
+
+.rf-dot.t {
+  background: var(--t);
+}
+
+.rf-dot.ct {
+  background: var(--ct);
+}
+
+.rf-item.on .rf-dot {
+  background: #ffffff;
+}
+
+[data-theme='light'] .round-filter-wrap {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+[data-theme='light'] .rf-item {
+  color: #64748b;
+}
+
+[data-theme='light'] .rf-item:hover {
+  color: #0f172a;
+  background: #e2e8f0;
+}
+
+[data-theme='light'] .rf-item.on {
+  color: #ffffff;
+  background: #0a84ff;
+  border-color: transparent;
+}
 
 .kill-list {
   display: flex;

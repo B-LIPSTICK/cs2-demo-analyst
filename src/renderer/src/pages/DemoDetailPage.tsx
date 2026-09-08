@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Avatar,
   Btn,
@@ -202,23 +202,12 @@ export function DemoDetailPage({
         {/* 击杀流 */}
         <Panel hd={`${t('detail.killfeed')} · ${selectedRound === 'all' ? t('common.all') : `R${selectedRound}`}`}>
           <div style={{ padding: '10px 0' }}>
-            <div className="seg" style={{ margin: '0 12px 8px' }}>
-              <span
-                className={`seg-item ${selectedRound === 'all' ? 'on' : ''}`}
-                onClick={() => setSelectedRound('all')}
-              >
-                {t('common.all')}
-              </span>
-              {rounds.map((r) => (
-                <span
-                  key={r.roundNum}
-                  className={`seg-item ${selectedRound === r.roundNum ? 'on' : ''}`}
-                  onClick={() => setSelectedRound(r.roundNum)}
-                >
-                  {r.roundNum}
-                </span>
-              ))}
-            </div>
+            <RoundFilterBar
+              rounds={rounds}
+              selectedRound={selectedRound}
+              onSelectRound={setSelectedRound}
+              allLabel={t('common.all')}
+            />
             <div className="kill-list" style={{ maxHeight: 420, overflowY: 'auto' }}>
               {sortedKills.map((k, i) => (
                 <KillRow key={`${k.tick}-${i}`} kill={k} tickRate={meta.tickRate ?? 64} onJump={jump} />
@@ -484,6 +473,70 @@ function RoundIcon({ type }: { type: RoundEndType }) {
     default:
       return null
   }
+}
+
+/** 击杀流对局快速筛选条（支持滚轮横向平滑滑动与居中高亮，彻底杜绝穿模） */
+function RoundFilterBar({
+  rounds,
+  selectedRound,
+  onSelectRound,
+  allLabel
+}: {
+  rounds: RoundInfo[]
+  selectedRound: number | 'all'
+  onSelectRound: (r: number | 'all') => void
+  allLabel: string
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // 鼠标滚轮在筛选栏上方平滑横向滚动
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (e.deltaY !== 0 && scrollRef.current) {
+      e.currentTarget.scrollLeft += e.deltaY
+    }
+  }
+
+  // 选中特定回合时自动平滑滚动至视口中央
+  useEffect(() => {
+    if (selectedRound !== 'all' && scrollRef.current) {
+      const activeBtn = scrollRef.current.querySelector('.rf-item.on') as HTMLElement
+      if (activeBtn) {
+        activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+      }
+    }
+  }, [selectedRound])
+
+  return (
+    <div className="round-filter-wrap">
+      <div className="round-filter-scroll" ref={scrollRef} onWheel={handleWheel}>
+        <button
+          type="button"
+          className={`rf-item all-btn ${selectedRound === 'all' ? 'on' : ''}`}
+          onClick={() => onSelectRound('all')}
+        >
+          {allLabel}
+        </button>
+        {rounds.map((r) => {
+          const isWinnerT = r.winner === 'T'
+          const isWinnerCT = r.winner === 'CT'
+          return (
+            <button
+              key={r.roundNum}
+              type="button"
+              className={`rf-item ${selectedRound === r.roundNum ? 'on' : ''}`}
+              onClick={() => onSelectRound(r.roundNum)}
+              title={`R${r.roundNum} · ${isWinnerT ? 'T 胜' : isWinnerCT ? 'CT 胜' : ''}`}
+            >
+              <span className="rf-num">{r.roundNum}</span>
+              {(isWinnerT || isWinnerCT) && (
+                <span className={`rf-dot ${isWinnerT ? 't' : 'ct'}`} />
+              )}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 /** 回合结束栏：每回合显示结束方式图标（爆炸/拆除/全死/超时），无信息回合显示占位 */
