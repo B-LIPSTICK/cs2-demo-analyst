@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Avatar,
   Btn,
   Empty,
   IcBack,
   IcChat,
+  IcChevronLeft,
+  IcChevronRight,
   IcFolder,
   IcJump,
   IcTranscript,
@@ -201,7 +203,52 @@ export function DemoDetailPage({
 
       <div className="grid-3" style={{ marginTop: 16 }}>
         {/* 击杀流 */}
-        <Panel hd={`${t('detail.killfeed')} · ${selectedRound === 'all' ? t('common.all') : `R${selectedRound}`}`}>
+        <Panel
+          hd={
+            <div className="flex" style={{ alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <span>{`${t('detail.killfeed')} · ${selectedRound === 'all' ? t('common.all') : `R${selectedRound}`}`}</span>
+              {rounds.length > 0 && (
+                <div className="header-steppers">
+                  <button
+                    type="button"
+                    className="step-btn"
+                    disabled={selectedRound === 'all'}
+                    onClick={() => {
+                      if (selectedRound !== 'all') {
+                        const idx = rounds.findIndex((r) => r.roundNum === selectedRound)
+                        if (idx > 0) setSelectedRound(rounds[idx - 1].roundNum)
+                        else setSelectedRound('all')
+                      }
+                    }}
+                    title="切换到上一回合"
+                  >
+                    <IcChevronLeft size={11} />
+                    <span>上一局</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="step-btn"
+                    disabled={selectedRound === rounds[rounds.length - 1]?.roundNum}
+                    onClick={() => {
+                      if (selectedRound === 'all') {
+                        if (rounds.length > 0) setSelectedRound(rounds[0].roundNum)
+                      } else {
+                        const idx = rounds.findIndex((r) => r.roundNum === selectedRound)
+                        if (idx >= 0 && idx < rounds.length - 1) {
+                          setSelectedRound(rounds[idx + 1].roundNum)
+                        }
+                      }
+                    }}
+                    title="切换到下一回合"
+                  >
+                    <span>下一局</span>
+                    <IcChevronRight size={11} />
+                  </button>
+                </div>
+              )}
+            </div>
+          }
+        >
           <div style={{ padding: '10px 0' }}>
             <RoundFilterBar
               rounds={rounds}
@@ -476,7 +523,7 @@ function RoundIcon({ type }: { type: RoundEndType }) {
   }
 }
 
-/** 击杀流对局快速筛选条（支持滚轮横向平滑滑动与居中高亮，彻底杜绝穿模） */
+/** 击杀流对局快速筛选条（支持左右导航步进按钮、普通/水平滚轮滑动与居中高亮） */
 function RoundFilterBar({
   rounds,
   selectedRound,
@@ -489,12 +536,42 @@ function RoundFilterBar({
   allLabel: string
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(false)
 
-  // 鼠标滚轮在筛选栏上方平滑横向滚动
+  const checkScroll = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    setCanScrollLeft(el.scrollLeft > 2)
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2)
+  }, [])
+
+  useEffect(() => {
+    checkScroll()
+    const el = scrollRef.current
+    if (!el) return
+    const ro = new ResizeObserver(checkScroll)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [checkScroll, rounds])
+
+  // 鼠标滚轮在筛选栏上方平滑横向滚动（支持普通鼠标 deltaY 与左右滚轮 deltaX）
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    if (e.deltaY !== 0 && scrollRef.current) {
-      e.currentTarget.scrollLeft += e.deltaY
+    if (scrollRef.current) {
+      if (e.deltaY !== 0) {
+        scrollRef.current.scrollLeft += e.deltaY
+      } else if (e.deltaX !== 0) {
+        scrollRef.current.scrollLeft += e.deltaX
+      }
+      checkScroll()
     }
+  }
+
+  const scrollStep = (dir: 'left' | 'right') => {
+    if (!scrollRef.current) return
+    const step = dir === 'left' ? -150 : 150
+    scrollRef.current.scrollBy({ left: step, behavior: 'smooth' })
+    setTimeout(checkScroll, 200)
   }
 
   // 选中特定回合时自动平滑滚动至视口中央
@@ -505,11 +582,27 @@ function RoundFilterBar({
         activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
       }
     }
-  }, [selectedRound])
+    checkScroll()
+  }, [selectedRound, checkScroll])
 
   return (
     <div className="round-filter-wrap">
-      <div className="round-filter-scroll" ref={scrollRef} onWheel={handleWheel}>
+      <button
+        type="button"
+        className="rf-nav-btn prev"
+        disabled={!canScrollLeft}
+        onClick={() => scrollStep('left')}
+        title="向左滚动对局"
+      >
+        <IcChevronLeft size={12} />
+      </button>
+
+      <div
+        className="round-filter-scroll"
+        ref={scrollRef}
+        onScroll={checkScroll}
+        onWheel={handleWheel}
+      >
         <button
           type="button"
           className={`rf-item all-btn ${selectedRound === 'all' ? 'on' : ''}`}
@@ -536,6 +629,16 @@ function RoundFilterBar({
           )
         })}
       </div>
+
+      <button
+        type="button"
+        className="rf-nav-btn next"
+        disabled={!canScrollRight}
+        onClick={() => scrollStep('right')}
+        title="向右滚动对局"
+      >
+        <IcChevronRight size={12} />
+      </button>
     </div>
   )
 }

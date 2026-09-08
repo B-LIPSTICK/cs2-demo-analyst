@@ -1692,19 +1692,52 @@ body {
 
 /* ─── 击杀记录 ────────────────────────────────────────────────────────────── */
 
-/* 击杀流对局快速筛选条（防穿模横向滚动） */
+/* 击杀流对局快速筛选条（防穿模横向滚动 + 左右步进导航按钮） */
 .round-filter-wrap {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   margin: 0 12px 10px;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 8px;
-  padding: 3px;
+  padding: 3px 4px;
   box-sizing: border-box;
-  overflow: hidden;
+}
+
+.rf-nav-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 27px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text-1);
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.rf-nav-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.rf-nav-btn:disabled {
+  opacity: 0.22;
+  cursor: not-allowed;
+  border-color: transparent;
+  background: transparent;
 }
 
 .round-filter-scroll {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 3px;
@@ -1716,6 +1749,38 @@ body {
 
 .round-filter-scroll::-webkit-scrollbar {
   display: none;
+}
+
+.header-steppers {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.step-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-1);
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.step-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.step-btn:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
 }
 
 .rf-item {
@@ -1796,6 +1861,28 @@ body {
   color: #ffffff;
   background: #0a84ff;
   border-color: transparent;
+}
+
+[data-theme='light'] .rf-nav-btn {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.06);
+  color: #475569;
+}
+
+[data-theme='light'] .rf-nav-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.08);
+  color: #0f172a;
+}
+
+[data-theme='light'] .step-btn {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+[data-theme='light'] .step-btn:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #0f172a;
 }
 
 .kill-list {

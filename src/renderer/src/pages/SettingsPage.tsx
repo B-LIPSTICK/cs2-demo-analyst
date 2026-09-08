@@ -76,6 +76,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
   const [draft, setDraft] = useState<Settings>(settings)
   const [engStatus, setEngStatus] = useState<Record<string, boolean>>({})
   const [engProgress, setEngProgress] = useState<{ what: string; received: number; total: number } | null>(null)
+  const [downloadingKind, setDownloadingKind] = useState<string | null>(null)
   const [aiModels, setAiModels] = useState<string[] | null>(null)
   const [aiModelsLoading, setAiModelsLoading] = useState(false)
 
@@ -90,9 +91,12 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
   const refreshEngines = () => {
     window.api.engines.status().then(setEngStatus).catch(() => {})
     setEngProgress(null)
+    setDownloadingKind(null)
   }
 
   const ensureEngine = async (kind: string) => {
+    if (downloadingKind) return
+    setDownloadingKind(kind)
     try {
       await window.api.engines.ensure(kind as never)
       refreshEngines()
@@ -100,6 +104,8 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
     } catch (err) {
       toast.push(err instanceof Error ? err.message : String(err), 'err')
       refreshEngines()
+    } finally {
+      setDownloadingKind(null)
     }
   }
 
@@ -745,22 +751,39 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
         </div>
         {ENGINE_ROWS.map((row) => {
           const installed = engStatus[row.kind]
-          const prog = engProgress && engProgress.what === row.kind ? Math.round((engProgress.received / Math.max(1, engProgress.total)) * 100) : null
+          const isThisDownloading =
+            engProgress &&
+            (engProgress.what === row.kind ||
+              (row.kind === 'whisper' && (engProgress.what === 'whisper-cli' || engProgress.what === 'whisper')) ||
+              (row.kind.startsWith('model-') && engProgress.what.includes(row.kind.replace('model-', ''))))
+          const prog =
+            isThisDownloading && engProgress
+              ? Math.min(100, Math.round((engProgress.received / Math.max(1, engProgress.total)) * 100))
+              : null
+          const receivedMB = isThisDownloading && engProgress ? (engProgress.received / 1024 / 1024).toFixed(1) : '0'
+          const totalMB = isThisDownloading && engProgress && engProgress.total > 0 ? (engProgress.total / 1024 / 1024).toFixed(1) : '?'
+
           return (
             <div key={row.kind} className="set-row">
-              <div className="info">
+              <div className="info" style={{ flex: 1, minWidth: 0 }}>
                 <div className="t">{t.t(row.label as never)}</div>
                 {prog !== null && (
-                  <div style={{ marginTop: 6, height: 3, background: 'var(--bg-3)', position: 'relative', maxWidth: 360 }}>
-                    <div
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        width: `${prog}%`,
-                        background: 'linear-gradient(90deg, var(--green), var(--ct))',
-                        transition: 'width .2s var(--ease-out)'
-                      }}
-                    />
+                  <div style={{ marginTop: 6, maxWidth: 360 }}>
+                    <div className="flex" style={{ justifyContent: 'space-between', fontSize: 11, color: 'var(--text-2)', marginBottom: 3 }}>
+                      <span>{t.tf('settings.engDownloading', { pct: prog })}</span>
+                      <span className="mono">{receivedMB} MB / {totalMB} MB</span>
+                    </div>
+                    <div style={{ height: 4, background: 'var(--bg-3)', position: 'relative', borderRadius: 2, overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          width: `${prog}%`,
+                          background: 'linear-gradient(90deg, var(--green), var(--ct))',
+                          transition: 'width .2s var(--ease-out)'
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -768,17 +791,17 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                 <Tag tone="voice" dot>
                   {t.t('settings.engInstalled')}
                 </Tag>
-              ) : prog !== null ? (
+              ) : prog !== null || downloadingKind === row.kind ? (
                 <span className="mono muted" style={{ fontSize: 11 }}>
-                  {t.tf('settings.engDownloading', { pct: prog })}
+                  {prog !== null ? `${prog}%` : '准备中…'}
                 </span>
               ) : (
-                <>
+                <div className="flex" style={{ gap: 8, alignItems: 'center' }}>
                   <Tag tone="ghost">{t.t('settings.engMissing')}</Tag>
-                  <Btn variant="accent" size="sm" onClick={() => ensureEngine(row.kind)}>
+                  <Btn variant="accent" size="sm" disabled={!!downloadingKind} onClick={() => ensureEngine(row.kind)}>
                     {t.t('settings.engDownload')}
                   </Btn>
-                </>
+                </div>
               )}
             </div>
           )

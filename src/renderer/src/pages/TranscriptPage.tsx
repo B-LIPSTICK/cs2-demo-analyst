@@ -282,15 +282,23 @@ export function TranscriptPage({
         <>
           {/* 进度条 + 阶段说明 */}
           {progress && (
-            <div style={{ marginBottom: 12 }}>
-              <div className="flex" style={{ alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-1)' }}>
-                  {progress.stage === 'voice-extract'
-                    ? t('transcript.stage.extract')
-                    : (progress.message || t('transcript.stage.asr'))}
+            <div style={{ marginBottom: 14, padding: '10px 14px', background: 'var(--bg-2)', border: '1px solid var(--line-1)', borderRadius: 8 }}>
+              <div className="flex" style={{ alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-1)' }}>
+                  {progress.message
+                    ? progress.message
+                    : progress.stage === 'voice-extract'
+                      ? t('transcript.stage.extract')
+                      : progress.stage === 'voice-split'
+                        ? '正在切分玩家语音…'
+                        : t('transcript.stage.asr')}
                 </span>
                 <span className="mono muted" style={{ fontSize: 11 }}>
-                  {progress.stage === 'voice-extract' ? '…' : `${progress.done}/${progress.total}`}
+                  {progress.total > 0
+                    ? progress.stage === 'download-engine'
+                      ? `${Math.round((progress.done / progress.total) * 100)}%`
+                      : `${progress.done}/${progress.total}`
+                    : '…'}
                 </span>
               </div>
               <div className="grow" style={{ height: 4, background: 'var(--bg-3)', position: 'relative', overflow: 'hidden', borderRadius: 2 }}>
@@ -298,9 +306,9 @@ export function TranscriptPage({
                   style={{
                     position: 'absolute',
                     inset: 0,
-                    width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%`,
+                    width: `${progress.total ? Math.min(100, Math.max(0, (progress.done / progress.total) * 100)) : 0}%`,
                     background: 'linear-gradient(90deg, var(--accent), var(--ct))',
-                    transition: 'width .3s var(--ease-out)'
+                    transition: 'width .2s var(--ease-out)'
                   }}
                 />
               </div>

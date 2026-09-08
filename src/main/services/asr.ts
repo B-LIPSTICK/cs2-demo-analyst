@@ -440,7 +440,14 @@ export async function extractVoice(
     await fs.mkdir(outDir, { recursive: true })
 
     await ensureCsgove((p) => {
-      events.progress('voice-extract', Math.round((p.received / Math.max(1, p.total)) * 100), 100)
+      const mbReceived = (p.received / 1024 / 1024).toFixed(1)
+      const mbTotal = p.total > 0 ? (p.total / 1024 / 1024).toFixed(1) : '?'
+      events.progress(
+        'download-engine',
+        p.received,
+        p.total,
+        `正在下载语音提取工具 (csgove): ${mbReceived}MB / ${mbTotal}MB`
+      )
     })
 
     events.progress('voice-extract', 0, 1)
@@ -488,10 +495,29 @@ export async function transcribeLocal(
   wavPath: string,
   model: 'base' | 'small' | 'medium',
   language: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onProgress?: (stage: string, done: number, total: number, message?: string) => void
 ): Promise<WhisperSeg[]> {
-  await ensureWhisperCli(() => {})
-  await ensureWhisperModel(model, () => {})
+  await ensureWhisperCli((p) => {
+    const mbReceived = (p.received / 1024 / 1024).toFixed(1)
+    const mbTotal = p.total > 0 ? (p.total / 1024 / 1024).toFixed(1) : '?'
+    onProgress?.(
+      'download-engine',
+      p.received,
+      p.total,
+      `正在下载 Whisper 引擎: ${mbReceived}MB / ${mbTotal}MB`
+    )
+  })
+  await ensureWhisperModel(model, (p) => {
+    const mbReceived = (p.received / 1024 / 1024).toFixed(1)
+    const mbTotal = p.total > 0 ? (p.total / 1024 / 1024).toFixed(1) : '?'
+    onProgress?.(
+      'download-engine',
+      p.received,
+      p.total,
+      `正在下载 Whisper ${model} 模型: ${mbReceived}MB / ${mbTotal}MB`
+    )
+  })
   const outPrefix = wavPath.replace(/\.wav$/i, '')
   const threads = Math.max(2, cpus().length - 2)
   const res = await run(
@@ -632,6 +658,30 @@ export async function transcribeDemo(
     throw new Error('该 Demo 未提取到任何语音（MM 天梯 demo 不含语音）')
   }
 
+  // 本地引擎模式下，先确保引擎与模型就绪（若未下载，在此广播带进度条的下载状态）
+  if (options.engine === 'local') {
+    await ensureWhisperCli((p) => {
+      const mbReceived = (p.received / 1024 / 1024).toFixed(1)
+      const mbTotal = p.total > 0 ? (p.total / 1024 / 1024).toFixed(1) : '?'
+      events.progress(
+        'download-engine',
+        p.received,
+        p.total,
+        `正在下载 Whisper 引擎: ${mbReceived}MB / ${mbTotal}MB`
+      )
+    })
+    await ensureWhisperModel(options.localModel, (p) => {
+      const mbReceived = (p.received / 1024 / 1024).toFixed(1)
+      const mbTotal = p.total > 0 ? (p.total / 1024 / 1024).toFixed(1) : '?'
+      events.progress(
+        'download-engine',
+        p.received,
+        p.total,
+        `正在下载 Whisper ${options.localModel} 模型: ${mbReceived}MB / ${mbTotal}MB`
+      )
+    })
+  }
+
   const roundOf = (tick: number): number | undefined => {
     for (const r of detail.rounds) {
       if (tick >= r.startTick && tick < r.endTick) return r.roundNum
@@ -694,7 +744,13 @@ export async function transcribeDemo(
         }, signal)
         effective = compact ? mapCompactSegments(raw, chunks, compact.offsets) : raw
       } else {
-        const raw = await transcribeLocal(targetWav, options.localModel, options.language ?? 'auto', signal)
+        const raw = await transcribeLocal(
+          targetWav,
+          options.localModel,
+          options.language ?? 'auto',
+          signal,
+          (stage, done, total, message) => events.progress(stage, done, total, message)
+        )
         effective = compact ? mapCompactSegments(raw, chunks, compact.offsets) : raw
       }
       if (compact) {

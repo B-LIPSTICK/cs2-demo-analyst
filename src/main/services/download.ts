@@ -15,18 +15,24 @@ export interface DownloadProgress {
 function get(url: string): Promise<http.IncomingMessage> {
   const mod = url.startsWith('https:') ? https : http
   return new Promise((resolve, reject) => {
-    const req = mod.get(url, { headers: { 'User-Agent': 'CS2DemoAnalyst/0.1' } }, (res) => {
+    const req = mod.get(url, { headers: { 'User-Agent': 'CS2DemoAnalyst/1.0' } }, (res) => {
+      // 成功收到响应头后，清除连接超时，避免大文件传输被强制杀死
+      req.setTimeout(0)
+      // 设置传输空闲超时（30 秒无任何新数据到达才断开）
+      res.socket?.setTimeout(30000, () => {
+        res.destroy(new Error(`网络传输空闲超时: ${url}`))
+      })
       resolve(res)
     })
     req.on('error', reject)
-    req.setTimeout(20000, () => {
-      req.destroy(new Error(`timeout: ${url}`))
+    req.setTimeout(30000, () => {
+      req.destroy(new Error(`连接超时: ${url}`))
     })
   })
 }
 
 /**
- * 下载单个文件。返回最终 URL（跟随重定向）。
+ * 下载单个文件（原子写入 .tmp，成功后重命名为 dest，杜绝残留半拉文件导致模型损坏）。
  */
 export async function downloadFile(
   url: string,
@@ -34,6 +40,8 @@ export async function downloadFile(
   onProgress?: (p: DownloadProgress) => void
 ): Promise<void> {
   await fs.mkdir(dirname(dest), { recursive: true })
+  const tmpDest = `${dest}.tmp`
+  await fs.unlink(tmpDest).catch(() => {})
 
   let current = url
   for (let hop = 0; hop < 6; hop++) {
@@ -49,25 +57,41 @@ export async function downloadFile(
     }
     const total = Number(res.headers['content-length']) || 0
     let received = 0
-    const out = createWriteStream(dest)
-    await new Promise<void>((resolve, reject) => {
-      res.on('data', (chunk: Buffer) => {
-        received += chunk.length
-        if (received % (512 * 1024) < 64 * 1024) {
+    const out = createWriteStream(tmpDest)
+    let lastProgressTime = 0
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        res.on('data', (chunk: Buffer) => {
+          received += chunk.length
+          const now = Date.now()
+          if (now - lastProgressTime >= 100 || (total > 0 && received >= total)) {
+            lastProgressTime = now
+            onProgress?.({ received, total, url: current })
+          }
+        })
+        res.pipe(out)
+        out.on('finish', () => {
           onProgress?.({ received, total, url: current })
-        }
+          resolve()
+        })
+        out.on('error', reject)
+        res.on('error', reject)
       })
-      res.pipe(out)
-      out.on('finish', () => {
-        onProgress?.({ received, total, url: current })
-        resolve()
+
+      // 下载成功完成，原子覆盖为最终目标
+      await fs.rename(tmpDest, dest).catch(async () => {
+        await fs.unlink(dest).catch(() => {})
+        await fs.rename(tmpDest, dest)
       })
-      out.on('error', reject)
-      res.on('error', reject)
-    })
-    return
+      return
+    } catch (err) {
+      out.destroy()
+      await fs.unlink(tmpDest).catch(() => {})
+      throw err
+    }
   }
-  throw new Error(`too many redirects: ${url}`)
+  throw new Error(`重定向次数过多: ${url}`)
 }
 
 /**

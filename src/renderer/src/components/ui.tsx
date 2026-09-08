@@ -117,6 +117,18 @@ export const IcChevron = (p: IcProps) => (
   </Base>
 )
 
+export const IcChevronLeft = (p: IcProps) => (
+  <Base {...p}>
+    <path d="M15 19l-7-7 7-7" strokeWidth={2.4} />
+  </Base>
+)
+
+export const IcChevronRight = (p: IcProps) => (
+  <Base {...p}>
+    <path d="M9 5l7 7-7 7" strokeWidth={2.4} />
+  </Base>
+)
+
 export const IcMic = (p: IcProps) => (
   <Base {...p}>
     <rect x="9" y="3" width="6" height="11" rx="1" />
@@ -177,7 +189,7 @@ export function Panel({
   raised,
   style
 }: {
-  hd?: string
+  hd?: ReactNode
   dot?: boolean
   children?: ReactNode
   className?: string

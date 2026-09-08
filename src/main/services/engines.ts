@@ -62,10 +62,13 @@ function ghUrls(path: string): string[] {
   return [`${GH}/${path}`, ...MIRRORS.map((m) => `${m}/${path}`)]
 }
 
-async function exists(path: string): Promise<boolean> {
+async function isValidFile(path: string, minBytes = 1024): Promise<boolean> {
   try {
-    await fs.access(path)
-    return true
+    const st = await fs.stat(path)
+    if (st.size >= minBytes) return true
+    // 文件虽然存在但小于预期阈值（半拉下载损坏/0字节），清理并返回 false 触发重下
+    await fs.unlink(path).catch(() => {})
+    return false
   } catch {
     return false
   }
@@ -92,7 +95,7 @@ function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
 /** 确保 csgove 就绪（下载 + 解压，幂等） */
 export function ensureCsgove(onProgress?: (p: EngineEnsureProgress) => void): Promise<void> {
   return withLock('csgove', async () => {
-    if (await exists(csgoveExe())) return
+    if (await isValidFile(csgoveExe(), 100 * 1024)) return
     const zipPath = join(csgoveDir(), 'csgove.zip')
     await downloadWithMirrors(
       ghUrls(`akiver/csgo-voice-extractor/releases/download/${CSGOVE_VERSION}/win32-x64.zip`),
@@ -119,12 +122,12 @@ export function ensureCsgove(onProgress?: (p: EngineEnsureProgress) => void): Pr
 /** 确保 whisper-cli 就绪（下载 + 解压，幂等） */
 export function ensureWhisperCli(onProgress?: (p: EngineEnsureProgress) => void): Promise<void> {
   return withLock('whisper-cli', async () => {
-    if (await exists(whisperExe())) return
+    if (await isValidFile(whisperExe(), 100 * 1024)) return
     const zipPath = join(whisperDir(), 'whisper.zip')
     await downloadWithMirrors(
       ghUrls(`ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}/whisper-bin-x64.zip`),
       zipPath,
-      (p) => onProgress?.({ what: 'whisper-cli', received: p.received, total: p.total })
+      (p) => onProgress?.({ what: 'whisper', received: p.received, total: p.total })
     )
     const zip = new AdmZip(zipPath)
     zip.extractAllTo(whisperDir(), true)
@@ -155,7 +158,7 @@ export function ensureWhisperModel(
 ): Promise<void> {
   return withLock(`model-${model}`, async () => {
     const dest = whisperModelPath(model)
-    if (await exists(dest)) return
+    if (await isValidFile(dest, MODEL_SIZES[model] * 0.85)) return
     const file = MODEL_FILES[model]
     await downloadWithMirrors(
       [
@@ -163,7 +166,7 @@ export function ensureWhisperModel(
         `https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/${file}`
       ],
       dest,
-      (p) => onProgress?.({ what: `model-${file}`, received: p.received, total: p.total })
+      (p) => onProgress?.({ what: `model-${model}`, received: p.received, total: p.total })
     )
   })
 }
@@ -173,11 +176,11 @@ export async function engineStatus(): Promise<
   Record<'csgove' | 'whisper' | string, boolean>
 > {
   const status: Record<string, boolean> = {
-    csgove: await exists(csgoveExe()),
-    whisper: await exists(whisperExe())
+    csgove: await isValidFile(csgoveExe(), 100 * 1024),
+    whisper: await isValidFile(whisperExe(), 100 * 1024)
   }
   for (const m of Object.keys(MODEL_FILES) as LocalWhisperModel[]) {
-    status[`model-${m}`] = await exists(whisperModelPath(m))
+    status[`model-${m}`] = await isValidFile(whisperModelPath(m), MODEL_SIZES[m] * 0.85)
   }
   return status
 }
