@@ -467,7 +467,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           <div className="set-row">
             <div className="info">
               <div className="t">{t.t('settings.localModel')}</div>
-              <div className="d">whisper.cpp 路 ggml-{draft.asr.localModel}.bin</div>
+              <div className="d">whisper.cpp · ggml-{draft.asr.localModel}.bin</div>
             </div>
             <div className="seg">
               {(['base', 'small', 'medium'] as const).map((m) => (

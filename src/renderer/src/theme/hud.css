@@ -3391,6 +3391,81 @@ body {
   line-height: 1.6;
 }
 
+/* AI 提示词卡片网格（2x2 对称高质感排版） */
+.ai-prompt-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.ai-prompt-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding: 13px 16px;
+  background: var(--field-bg);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: all 0.16s var(--ease-out);
+  position: relative;
+  overflow: hidden;
+}
+
+.ai-prompt-card:hover {
+  background: var(--hover-bg);
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.ai-prompt-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 5px;
+}
+
+.ai-prompt-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-0);
+  letter-spacing: 0.01em;
+}
+
+.ai-prompt-card-arrow {
+  font-size: 13px;
+  color: var(--text-2);
+  transition: transform 0.14s ease, color 0.14s ease;
+}
+
+.ai-prompt-card:hover .ai-prompt-card-arrow {
+  color: var(--accent-strong);
+  transform: translateX(3px);
+}
+
+.ai-prompt-card-desc {
+  font-size: 11.5px;
+  color: var(--text-1);
+  line-height: 1.45;
+  margin-bottom: 6px;
+}
+
+.ai-prompt-card-q {
+  font-size: 11px;
+  color: var(--text-2);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
 .ai-quick {
   display: flex;
   flex-wrap: wrap;

@@ -11,7 +11,12 @@ interface Msg {
   error?: boolean
 }
 
-const QUICK_KEYS = ['ai.q1', 'ai.q2', 'ai.q3', 'ai.q4'] as const
+const PROMPT_CARDS = [
+  { titleKey: 'ai.card1Title', descKey: 'ai.card1Desc', qKey: 'ai.q1' },
+  { titleKey: 'ai.card2Title', descKey: 'ai.card2Desc', qKey: 'ai.q2' },
+  { titleKey: 'ai.card3Title', descKey: 'ai.card3Desc', qKey: 'ai.q3' },
+  { titleKey: 'ai.card4Title', descKey: 'ai.card4Desc', qKey: 'ai.q4' }
+] as const
 
 /** 行内渲染：**加粗**、[mm:ss] 与 R# 转可点击跳转 chip */
 function renderInline(
@@ -104,11 +109,19 @@ function renderBlock(
   )
 }
 
-function newSession(demoId: string): AiChatSession {
+export function fmtSessionTime(ts: number = Date.now()): string {
+  const d = new Date(ts)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function newSession(demoId: string, mapName?: string): AiChatSession {
   const now = Date.now()
+  const time = fmtSessionTime(now)
+  const prefix = mapName ? `${mapName} · ` : ''
   return {
     id: `chat-${now}-${Math.floor(Math.random() * 1e6)}`,
-    title: '新对话',
+    title: `${prefix}对话 ${time}`,
     demoId,
     createdAt: now,
     updatedAt: now,
@@ -249,7 +262,12 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
   const ask = async (q: string) => {
     const question = q.trim()
     if (!question || asking || !selectedId || !current) return
-    const title = current.title === '新对话' ? question.slice(0, 18) : current.title
+    const isAutoTitle =
+      current.title === '新对话' ||
+      current.title.startsWith('对话 ') ||
+      current.title.includes(' · 对话') ||
+      current.title.includes(' · 20')
+    const title = isAutoTitle ? (question.length > 18 ? question.slice(0, 18) + '…' : question) : current.title
     const next: AiChatSession = {
       ...current,
       title,
@@ -277,7 +295,8 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
 
   const newChat = () => {
     if (asking) return
-    const s = newSession(selectedId)
+    const curDemo = demos.find((d) => d.id === selectedId)
+    const s = newSession(selectedId, curDemo?.mapName)
     setSessions((ss) => [s, ...ss])
     setCurrentId(s.id)
   }
@@ -289,7 +308,8 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
     setSessions((ss) => {
       const rest = ss.filter((s) => s.id !== current.id)
       if (rest.length === 0) {
-        const s = newSession(selectedId)
+        const curDemo = demos.find((d) => d.id === selectedId)
+        const s = newSession(selectedId, curDemo?.mapName)
         setCurrentId(s.id)
         return [s]
       }
@@ -298,7 +318,6 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
     })
   }
 
-  const quickQs = QUICK_KEYS.map((k) => t(k))
   const sampleDemo = useMemo(() => demos.find((d) => d.id === selectedId), [demos, selectedId])
 
   return (
@@ -313,10 +332,18 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
           {/* 会话组 */}
           <div className="ai-group">
             <CustomSelect
-              width={180}
+              width={210}
               value={currentId}
-              placeholder="新对话"
-              options={sessions.map((s) => ({ value: s.id, label: s.title }))}
+              placeholder={t('ai.title')}
+              options={sessions.map((s) => {
+                const targetDemo = demos.find((d) => d.id === s.demoId)
+                const timeStr = fmtSessionTime(s.updatedAt || s.createdAt)
+                return {
+                  value: s.id,
+                  label: s.title,
+                  sublabel: targetDemo?.mapName ? `${targetDemo.mapName} · ${timeStr}` : timeStr
+                }
+              })}
               onChange={(v) => setCurrentId(v)}
             />
             <Btn variant="ghost" size="sm" onClick={newChat} title={t('ai.newChat')}>
@@ -358,12 +385,20 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
       <Panel className="ai-panel grow" raised>
         {messages.length === 0 ? (
           <div className="ai-empty">
-            <div className="ai-quick">
-              {quickQs.map((q, i) => (
-                <button key={i} className="ai-quick-chip" onClick={() => ask(q)}>
-                  {q}
-                </button>
-              ))}
+            <div className="ai-prompt-grid">
+              {PROMPT_CARDS.map((card, i) => {
+                const question = t(card.qKey as never)
+                return (
+                  <div key={i} className="ai-prompt-card" onClick={() => ask(question)}>
+                    <div className="ai-prompt-card-head">
+                      <span className="ai-prompt-card-title">{t(card.titleKey as never)}</span>
+                      <span className="ai-prompt-card-arrow">→</span>
+                    </div>
+                    <div className="ai-prompt-card-desc">{t(card.descKey as never)}</div>
+                    <div className="ai-prompt-card-q">{question}</div>
+                  </div>
+                )
+              })}
             </div>
             {!hasKey && (
               <div className="ai-key-hint" onClick={onGoSettings}>
