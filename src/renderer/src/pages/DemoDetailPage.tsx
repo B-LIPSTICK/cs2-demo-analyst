@@ -109,10 +109,11 @@ export function DemoDetailPage({
   }
 
   const { meta, rounds, chat, voice } = detail
+  const allKills = useMemo(() => rounds.flatMap((r) => r.kills), [rounds])
   const round = selectedRound === 'all' ? null : rounds.find((r) => r.roundNum === selectedRound)
-  const kills: KillEvent[] = round ? round.kills : rounds.flatMap((r) => r.kills)
-  // 按时间正序：比赛开始 → 结束
-  const sortedKills = [...kills].sort((a, b) => a.tick - b.tick)
+  const feedKills = round ? round.kills : allKills
+  // 击杀流按时间正序：比赛开始 → 结束
+  const sortedKills = useMemo(() => [...feedKills].sort((a, b) => a.tick - b.tick), [feedKills])
   // 已转写：用转写段累计时长；未转写：回退用解析时检测到的语音时长（meta.voiceSec）
   const voiceSecs =
     voice.length > 0 ? voice.reduce((s, v) => s + (v.endSec - v.timeSec), 0) : (meta.voiceSec ?? 0)
@@ -376,7 +377,7 @@ export function DemoDetailPage({
       {player && (
         <PlayerModal
           player={player}
-          kills={kills}
+          kills={allKills}
           tickRate={meta.tickRate ?? 64}
           onJump={jump}
           onClose={() => setPlayer(null)}
@@ -749,8 +750,7 @@ function PlayerModal({
         </div>
         <div className="pm-kills">
           {[...myKills]
-            .sort((a, b) => b.tick - a.tick)
-            .slice(0, 80)
+            .sort((a, b) => a.tick - b.tick)
             .map((k, i) => (
               <div
                 key={`${k.tick}-${i}`}
