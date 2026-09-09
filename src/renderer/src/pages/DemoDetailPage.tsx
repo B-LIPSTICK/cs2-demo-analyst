@@ -254,9 +254,9 @@ export function DemoDetailPage({
             </div>
           </div>
 
-          {/* 回合结束栏（爆炸 / 拆除 / 全死 / 超时） */}
+          {/* 回合胜负走势图（CS:GO / CS2 官方比赛计分板风格） */}
           <div style={{ marginTop: 16 }}>
-            <RoundBar
+            <MatchTimelineBar
               rounds={rounds}
               selectedRound={selectedRound === 'all' ? undefined : selectedRound}
               onSelectRound={(r) => setSelectedRound((cur) => (cur === r ? 'all' : r))}
@@ -562,31 +562,61 @@ function KillIcons({ kill }: { kill: KillEvent }) {
   )
 }
 
-/** 回合结束方式图标（SVG 原色，不着阵营色） */
-function RoundIcon({ type }: { type: RoundEndType }) {
-  const style = { width: 13, height: 13, display: 'block' } as const
+/** 5 种官方 CS:GO / CS2 胜负方式精细矢量 SVG 图标 */
+function SkullIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+      <path d="M8 1a6 6 0 0 0-6 6c0 1.8.8 3.4 2.1 4.5V13c0 .6.4 1 1 1h5.8c.6 0 1-.4 1-1v-1.5C13.2 10.4 14 8.8 14 7a6 6 0 0 0-6-6zm-2.5 6a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM6 11.5v1.5h1v-1.5H6zm2 0v1.5h1v-1.5H8zm2 0v1.5h1v-1.5h-1z" />
+    </svg>
+  )
+}
+
+function BombExplodedIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+      <path d="M8 1l1.5 3 3.5-.8-1.5 3.3 3 2-3 2 1.5 3.3-3.5-.8L8 15l-1.5-3-3.5.8 1.5-3.3-3-2 3-2-1.5-3.3 3.5.8L8 1z" />
+    </svg>
+  )
+}
+
+function DefuseKitIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 2L7.5 5.5M10 2L8.5 5.5" />
+      <circle cx="8" cy="6" r="1.2" fill="currentColor" />
+      <path d="M7 7C5 9 4 11 4 14M9 7C11 9 12 11 12 14" />
+    </svg>
+  )
+}
+
+function TimeoutIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="9" r="5.5" />
+      <path d="M8 2v2M6 2h4M8 6.5V9l1.8 1.8M12.5 4.5l1 1" />
+    </svg>
+  )
+}
+
+function TrophyIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+      <path d="M3 2h10v3c0 2.5-1.8 4.6-4.2 4.9.4.6.9 1.4 1.2 2.1H11a1 1 0 0 1 1 1v1H4v-1a1 1 0 0 1 1-1h1c.3-.7.8-1.5 1.2-2.1C4.8 9.6 3 7.5 3 5V2zm-1 1h1v2c0 1.5 1 2.8 2.3 3.3C4.5 7.6 4 6.6 4 5.5V3zm12 0h-1v2.5c0 1.1-.5 2.1-1.3 2.8 1.3-.5 2.3-1.8 2.3-3.3V3z" />
+    </svg>
+  )
+}
+
+function RoundVictoryIcon({ type, isTrophy }: { type: RoundEndType; isTrophy?: boolean }) {
+  if (isTrophy) return <TrophyIcon />
   switch (type) {
     case 'bomb_exploded':
-      return (
-        <svg viewBox="0 0 24 24" fill="currentColor" style={style}>
-          <path d="M12 2l2 3 3-.5-.7 3.2 3.2 2.8-3.7 1.3 1 3.7-3.8-1.4-2.3 3.4-.7-3.6L6 13l1.6-2.9L7 6.5l3 .3L12 2z" />
-        </svg>
-      )
+      return <BombExplodedIcon />
     case 'bomb_defused':
-      // 拆除：🔧
-      return <span style={{ fontSize: 13, lineHeight: 1 }}>🔧</span>
+      return <DefuseKitIcon />
     case 'elimination':
-      return (
-        <svg viewBox="0 0 24 24" fill="currentColor" style={style}>
-          <path d="M12 2a8 8 0 0 0-8 8c0 2.5 1.2 4.7 3 6v3a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-3c1.8-1.3 3-3.5 3-6a8 8 0 0 0-8-8zm-3.5 7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM9 16c.8.8 1.9 1.3 3 1.3s2.2-.5 3-1.3c-.9.6-1.9.9-3 .9s-2.1-.3-3-.9z" />
-        </svg>
-      )
+      return <SkullIcon />
     case 'timeout':
-      return (
-        <svg viewBox="0 0 24 24" fill="currentColor" style={style}>
-          <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 10.3V16h-2v-4.4l-2.9-1.7 1-1.7 3.9 2.1z" />
-        </svg>
-      )
+      return <TimeoutIcon />
     default:
       return null
   }
@@ -712,8 +742,34 @@ function RoundFilterBar({
   )
 }
 
-/** 回合结束栏：每回合显示结束方式图标（爆炸/拆除/全死/超时），无信息回合显示占位 */
-function RoundBar({
+function SurvivorBars({
+  count,
+  teamColor,
+  direction
+}: {
+  count: number
+  teamColor: 't' | 'ct'
+  direction: 'up' | 'down'
+}) {
+  const slots = direction === 'up' ? [5, 4, 3, 2, 1] : [1, 2, 3, 4, 5]
+  return (
+    <div className="survivor-bars">
+      {slots.map((slot) => {
+        const isAlive = slot <= count
+        return <div key={slot} className={`s-bar ${isAlive ? `alive ${teamColor}` : ''}`} />
+      })}
+    </div>
+  )
+}
+
+/**
+ * CS:GO / CS2 官方比赛回合走势图（Match Round Timeline Bar）
+ * - 双轨对决：上半区（Team 1：上半场T / 下半场CT） vs 下半区（Team 2：上半场CT / 下半场T）
+ * - 5格幸存者指示槽（Survivor Bars）
+ * - 5种官方矢量图标（全歼💀、引爆💥、拆弹✂、超时⏱、胜赛点🏆）
+ * - 中轴刻度线与半场换边分隔线
+ */
+function MatchTimelineBar({
   rounds,
   selectedRound,
   onSelectRound
@@ -722,35 +778,118 @@ function RoundBar({
   selectedRound?: number
   onSelectRound: (roundNum: number) => void
 }) {
+  if (!rounds || rounds.length === 0) return null
+
+  // CS2 统一 MR12（12回合换边），早前 CS:GO MR15（15回合换边）
+  const halfRound = rounds.length > 26 ? 15 : 12
+  const half1 = rounds.filter((r) => r.roundNum <= halfRound)
+  const half2 = rounds.filter((r) => r.roundNum > halfRound && r.roundNum <= halfRound * 2)
+  const overtime = rounds.filter((r) => r.roundNum > halfRound * 2)
+
+  const renderCol = (r: RoundInfo) => {
+    const isHalf2 = r.roundNum > halfRound
+    const topTeam = isHalf2 ? 'CT' : 'T'
+    const bottomTeam = isHalf2 ? 'T' : 'CT'
+
+    const isTopWinner = r.winner === topTeam
+    const isBottomWinner = r.winner === bottomTeam
+
+    const topColor = topTeam === 'T' ? 't' : 'ct'
+    const bottomColor = bottomTeam === 'T' ? 't' : 'ct'
+
+    // 计算获胜方存活人数
+    const winningDeaths = (r.kills ?? []).filter((k) => k.victimTeam === r.winner).length
+    const survivors = Math.max(0, Math.min(5, 5 - winningDeaths))
+    const isLastRound = r.roundNum === rounds.length && r.roundNum >= (halfRound === 15 ? 16 : 13)
+
+    const endTypeName = (() => {
+      switch (r.endType) {
+        case 'bomb_exploded': return '💥 炸弹爆炸'
+        case 'bomb_defused': return '✂ 成功拆包'
+        case 'elimination': return '💀 全歼对手'
+        case 'timeout': return '⏱ 时间耗尽'
+        default: return '回合胜利'
+      }
+    })()
+    const winTeamName = r.winner === 'T' ? '匪徒(T)' : r.winner === 'CT' ? '警察(CT)' : '未知'
+    const tooltip = `第 ${r.roundNum} 回合 · ${winTeamName} 胜 · ${endTypeName} · ${survivors} 人存活 (歼灭 ${r.kills?.length ?? 0} 人)`
+
+    const showAxisNum = r.roundNum === 1 || r.roundNum % 5 === 0
+
+    return (
+      <div
+        key={r.roundNum}
+        className={`round-col ${selectedRound === r.roundNum ? 'active' : ''}`}
+        onClick={() => onSelectRound(r.roundNum)}
+        title={tooltip}
+      >
+        <div className="track-row top">
+          {isTopWinner && (
+            <>
+              <SurvivorBars count={survivors} teamColor={topColor} direction="up" />
+              <div className={`win-icon ${topColor}`}>
+                <RoundVictoryIcon type={r.endType} isTrophy={isLastRound && isTopWinner} />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="axis-center">
+          <div className="axis-line" />
+          {showAxisNum ? (
+            <span className="axis-label">{r.roundNum}</span>
+          ) : (
+            <span className="axis-dot" />
+          )}
+        </div>
+
+        <div className="track-row bottom">
+          {isBottomWinner && (
+            <>
+              <div className={`win-icon ${bottomColor}`}>
+                <RoundVictoryIcon type={r.endType} isTrophy={isLastRound && isBottomWinner} />
+              </div>
+              <SurvivorBars count={survivors} teamColor={bottomColor} direction="down" />
+            </>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="round-grid">
-      {rounds.map((r) => {
-        const endLabel =
-          r.endType === 'bomb_exploded'
-            ? '爆炸'
-            : r.endType === 'bomb_defused'
-              ? '拆除'
-              : r.endType === 'elimination'
-                ? '全死'
-                : r.endType === 'timeout'
-                  ? '超时'
-                  : ''
-        return (
-          <div
-            key={r.roundNum}
-            className={`round-cell ${r.winner === 'T' ? 'win-t' : r.winner === 'CT' ? 'win-ct' : ''} ${
-              selectedRound === r.roundNum ? 'active' : ''
-            }`}
-            onClick={() => onSelectRound(r.roundNum)}
-            title={`R${r.roundNum} · ${r.winner === 'T' ? 'T' : r.winner === 'CT' ? 'CT' : '-'} 胜 · ${endLabel || '未知'}`}
-          >
-            <div className="rc-icon">
-              {r.endType !== 'unknown' ? <RoundIcon type={r.endType} /> : <span className="rc-empty">·</span>}
-            </div>
-            <div className={`rc-r ${r.winner === 'T' ? 't' : r.winner === 'CT' ? 'ct' : ''}`}>{r.roundNum}</div>
+    <div className="timeline-wrap">
+      <div className="match-timeline">
+        <div className="timeline-half">
+          {half1.map(renderCol)}
+        </div>
+
+        {half2.length > 0 && (
+          <div className="halftime-divider" title="半场换边 (Halftime)">
+            <div className="halftime-line" />
+            <div className="halftime-tag">HT</div>
           </div>
-        )
-      })}
+        )}
+
+        {half2.length > 0 && (
+          <div className="timeline-half">
+            {half2.map(renderCol)}
+          </div>
+        )}
+
+        {overtime.length > 0 && (
+          <div className="halftime-divider" title="加时赛 (Overtime)">
+            <div className="halftime-line" />
+            <div className="halftime-tag">OT</div>
+          </div>
+        )}
+
+        {overtime.length > 0 && (
+          <div className="timeline-half">
+            {overtime.map(renderCol)}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

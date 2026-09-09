@@ -17,6 +17,22 @@ import {
   whisperModelPath
 } from './engines'
 
+import * as OpenCC from 'opencc-js'
+
+const t2cn = OpenCC.Converter({ from: 't', to: 'cn' })
+
+function cleanZhText(text: string, language?: string): string {
+  if (!text) return text
+  if (!language || language === 'zh' || language === 'auto') {
+    try {
+      return t2cn(text)
+    } catch {
+      return text
+    }
+  }
+  return text
+}
+
 export interface AsrEvents {
   progress: (stage: string, done: number, total: number, message?: string) => void
   segment: (segment: VoiceSegment) => void
@@ -520,11 +536,24 @@ export async function transcribeLocal(
   })
   const outPrefix = wavPath.replace(/\.wav$/i, '')
   const threads = Math.max(2, cpus().length - 2)
-  const res = await run(
-    whisperExe(),
-    ['-m', whisperModelPath(model), '-f', wavPath, '-l', language || 'auto', '-t', String(threads), '-oj', '-of', outPrefix, '--no-prints'],
-    { signal }
-  )
+  const args = [
+    '-m',
+    whisperModelPath(model),
+    '-f',
+    wavPath,
+    '-l',
+    language || 'auto',
+    '-t',
+    String(threads),
+    '-oj',
+    '-of',
+    outPrefix,
+    '--no-prints'
+  ]
+  if (!language || language === 'zh' || language === 'auto') {
+    args.push('--prompt', '以下是普通话游戏语音，全部使用简体中文输出。', '--carry-initial-prompt')
+  }
+  const res = await run(whisperExe(), args, { signal })
   if (res.code !== 0 && res.code !== null) {
     throw new Error(`whisper 退出码 ${res.code}: ${res.output.slice(-400)}`)
   }
@@ -547,7 +576,7 @@ export async function transcribeLocal(
   }
   const segs: WhisperSeg[] = []
   for (const t of data.transcription ?? []) {
-    const text = t.text?.trim()
+    const text = cleanZhText(t.text?.trim() ?? '', language)
     if (!text) continue
     let from: number | null = null
     let to: number | null = null
@@ -594,6 +623,14 @@ export async function transcribeCloud(
       Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\n${cfg.language}\r\n`)
     )
   }
+  // 引导使用简体中文
+  if (!cfg.language || cfg.language === 'zh' || cfg.language === 'auto') {
+    parts.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n以下是普通话游戏语音，全部使用简体中文输出。\r\n`
+      )
+    )
+  }
   parts.push(Buffer.from(`--${boundary}--\r\n`))
   const body = Buffer.concat(parts)
   // 用 Electron net.fetch（走 Chromium 网络栈，跟随系统代理）：
@@ -620,7 +657,7 @@ export async function transcribeCloud(
   const data = (await res.json()) as { segments?: { start: number; end: number; text: string }[] }
   const segs: WhisperSeg[] = []
   for (const s of data.segments ?? []) {
-    const text = s.text?.trim()
+    const text = cleanZhText(s.text?.trim() ?? '', cfg.language)
     if (text) segs.push({ start: s.start, end: s.end, text })
   }
   return segs

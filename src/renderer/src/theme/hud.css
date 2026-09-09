@@ -1384,8 +1384,193 @@ body {
   opacity: 0.9;
 }
 
-/* ─── 回合结束栏（爆炸/拆除/全死/超时） ────────────────────────────────────── */
+/* ─── CS:GO / CS2 官方比赛回合胜负走势图 ─────────────────────────────────── */
 
+.timeline-wrap {
+  width: 100%;
+  overflow-x: auto;
+  padding: 2px 0 4px;
+}
+
+.match-timeline {
+  display: flex;
+  align-items: stretch;
+  position: relative;
+  background: var(--field-bg);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-md);
+  padding: 8px 12px;
+  min-width: 680px;
+  max-width: 100%;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.timeline-half {
+  display: flex;
+  flex: 1;
+}
+
+.halftime-divider {
+  width: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin: 0 4px;
+}
+
+.halftime-line {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--line-2);
+  border-radius: 1px;
+}
+
+.halftime-tag {
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--text-2);
+  padding: 1px 3px;
+  z-index: 2;
+  letter-spacing: 0.5px;
+}
+
+.round-col {
+  flex: 1;
+  min-width: 26px;
+  max-width: 38px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.12s var(--ease-out);
+}
+
+.round-col:hover {
+  background: var(--hover-bg);
+}
+
+.round-col.active {
+  background: rgba(10, 132, 255, 0.16);
+  outline: 1.5px solid var(--accent-strong);
+  outline-offset: -1px;
+}
+
+.track-row {
+  height: 34px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+.track-row.top {
+  justify-content: flex-end;
+  padding-bottom: 2px;
+}
+
+.track-row.bottom {
+  justify-content: flex-start;
+  padding-top: 2px;
+}
+
+/* 存活状态条 (5格小横槽) */
+.survivor-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5px;
+  margin: 2px 0;
+}
+
+.s-bar {
+  width: 13px;
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-theme='light'] .s-bar {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.s-bar.alive.t {
+  background: var(--t);
+  box-shadow: 0 0 4px rgba(245, 166, 35, 0.45);
+}
+
+.s-bar.alive.ct {
+  background: var(--ct);
+  box-shadow: 0 0 4px rgba(93, 173, 226, 0.45);
+}
+
+/* 胜利事件图标 */
+.win-icon {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.win-icon.t {
+  color: var(--t);
+}
+
+.win-icon.ct {
+  color: var(--ct);
+}
+
+/* 中轴刻度线 */
+.axis-center {
+  height: 14px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.axis-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--line-1);
+}
+
+.axis-label {
+  position: relative;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-2);
+  background: var(--bg-1);
+  padding: 0 3px;
+  line-height: 1;
+  border-radius: 2px;
+}
+
+.axis-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--line-2);
+}
+
+/* 旧版兼容 */
 .round-grid {
   display: flex;
   flex-wrap: wrap;

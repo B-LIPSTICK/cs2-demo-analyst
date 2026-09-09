@@ -35,8 +35,9 @@ function renderInline(
     if (mm.index > last) out.push(text.slice(last, mm.index))
     if (mm[2] !== undefined) {
       const sec = Number(mm[2]) * 60 + Number(mm[3])
+      const jumpTick = Math.max(0, Math.round(sec * rate) - Math.round(rate * 4))
       out.push(
-        <button key={`t${i++}`} className="time-chip" onClick={() => onJump(Math.round(sec * rate))}>
+        <button key={`t${i++}`} className="time-chip" onClick={() => onJump(jumpTick)}>
           {mm[1]}
         </button>
       )
@@ -254,7 +255,13 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
   const rate = detail?.meta.tickRate ?? 64
 
   const jump = async (tick: number) => {
-    const cmd = `demo_gototick ${tick}`
+    const targetTick = Math.max(0, Math.round(tick))
+    const jumped = await window.api.live.jumpTick(targetTick).catch(() => false)
+    if (jumped) {
+      toast.push(t('common.jumpDirectSuccess').replace('{tick}', String(targetTick)))
+      return
+    }
+    const cmd = `demo_gototick ${targetTick}`
     try {
       await navigator.clipboard.writeText(cmd)
     } catch {
@@ -272,10 +279,10 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
       const r = await window.api.live.launch({
         playDemoPath: detail.meta.path,
         voiceHud,
-        startTick: tick
+        startTick: targetTick
       })
       if (r.ok) {
-        toast.push(t('common.jumpLaunched').replace('{tick}', String(tick)))
+        toast.push(t('common.jumpLaunched').replace('{tick}', String(targetTick)))
         return
       }
     }
