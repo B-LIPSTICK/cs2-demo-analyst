@@ -344,7 +344,7 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
   const sampleDemo = useMemo(() => demos.find((d) => d.id === selectedId), [demos, selectedId])
 
   return (
-    <div className="page" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div className="page ai-page">
       <div className="page-head">
         <div>
           <div className="title">

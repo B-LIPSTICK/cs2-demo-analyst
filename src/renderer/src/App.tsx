@@ -159,7 +159,7 @@ export default function App() {
             />
             <div className="app-body">
               <NavRail page={route.page} onNavigate={(p) => navigate(p)} />
-              <main className="page-scroll">
+              <main className={`page-scroll ${route.page === 'ai' ? 'no-scroll' : ''}`}>
                 {/* 页面常驻（display 显隐而非卸载）：切换页面后保留原页面状态
                     （选中的 demo、筛选、转写进度等不再丢失） */}
                 <div style={{ display: route.page === 'library' ? undefined : 'none' }}>
@@ -172,7 +172,7 @@ export default function App() {
                 <div style={{ display: route.page === 'transcript' ? undefined : 'none' }}>
                   <TranscriptPage initialDemoId={route.demoId} navSeq={navSeq} onOpenDemo={(id) => navigate('transcript', id)} />
                 </div>
-                <div style={{ display: route.page === 'ai' ? undefined : 'none' }}>
+                <div style={{ display: route.page === 'ai' ? 'flex' : 'none', flexDirection: 'column', height: '100%', minHeight: 0, flex: 1 }}>
                   <AiPage onGoSettings={() => navigate('settings')} />
                 </div>
                 <div style={{ display: route.page === 'settings' ? undefined : 'none' }}>
