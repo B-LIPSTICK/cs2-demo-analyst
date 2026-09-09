@@ -15,11 +15,6 @@ const library = createLibraryService(() => mainWindow, getSettings)
 import { LiveService } from './services/live'
 const live = new LiveService({
   status: (s) => mainWindow?.webContents.send('live:status', { status: s }),
-  gsi: (s) => {
-    mainWindow?.webContents.send('gsi:state', { state: s })
-    // 实况 GSI 同步进游戏内悬浮层（demo 演示模式优先）
-    void import('./overlay').then((m) => m.updateLiveGsi(s))
-  },
   consoleLine: (channel, text) =>
     mainWindow?.webContents.send('live:console', { channel, text })
 })
@@ -190,11 +185,10 @@ function registerIpc(): void {
     return live.launch(
       { ...opts, voiceHud: opts?.voiceHud ?? s.cs2.voiceHud },
       s.cs2.launchArgs ?? '',
-      s.cs2.installPath,
-      { mode: s.cs2.playMode, resolution: s.cs2.playResolution }
+      s.cs2.installPath
     )
   })
-  ipcMain.handle('live:installGsi', () => live.installGsi())
+  ipcMain.handle('live:installGsi', () => Promise.resolve(null))
   ipcMain.handle('live:locateInstall', () => live.locateInstall())
 
   // Overlay 悬浮层
@@ -343,17 +337,8 @@ if (!gotLock) {
     setTimeout(() => void checkForUpdate(), 8000)
     void library.init()
     void getSettings().then((s) => {
-      live.setPorts(s.cs2.vconsolePort, s.cs2.gsiPort)
       live.setInstallPath(s.cs2.installPath)
       live.start()
-      // 开发模式: --vcon-mock 启动模拟控制台并伪装 CS2 运行
-      if (process.argv.includes('--vcon-mock')) {
-        import('./services/vconsole').then(({ startVConsoleMock }) => {
-          startVConsoleMock(s.cs2.vconsolePort)
-          live.setMockCs2(true)
-          console.log('[vcon-mock] mock console started')
-        })
-      }
       // 开发模式: --ai-mock 本地生成 AI 回答（无需 Key/网络）
       if (process.argv.includes('--ai-mock')) {
         ai.setMock(true)

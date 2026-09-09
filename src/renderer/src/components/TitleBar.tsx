@@ -2,17 +2,6 @@ import { Led, IcGithub } from './ui'
 import type { LiveStatus } from '@shared/types'
 import { useTKey } from '@/i18n'
 
-function ledFor(status: LiveStatus, kind: 'cs2' | 'vcon' | 'gsi'): 'on' | 'warn' | 'red' | 'off' {
-  if (kind === 'cs2') {
-    return status.cs2Running ? 'on' : 'off'
-  }
-  if (kind === 'vcon') {
-    if (status.vconsoleConnected) return 'on'
-    return status.cs2Running ? 'warn' : 'off'
-  }
-  return status.gsiActive ? 'on' : 'off'
-}
-
 export function TitleBar({
   status,
   version,
@@ -35,9 +24,7 @@ export function TitleBar({
       </div>
       <div className="spacer" />
       <div className="status-cluster">
-        <Led state={ledFor(status, 'cs2')} label={t('status.cs2')} />
-        <Led state={ledFor(status, 'vcon')} label={t('status.vcon')} />
-        <Led state={ledFor(status, 'gsi')} label={t('status.gsi')} />
+        <Led state={status.cs2Running ? 'on' : 'off'} label={t('status.cs2')} />
         <button
           className="theme-btn"
           onClick={() => window.api.app.openUrl('https://github.com/B-LIPSTICK')}

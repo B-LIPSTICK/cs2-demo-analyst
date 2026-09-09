@@ -67,21 +67,24 @@ export function DemoDetailPage({
   }, [id])
 
   const jump = async (tick: number) => {
-    const ok = await window.api.live.jumpTick(tick)
-    if (!ok) toast.push(t('common.jumpHint'), 'warn')
+    const cmd = `demo_gototick ${tick}`
+    try {
+      await navigator.clipboard.writeText(cmd)
+      toast.push(t('common.jumpCopied').replace('{cmd}', cmd))
+    } catch {
+      toast.push(`demo_gototick ${tick}`)
+    }
   }
 
-  /** 播放：普通模式 = CS2 内置播放器（+exec cfg）；工具模式 = VConsole 注入；voiceHud = 游戏内语音 HUD */
+  /** 播放：调用 CS2 原生内置播放器（+exec cfg）稳定原画质播放 */
   const playInCs2 = async () => {
     if (!detail) return
     const s = await window.api.settings.get()
-    const toolsMode = !!s.cs2?.useToolsMode
-    const voiceHud = !toolsMode && !!s.cs2?.voiceHud
+    const voiceHud = !!s.cs2?.voiceHud
     if (voiceHud) toast.push(t('detail.voiceHudPreparing'))
-    const r = await window.api.live.launch({ toolsMode, playDemoPath: detail.meta.path, voiceHud })
+    const r = await window.api.live.launch({ playDemoPath: detail.meta.path, voiceHud })
     if (r.ok) {
-      if (r.starting) toast.push(t('detail.playStarting'))
-      else toast.push(r.injected ? t('detail.playInjected') : t('detail.playLaunched'))
+      toast.push(t('detail.playLaunched'))
     } else toast.push(r.error ?? t('common.error'), 'warn')
   }
 

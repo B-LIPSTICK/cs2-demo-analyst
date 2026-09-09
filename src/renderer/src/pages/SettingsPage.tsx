@@ -303,14 +303,8 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
     }
   }
 
-  const installGsi = async () => {
-    const path = await window.api.live.installGsi()
-    if (path) toast.push(t.tf('settings.gsiInstalled', { path }))
-    else toast.push(t.t('settings.gsiInstallFailed'), 'warn')
-  }
-
-  const launchTools = async () => {
-    const r = await window.api.live.launch({ toolsMode: draft.cs2.useToolsMode })
+  const launchCs2 = async () => {
+    const r = await window.api.live.launch()
     if (r.ok) toast.push(t.t('settings.cs2Launched'))
     else toast.push(r.error ?? t.t('common.error'), 'warn')
   }
@@ -687,114 +681,10 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           <input
             className="input"
             style={{ width: 260 }}
-            placeholder="-tools -insecure"
+            placeholder="-novid"
             value={draft.cs2.launchArgs ?? ''}
             onChange={(e) => setCs2({ launchArgs: e.target.value })}
           />
-        </div>
-        {/* 播放显示设置（tools 模式下生效） */}
-        <div className="set-row">
-          <div className="info">
-            <div className="t">{t.t('settings.playDisplay')}</div>
-            <div className="d">{t.t('settings.playDisplayHint')}</div>
-          </div>
-          <div className="flex" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <CustomSelect
-              width={150}
-              value={draft.cs2.playMode ?? 'auto'}
-              options={[
-                { value: 'auto', label: t.t('settings.playModeAuto') },
-                { value: 'fullscreen', label: t.t('settings.playModeFullscreen') },
-                { value: 'borderless', label: t.t('settings.playModeBorderless') },
-                { value: 'windowed', label: t.t('settings.playModeWindowed') }
-              ]}
-              onChange={(v) => setCs2({ playMode: v as never })}
-            />
-            <CustomSelect
-              width={145}
-              value={draft.cs2.playResolution ?? 'auto'}
-              options={[
-                { value: 'auto', label: t.t('settings.playResAuto') },
-                { value: '1920x1080', label: '1920×1080', sublabel: '16:9' },
-                { value: '2560x1440', label: '2560×1440', sublabel: '16:9' },
-                { value: '3840x2160', label: '3840×2160', sublabel: '16:9' },
-                { value: '1280x720', label: '1280×720', sublabel: '16:9' },
-                { value: '1280x960', label: '1280×960', sublabel: '4:3' },
-                { value: '1024x768', label: '1024×768', sublabel: '4:3' },
-                { value: '1440x1080', label: '1440×1080', sublabel: '4:3' },
-                { value: '1280x1024', label: '1280×1024', sublabel: '5:4' },
-                { value: '1920x1200', label: '1920×1200', sublabel: '16:10' },
-                { value: '1680x1050', label: '1680×1050', sublabel: '16:10' },
-                { value: '1280x800', label: '1280×800', sublabel: '16:10' },
-                { value: '2560x1080', label: '2560×1080', sublabel: '21:9' },
-                { value: '3440x1440', label: '3440×1440', sublabel: '21:9' }
-              ]}
-              onChange={(v) => setCs2({ playResolution: v })}
-            />
-          </div>
-        </div>
-        <div className="set-row">
-          <div className="info">
-            <div className="t">{t.t('settings.cs2Setup')}</div>
-            <div className="d">{t.t('settings.cs2SetupHint')}</div>
-            <div className="muted" style={{ fontSize: 11.5, marginTop: 6, lineHeight: 1.7 }}>
-              {t.t('settings.gsiWhat')}
-            </div>
-          </div>
-          <div className="flex" style={{ gap: 8, flexWrap: 'wrap' }}>
-            <Btn variant="ghost" size="sm" onClick={installGsi}>
-              {t.t('settings.gsiInstall')}
-            </Btn>
-            <Btn variant="accent" size="sm" onClick={launchTools}>
-              {t.t('settings.cs2Launch')}
-            </Btn>
-          </div>
-        </div>
-        <div className="set-row">
-          <div className="info">
-            <div className="t">{t.t('settings.vconsolePort')}</div>
-            <div className="d">127.0.0.1:{draft.cs2.vconsolePort}</div>
-          </div>
-          <input
-            className="input"
-            style={{ width: 90 }}
-            type="number"
-            value={draft.cs2.vconsolePort}
-            onChange={(e) => setCs2({ vconsolePort: Number(e.target.value) || 29000 })}
-          />
-        </div>
-        <div className="set-row">
-          <div className="info">
-            <div className="t">{t.t('settings.gsiPort')}</div>
-            <div className="d">127.0.0.1:{draft.cs2.gsiPort}</div>
-          </div>
-          <input
-            className="input"
-            style={{ width: 90 }}
-            type="number"
-            value={draft.cs2.gsiPort}
-            onChange={(e) => setCs2({ gsiPort: Number(e.target.value) || 30070 })}
-          />
-        </div>
-        <div className="set-row">
-          <div className="info">
-            <div className="t">{t.t('settings.playMode')}</div>
-            <div className="d">{t.t('settings.playModeHint')}</div>
-          </div>
-          <div className="seg">
-            <span
-              className={`seg-item ${!draft.cs2.useToolsMode ? 'on' : ''}`}
-              onClick={() => setCs2({ useToolsMode: false })}
-            >
-              {t.t('settings.playModeNormal')}
-            </span>
-            <span
-              className={`seg-item ${draft.cs2.useToolsMode ? 'on' : ''}`}
-              onClick={() => setCs2({ useToolsMode: true })}
-            >
-              {t.t('settings.playModeTools')}
-            </span>
-          </div>
         </div>
         <div className="set-row">
           <div className="info">
@@ -804,8 +694,18 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           <Toggle
             on={!!draft.cs2.voiceHud}
             onChange={(v) => setCs2({ voiceHud: v })}
-            disabled={draft.cs2.useToolsMode}
           />
+        </div>
+        <div className="set-row">
+          <div className="info">
+            <div className="t">{t.t('settings.cs2Setup')}</div>
+            <div className="d">{t.t('settings.cs2SetupHint')}</div>
+          </div>
+          <div className="flex" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <Btn variant="accent" size="sm" onClick={launchCs2}>
+              {t.t('settings.cs2Launch')}
+            </Btn>
+          </div>
         </div>
       </Panel>
 
@@ -893,7 +793,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
         })}
       </Panel>
 
-      <SectionHead idx={8}>{t.t('settings.about')}</SectionHead>
+      <SectionHead idx={7}>{t.t('settings.about')}</SectionHead>
       <Panel>
         <div className="panel-bd">
           <div className="muted" style={{ fontSize: 12, lineHeight: 1.7 }}>

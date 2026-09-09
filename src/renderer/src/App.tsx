@@ -5,7 +5,6 @@ import { TitleBar } from './components/TitleBar'
 import { NavRail, type Page } from './components/NavRail'
 import { LibraryPage } from './pages/LibraryPage'
 import { TranscriptPage } from './pages/TranscriptPage'
-import { LivePage } from './pages/LivePage'
 import { AiPage } from './pages/AiPage'
 import { SettingsPage } from './pages/SettingsPage'
 import type { LiveStatus, Settings } from '@shared/types'
@@ -54,7 +53,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 function initialRoute(): Route {
   const hash = window.location.hash.replace(/^#/, '')
   const [page, demoId] = hash.split('/')
-  if (page === 'library' || page === 'transcript' || page === 'live' || page === 'ai' || page === 'settings') {
+  if (page === 'library' || page === 'transcript' || page === 'ai' || page === 'settings') {
     return { page, demoId: demoId || undefined }
   }
   return { page: 'library' }
@@ -172,9 +171,6 @@ export default function App() {
                 </div>
                 <div style={{ display: route.page === 'transcript' ? undefined : 'none' }}>
                   <TranscriptPage initialDemoId={route.demoId} navSeq={navSeq} onOpenDemo={(id) => navigate('transcript', id)} />
-                </div>
-                <div style={{ display: route.page === 'live' ? undefined : 'none' }}>
-                  <LivePage />
                 </div>
                 <div style={{ display: route.page === 'ai' ? undefined : 'none' }}>
                   <AiPage onGoSettings={() => navigate('settings')} />

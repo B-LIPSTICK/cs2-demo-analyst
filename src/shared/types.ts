@@ -239,8 +239,8 @@ export type LiveState =
 export interface LiveStatus {
   state: LiveState
   cs2Running: boolean
-  vconsoleConnected: boolean
-  gsiActive: boolean
+  vconsoleConnected?: boolean
+  gsiActive?: boolean
   lastError?: string
   lastSeenAt?: number
 }
@@ -301,14 +301,12 @@ export interface Settings {
   }
   cs2: {
     installPath?: string
-    vconsolePort: number
-    gsiPort: number
-    useToolsMode: boolean
-    /** 用户自定义启动项（空格分隔，如 "-tools -insecure"），软件启动 CS2 时自动带上 */
+    vconsolePort?: number
+    gsiPort?: number
+    useToolsMode?: boolean
+    /** 用户自定义启动项（空格分隔，如 "-novid"），软件启动 CS2 时自动带上 */
     launchArgs?: string
-    /** 播放显示模式：'auto'=跟随用户当前配置；'fullscreen'=全屏；'borderless'=全屏窗口(无边框)；'windowed'=窗口化 */
     playMode?: 'auto' | 'fullscreen' | 'borderless' | 'windowed'
-    /** 播放分辨率（宽x高，如 "1920x1080"）；'auto'=跟随用户当前配置 */
     playResolution?: string
     /** 游戏内语音 HUD：VPK 注入 Panorama，普通模式播放时在 CS2 画面内显示说话者 */
     voiceHud?: boolean
@@ -350,12 +348,7 @@ export const DEFAULT_SETTINGS: Settings = {
     model: 'llama-3.3-70b-versatile'
   },
   cs2: {
-    vconsolePort: 29000,
-    gsiPort: 30070,
-    useToolsMode: true,
     launchArgs: '',
-    playMode: 'auto',
-    playResolution: 'auto',
     voiceHud: false
   },
   overlay: {

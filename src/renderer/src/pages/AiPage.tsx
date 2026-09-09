@@ -253,10 +253,14 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
   const rounds = detail?.rounds ?? []
   const rate = detail?.meta.tickRate ?? 64
 
-  const jump = (tick: number) => {
-    window.api.live.jumpTick(tick).then((ok) => {
-      if (!ok) toast.push(t('common.jumpHint'), 'warn')
-    })
+  const jump = async (tick: number) => {
+    const cmd = `demo_gototick ${tick}`
+    try {
+      await navigator.clipboard.writeText(cmd)
+      toast.push(t('common.jumpCopied').replace('{cmd}', cmd))
+    } catch {
+      toast.push(`demo_gototick ${tick}`)
+    }
   }
 
   const ask = async (q: string) => {

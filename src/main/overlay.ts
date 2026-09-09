@@ -289,15 +289,8 @@ export function setClickThrough(on: boolean): void {
   applyClickThrough(on)
 }
 
-/**
- * 实况模式：把 GSI 状态推给悬浮层（demo 演示模式优先）。
- * 仅当未在演示模式下且悬浮层已创建时更新显示。
- */
-export function updateLiveGsi(s: GsiGameState): void {
-  liveGsi = s
-  if (simDetail) return
-  if (win && !win.isDestroyed()) sendState()
-  if (fullWin && !fullWin.isDestroyed()) sendState()
+export function updateLiveGsi(_s?: unknown): void {
+  // GSI 模块已移除
 }
 
 // ─── 全屏面板（游戏内观战控制台） ───────────────────────────────────────────

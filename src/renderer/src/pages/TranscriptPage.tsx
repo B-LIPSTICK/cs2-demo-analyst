@@ -176,8 +176,13 @@ export function TranscriptPage({
   }, [detail, players, round, query])
 
   const jump = async (tick: number) => {
-    const ok = await window.api.live.jumpTick(tick)
-    if (!ok) toast.push(t('common.jumpHint'), 'warn')
+    const cmd = `demo_gototick ${tick}`
+    try {
+      await navigator.clipboard.writeText(cmd)
+      toast.push(t('common.jumpCopied').replace('{cmd}', cmd))
+    } catch {
+      toast.push(`demo_gototick ${tick}`)
+    }
   }
 
   const togglePlayer = (name: string) => {
