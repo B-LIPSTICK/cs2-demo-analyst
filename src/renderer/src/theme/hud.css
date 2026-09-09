@@ -2825,6 +2825,16 @@ body {
   background: var(--row-hover);
 }
 
+.pm-kill.active {
+  background: var(--accent-dim);
+  border-left: 2px solid var(--accent-strong);
+}
+
+.pm-kill .jump.active {
+  color: var(--accent-strong);
+  opacity: 1;
+}
+
 .pm-kill .tm {
   font-family: var(--font-mono);
   font-size: 11.5px;

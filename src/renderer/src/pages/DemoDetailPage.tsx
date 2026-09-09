@@ -981,6 +981,7 @@ function PlayerModal({
   onClose: () => void
 }) {
   const t = useTKey()
+  const [activeTick, setActiveTick] = useState<number | null>(null)
   const myKills = useMemo(
     () =>
       kills.filter((k) =>
@@ -1101,13 +1102,14 @@ function PlayerModal({
               const roundObj = rounds?.find((r) => r.roundNum === k.roundNum)
               const handleJump = () => {
                 const target = getKillJumpTick(k.tick, tickRate, roundObj?.startTick)
+                setActiveTick(k.tick)
                 onJump(target)
-                onClose()
               }
+              const isJumpActive = activeTick === k.tick
               return (
                 <div
                   key={`${k.tick}-${i}`}
-                  className="pm-kill"
+                  className={`pm-kill ${isJumpActive ? 'active' : ''}`}
                   onClick={handleJump}
                   title={t('transcript.jumpKill')}
                 >
@@ -1120,7 +1122,7 @@ function PlayerModal({
                   <span className="rn">R{k.roundNum}</span>
                   <button
                     type="button"
-                    className="icon-btn jump"
+                    className={`icon-btn jump ${isJumpActive ? 'active' : ''}`}
                     title={t('transcript.jumpKill')}
                     onClick={(e) => {
                       e.stopPropagation()
