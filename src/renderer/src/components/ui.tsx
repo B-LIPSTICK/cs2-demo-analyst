@@ -747,6 +747,8 @@ export function CustomSelect<T extends string = string>({
               left: coords.left,
               ...(coords.openUp ? { bottom: coords.bottom } : { top: coords.top }),
               width: coords.width,
+              minWidth: 'unset',
+              maxWidth: 'calc(100vw - 32px)',
               maxHeight: coords.maxHeight,
               zIndex: 99999
             }}

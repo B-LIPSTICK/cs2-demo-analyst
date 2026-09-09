@@ -332,7 +332,9 @@ function ModelCombobox({
                 position: 'fixed',
                 left: coords.left,
                 ...(coords.openUp ? { bottom: coords.bottom } : { top: coords.top }),
-                width: Math.max(coords.width, 320),
+                width: coords.width,
+                minWidth: 'unset',
+                maxWidth: 'calc(100vw - 32px)',
                 maxHeight: coords.maxHeight,
                 zIndex: 99999,
                 overflowY: 'auto'
@@ -383,7 +385,9 @@ function ModelCombobox({
       </div>
       <Btn variant="ghost" size="sm" disabled={loading} onClick={onPull} title="从服务商在线拉取模型列表">
         <IcRefresh size={13} className={loading ? 'spin' : ''} />
-        <span style={{ marginLeft: 4 }}>{loading ? t('settings.aiModelsFetching') : t('settings.aiModelsPull')}</span>
+        <span style={{ marginLeft: 4 }}>
+          {loading ? t('settings.aiModelsFetching') : pulledModels ? t('common.refresh') : t('settings.aiPullModels')}
+        </span>
       </Btn>
     </div>
   )

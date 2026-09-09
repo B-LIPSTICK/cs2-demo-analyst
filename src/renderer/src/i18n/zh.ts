@@ -336,6 +336,7 @@ export const zh = {
   'settings.aiModel': 'AI 模型',
   'settings.aiModelHint': '填入模型标识，或点击右侧自动拉取列表',
   'settings.aiPullModels': '拉取模型',
+  'settings.aiModelsFetching': '拉取中…',
   'settings.aiKeyFirst': '请先填写 AI API Key',
   'settings.aiModelsFetched': '已拉取 {n} 个模型',
   'settings.cs2': 'CS2 播放',

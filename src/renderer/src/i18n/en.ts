@@ -330,6 +330,7 @@ export const en: Record<keyof ZhDict, string> = {
   'settings.aiModel': 'AI Model',
   'settings.aiModelHint': 'Model name, or click fetch to populate',
   'settings.aiPullModels': 'Fetch models',
+  'settings.aiModelsFetching': 'Fetching…',
   'settings.aiKeyFirst': 'Fill in the AI API key first',
   'settings.aiModelsFetched': 'Fetched {n} models',
   'settings.cs2': 'CS2 PLAYBACK',

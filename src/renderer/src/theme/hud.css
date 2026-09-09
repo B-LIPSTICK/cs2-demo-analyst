@@ -1112,7 +1112,7 @@ body {
   position: absolute;
   top: calc(100% + 5px);
   left: 0;
-  min-width: 100%;
+  box-sizing: border-box;
   max-height: 250px;
   overflow-y: auto;
   padding: 5px;
