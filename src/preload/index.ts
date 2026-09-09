@@ -66,8 +66,12 @@ const api: ApiWithEvents = {
     specNext: () => ipcRenderer.invoke('live:specNext'),
     specPrev: () => ipcRenderer.invoke('live:specPrev'),
     specGoto: (userid: number) => ipcRenderer.invoke('live:specGoto', userid),
-    launch: (opts?: { toolsMode?: boolean; playDemoPath?: string; voiceHud?: boolean }) =>
-      ipcRenderer.invoke('live:launch', opts),
+    launch: (opts?: {
+      toolsMode?: boolean
+      playDemoPath?: string
+      voiceHud?: boolean
+      startTick?: number
+    }) => ipcRenderer.invoke('live:launch', opts),
     installGsi: () => ipcRenderer.invoke('live:installGsi'),
     locateInstall: () => ipcRenderer.invoke('live:locateInstall')
   },

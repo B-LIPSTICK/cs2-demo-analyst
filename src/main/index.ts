@@ -180,7 +180,7 @@ function registerIpc(): void {
   ipcMain.handle('live:specNext', () => live.specNext())
   ipcMain.handle('live:specPrev', () => live.specPrev())
   ipcMain.handle('live:specGoto', (_e, userid: number) => live.specGoto(userid))
-  ipcMain.handle('live:launch', async (_e, opts?: { toolsMode?: boolean; playDemoPath?: string; voiceHud?: boolean }) => {
+  ipcMain.handle('live:launch', async (_e, opts?: { toolsMode?: boolean; playDemoPath?: string; voiceHud?: boolean; startTick?: number }) => {
     const s = await getSettings()
     return live.launch(
       { ...opts, voiceHud: opts?.voiceHud ?? s.cs2.voiceHud },

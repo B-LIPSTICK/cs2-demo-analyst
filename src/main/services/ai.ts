@@ -163,8 +163,12 @@ export class AiService {
   async listModels(cfg: { baseUrl: string; apiKey: string }): Promise<string[]> {
     if (this.mockMode) {
       return [
-        'llama-3.3-70b-versatile',
+        'Qwen/Qwen2.5-7B-Instruct',
+        'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B',
+        'THUDM/glm-4-9b-chat',
+        'glm-4-flash',
         'llama-3.1-8b-instant',
+        'llama-3.3-70b-versatile',
         'gpt-4o-mini',
         'deepseek-chat',
         'qwen-plus',
@@ -179,9 +183,17 @@ export class AiService {
     })
     if (!res.ok) {
       const text = await res.text().catch(() => '')
-      throw new Error(
-        `API ${res.status}${res.status === 401 ? '（Key 无效）' : ''} ${text.slice(0, 120)}`
-      )
+      let detail = ''
+      try {
+        const j = JSON.parse(text) as { error?: { message?: string }; message?: string }
+        detail = j.error?.message || j.message || text.slice(0, 120)
+      } catch {
+        detail = text.slice(0, 120)
+      }
+      let hint = ''
+      if (res.status === 401) hint = '（Key 无效）'
+      else if (res.status === 403) hint = '（受地域限制或网络拦截，建议使用国内硅基流动）'
+      throw new Error(`API ${res.status}${hint} ${detail}`)
     }
     const j = (await res.json()) as { data?: { id?: string }[] }
     const ids = (j.data ?? [])
@@ -189,8 +201,12 @@ export class AiService {
       .filter((x): x is string => typeof x === 'string' && x.length > 0)
     // 常用聊天模型置顶，其余按字母序
     const preferred = [
-      'llama-3.3-70b-versatile',
+      'Qwen/Qwen2.5-7B-Instruct',
+      'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B',
+      'THUDM/glm-4-9b-chat',
+      'glm-4-flash',
       'llama-3.1-8b-instant',
+      'llama-3.3-70b-versatile',
       'gpt-4o',
       'gpt-4o-mini',
       'deepseek-chat',
@@ -272,9 +288,19 @@ export class AiService {
       })
       if (!res.ok) {
         const text = await res.text().catch(() => '')
-        throw new Error(
-          `API ${res.status}${res.status === 401 ? '（Key 无效）' : res.status === 404 ? '（模型或地址不存在）' : ''} ${text.slice(0, 160)}`
-        )
+        let detail = ''
+        try {
+          const j = JSON.parse(text) as { error?: { message?: string }; message?: string }
+          detail = j.error?.message || j.message || text.slice(0, 180)
+        } catch {
+          detail = text.slice(0, 180)
+        }
+        let hint = ''
+        if (res.status === 401) hint = '（Key 无效或未激活）'
+        else if (res.status === 403) hint = '（受地域限制或网络拦截，建议在设置中切换为「硅基流动」国内直连服务）'
+        else if (res.status === 404) hint = '（模型名称或 API 路径不存在）'
+        else if (res.status === 429) hint = '（请求频次或 Token 超限，建议切换模型或国内服务商）'
+        throw new Error(`API 错误 ${res.status}${hint}: ${detail}`)
       }
       const reader = res.body?.getReader()
       if (!reader) throw new Error('no stream')

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Btn, CustomSelect, IcFolder, IcPlus, IcRefresh, Panel, SectionHead, Tag, Toggle, useToast } from '@/components/ui'
 import { useT, type Lang } from '@/i18n'
@@ -25,6 +25,77 @@ const OFFLINE_SOURCES = [
     title: 'csgove Releases',
     desc: '官方提取器：下载 csgove.exe（解压放入 csgove/ 根目录）',
     url: 'https://github.com/akiver/csgo-voice-extractor/releases'
+  }
+]
+
+type AiProviderKey = 'siliconflow' | 'zhipu' | 'groq' | 'custom'
+
+interface AiProviderDef {
+  key: AiProviderKey
+  name: string
+  labelKey: string
+  baseUrl: string
+  defaultModel: string
+  keyUrl: string
+  keyUrlText: string
+  presetModels: string[]
+  badge: string
+  descKey: string
+}
+
+const AI_PROVIDERS: AiProviderDef[] = [
+  {
+    key: 'siliconflow',
+    name: '硅基流动',
+    labelKey: 'settings.aiProviderSiliconFlow',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    defaultModel: 'Qwen/Qwen2.5-7B-Instruct',
+    keyUrl: 'https://cloud.siliconflow.cn/account/ak',
+    keyUrlText: 'cloud.siliconflow.cn/account/ak',
+    presetModels: [
+      'Qwen/Qwen2.5-7B-Instruct',
+      'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B',
+      'THUDM/glm-4-9b-chat',
+      'internlm/internlm2_5-7b-chat'
+    ],
+    badge: '国内免翻 · 永久免费模型',
+    descKey: 'settings.aiSiliconFlowHint'
+  },
+  {
+    key: 'zhipu',
+    name: '智谱 AI',
+    labelKey: 'settings.aiProviderZhipu',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    defaultModel: 'glm-4-flash',
+    keyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
+    keyUrlText: 'open.bigmodel.cn/usercenter/apikeys',
+    presetModels: ['glm-4-flash', 'glm-4-plus', 'glm-4-air'],
+    badge: '国内免翻 · GLM-4-Flash 免费',
+    descKey: 'settings.aiZhipuHint'
+  },
+  {
+    key: 'groq',
+    name: 'Groq',
+    labelKey: 'settings.aiProviderGroq',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    defaultModel: 'llama-3.1-8b-instant',
+    keyUrl: 'https://console.groq.com/keys',
+    keyUrlText: 'console.groq.com/keys',
+    presetModels: ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'],
+    badge: '海外高速 · 需梯子/代理',
+    descKey: 'settings.aiGroqHint'
+  },
+  {
+    key: 'custom',
+    name: '自定义 API',
+    labelKey: 'settings.aiProviderCustom',
+    baseUrl: '',
+    defaultModel: '',
+    keyUrl: '',
+    keyUrlText: '',
+    presetModels: [],
+    badge: '兼容 OpenAI 规范',
+    descKey: 'settings.aiBaseUrlHint'
   }
 ]
 
@@ -231,23 +302,32 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
     toast.push(t.t('settings.recommendedSet'))
   }
 
-  // AI 推荐免费（Groq llama）声明弹窗
-  const [showAiRecModal, setShowAiRecModal] = useState(false)
-  const pickAiRecommended = () => {
-    if (draft.ai.baseUrl.includes('groq.com')) return
-    setShowAiRecModal(true)
-  }
-  const confirmAiRecommended = () => {
-    setAi({
-      baseUrl: 'https://api.groq.com/openai/v1',
-      model: 'llama-3.3-70b-versatile'
-    })
-    setShowAiRecModal(false)
-    toast.push(t.t('settings.aiRecommendedSet'))
-  }
-
   const setAi = (patch: Partial<Settings['ai']>) => {
     set({ ai: { ...draft.ai, ...patch } })
+  }
+
+  const currentAiProviderKey: AiProviderKey = useMemo(() => {
+    const url = draft.ai?.baseUrl || ''
+    if (url.includes('siliconflow.cn')) return 'siliconflow'
+    if (url.includes('bigmodel.cn')) return 'zhipu'
+    if (url.includes('groq.com')) return 'groq'
+    return 'custom'
+  }, [draft.ai?.baseUrl])
+
+  const currentAiProvider = AI_PROVIDERS.find((p) => p.key === currentAiProviderKey) ?? AI_PROVIDERS[3]
+
+  const switchAiProvider = (key: AiProviderKey) => {
+    const target = AI_PROVIDERS.find((p) => p.key === key)
+    if (!target) return
+    if (target.key === 'custom') {
+      setAi({ baseUrl: draft.ai.baseUrl || 'https://api.openai.com/v1' })
+    } else {
+      setAi({
+        baseUrl: target.baseUrl,
+        model: target.defaultModel
+      })
+    }
+    toast.push(t.tf('settings.aiProviderSwitched', { name: target.name }))
   }
 
   const pullModels = async () => {
@@ -546,28 +626,79 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             <div className="t">{t.t('settings.aiEngine')}</div>
             <div className="d">{t.t('settings.aiEngineHint')}</div>
           </div>
-          <div className="seg">
-            <span
-              className={`seg-item ${draft.ai.baseUrl.includes('groq.com') ? 'on' : ''}`}
-              onClick={() => pickAiRecommended()}
-            >
-              {t.t('settings.aiRecommended')}
-            </span>
-            <span
-              className={`seg-item ${!draft.ai.baseUrl.includes('groq.com') ? 'on' : ''}`}
-              onClick={() => setAi({ baseUrl: '' })}
-            >
-              {t.t('settings.aiCustom')}
-            </span>
-          </div>
+          <CustomSelect
+            width={280}
+            value={currentAiProviderKey}
+            options={AI_PROVIDERS.map((p) => ({
+              value: p.key,
+              label: t.t(p.labelKey as never)
+            }))}
+            onChange={(v) => switchAiProvider(v as AiProviderKey)}
+          />
         </div>
+
+        {/* 快捷 Key 获取与说明卡片 */}
+        {currentAiProvider.keyUrl && (
+          <div
+            style={{
+              margin: '6px 0 14px',
+              padding: '10px 14px',
+              borderRadius: 8,
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid var(--line-1)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                <span style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text-0)' }}>
+                  {currentAiProvider.name}
+                </span>
+                <Tag tone="voice">{currentAiProvider.badge}</Tag>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 2 }}>
+                {t.t(currentAiProvider.descKey as never)}
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: 'var(--accent)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  userSelect: 'text'
+                }}
+              >
+                {currentAiProvider.keyUrlText}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <Btn variant="ghost" size="sm" onClick={() => copyUrl(currentAiProvider.keyUrl)}>
+                复制
+              </Btn>
+              <Btn
+                variant="primary"
+                size="sm"
+                onClick={() => window.api.app.openUrl(currentAiProvider.keyUrl)}
+              >
+                前往获取 Key
+              </Btn>
+            </div>
+          </div>
+        )}
+
         <div className="set-row">
           <div className="info">
             <div className="t">{t.t('settings.aiApiKey')}</div>
             <div className="d">
-              {draft.ai.baseUrl.includes('groq.com')
-                ? t.t('settings.groqKeyHint')
-                : t.t('settings.aiHint')}
+              {currentAiProvider.key === 'siliconflow'
+                ? '填入以 sk- 开头的硅基流动 API Key'
+                : currentAiProvider.key === 'groq'
+                  ? '填入以 gsk_ 开头的 Groq API Key'
+                  : '填入对应服务商的 API 密钥'}
             </div>
           </div>
           <input
@@ -579,63 +710,64 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             onChange={(e) => setAi({ apiKey: e.target.value })}
           />
         </div>
-        {draft.ai.baseUrl.includes('groq.com') && (
+
+        {/* 自定义 API 或 Base URL 修改 */}
+        {(currentAiProvider.key === 'custom' || !currentAiProvider.baseUrl) && (
           <div className="set-row">
             <div className="info">
-              <a
-                href="https://console.groq.com/keys"
-                target="_blank"
-                rel="noreferrer"
-                style={{ color: 'var(--accent)', fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}
-              >
-                {t.t('settings.getKey')} → console.groq.com/keys
-              </a>
+              <div className="t">{t.t('settings.aiBaseUrl')}</div>
+              <div className="d">{t.t('settings.aiBaseUrlHint')}</div>
             </div>
+            <input
+              className="input"
+              style={{ width: 300 }}
+              value={draft.ai.baseUrl}
+              onChange={(e) => setAi({ baseUrl: e.target.value })}
+            />
           </div>
         )}
-        {!draft.ai.baseUrl.includes('groq.com') && (
-          <>
-            <div className="set-row">
-              <div className="info">
-                <div className="t">{t.t('settings.aiBaseUrl')}</div>
-                <div className="d">{t.t('settings.aiBaseUrlHint')}</div>
-              </div>
+
+        {/* 模型选择 */}
+        <div className="set-row">
+          <div className="info">
+            <div className="t">{t.t('settings.aiModel')}</div>
+            <div className="d">{t.t('settings.aiModelHint')}</div>
+          </div>
+          <div className="flex" style={{ gap: 8, alignItems: 'center' }}>
+            {aiModels && aiModels.length > 0 ? (
+              <CustomSelect
+                width={260}
+                value={draft.ai.model}
+                options={[
+                  ...(!aiModels.includes(draft.ai.model) ? [{ value: draft.ai.model, label: draft.ai.model }] : []),
+                  ...aiModels.map((m) => ({ value: m, label: m }))
+                ]}
+                onChange={(v) => setAi({ model: v })}
+              />
+            ) : currentAiProvider.presetModels.length > 0 ? (
+              <CustomSelect
+                width={260}
+                value={draft.ai.model}
+                options={[
+                  ...(!currentAiProvider.presetModels.includes(draft.ai.model) ? [{ value: draft.ai.model, label: draft.ai.model }] : []),
+                  ...currentAiProvider.presetModels.map((m) => ({ value: m, label: m }))
+                ]}
+                onChange={(v) => setAi({ model: v })}
+              />
+            ) : (
               <input
                 className="input"
-                style={{ width: 300 }}
-                value={draft.ai.baseUrl}
-                onChange={(e) => setAi({ baseUrl: e.target.value })}
+                style={{ width: 260 }}
+                placeholder="例如: Qwen/Qwen2.5-7B-Instruct"
+                value={draft.ai.model}
+                onChange={(e) => setAi({ model: e.target.value })}
               />
-            </div>
-            <div className="set-row">
-              <div className="info">
-                <div className="t">{t.t('settings.aiModel')}</div>
-                <div className="d">{t.t('settings.aiModelHint')}</div>
-              </div>
-              {aiModels ? (
-                <CustomSelect
-                  width={280}
-                  value={draft.ai.model}
-                  options={[
-                    ...(!aiModels.includes(draft.ai.model) ? [{ value: draft.ai.model, label: draft.ai.model }] : []),
-                    ...aiModels.map((m) => ({ value: m, label: m }))
-                  ]}
-                  onChange={(v) => setAi({ model: v })}
-                />
-              ) : (
-                <input
-                  className="input"
-                  style={{ width: 280 }}
-                  value={draft.ai.model}
-                  onChange={(e) => setAi({ model: e.target.value })}
-                />
-              )}
-              <Btn variant="ghost" size="sm" disabled={aiModelsLoading} onClick={pullModels}>
-                {aiModelsLoading ? '…' : aiModels ? t.t('common.refresh') : t.t('settings.aiPullModels')}
-              </Btn>
-            </div>
-          </>
-        )}
+            )}
+            <Btn variant="ghost" size="sm" disabled={aiModelsLoading} onClick={pullModels}>
+              {aiModelsLoading ? '…' : aiModels ? t.t('common.refresh') : t.t('settings.aiPullModels')}
+            </Btn>
+          </div>
+        </div>
       </Panel>
 
       <SectionHead idx={5}>{t.t('settings.cs2')}</SectionHead>
@@ -914,16 +1046,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           onConfirm={confirmRecommended}
         />
       )}
-      {/* AI 推荐免费（Groq llama）声明弹窗 */}
-      {showAiRecModal && (
-        <Modal
-          title={t.t('settings.aiRecTitle')}
-          body={t.t('settings.aiRecBody')}
-          confirmLabel={t.t('settings.aiRecConfirm')}
-          onClose={() => setShowAiRecModal(false)}
-          onConfirm={confirmAiRecommended}
-        />
-      )}
+
     </div>
   )
 }

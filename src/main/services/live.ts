@@ -243,13 +243,14 @@ export class LiveService {
 
   /** 一键启动/原生回放 */
   async launch(
-    opts?: { toolsMode?: boolean; playDemoPath?: string; voiceHud?: boolean },
+    opts?: { toolsMode?: boolean; playDemoPath?: string; voiceHud?: boolean; startTick?: number },
     userArgs?: string,
     installPath?: string,
     _display?: { mode?: string; resolution?: string }
   ): Promise<LaunchResult> {
     const demoPath = opts?.playDemoPath
     const voiceHud = !!opts?.voiceHud
+    const startTick = typeof opts?.startTick === 'number' && opts.startTick > 0 ? opts.startTick : undefined
     const extra: string[] = (userArgs ?? '').match(/\S+/g) ?? []
 
     // ① 原生回放模式（写入 cfg 秒开，带 +cl_demo_predict 0 保证导播视角完全正常）
@@ -285,7 +286,13 @@ export class LiveService {
           const cfgLines = voiceHud
             ? ['demo_ui_mode 2', 'cl_demo_predict 0', 'tv_listen_voice_indices -1', 'tv_listen_voice_indices_h -1', `playdemo "${staged}"`]
             : ['demo_ui_mode 2', 'cl_demo_predict 0', `playdemo "${staged}"`]
+          if (startTick) {
+            cfgLines.push(`demo_gototick ${startTick}`)
+            cfgLines.push(`bind "F8" "demo_gototick ${startTick}"`)
+          }
           await fs.writeFile(cfgFile, cfgLines.join('\n') + '\n', 'utf-8')
+
+          const tickArgs = startTick ? ['+demo_gototick', String(startTick)] : []
 
           // voiceHud 走 Steam -applaunch 避免 Steam 本地验证干扰
           if (voiceHud) {
@@ -297,7 +304,7 @@ export class LiveService {
                 error: '未找到 Steam（语音 HUD 需经 Steam 启动 CS2）。请确认 Steam 已安装且登录。'
               }
             }
-            const args = ['-applaunch', '730', '-insecure', '-novid', '-console', '-consolelog', 'dsh_hud.log', '+exec', 'dsh-play.cfg', ...extra]
+            const args = ['-applaunch', '730', '-insecure', '-novid', '-console', '-consolelog', 'dsh_hud.log', '+exec', 'dsh-play.cfg', ...tickArgs, ...extra]
             const child = spawn(steamExe, args, {
               cwd: dirname(steamExe),
               detached: true,
@@ -310,7 +317,7 @@ export class LiveService {
             return { ok: true, url: '', direct: true, exe: steamExe, demoFile: staged }
           }
 
-          const args: string[] = ['+exec', 'dsh-play.cfg', '+cl_demo_predict', '0', '-novid', ...extra]
+          const args: string[] = ['+exec', 'dsh-play.cfg', '+cl_demo_predict', '0', '-novid', ...tickArgs, ...extra]
           const child = spawn(exe, args, {
             cwd: dirname(exe),
             detached: true,

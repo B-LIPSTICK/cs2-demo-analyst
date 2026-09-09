@@ -343,9 +343,9 @@ export const DEFAULT_SETTINGS: Settings = {
     language: 'auto'
   },
   ai: {
-    baseUrl: 'https://api.groq.com/openai/v1',
+    baseUrl: 'https://api.siliconflow.cn/v1',
     apiKey: '',
-    model: 'llama-3.3-70b-versatile'
+    model: 'Qwen/Qwen2.5-7B-Instruct'
   },
   cs2: {
     launchArgs: '',
@@ -427,7 +427,12 @@ export interface Api {
     specNext: () => Promise<boolean>
     specPrev: () => Promise<boolean>
     specGoto: (userid: number) => Promise<boolean>
-    launch: (opts?: { toolsMode?: boolean; playDemoPath?: string; voiceHud?: boolean }) => Promise<LaunchResult>
+    launch: (opts?: {
+      toolsMode?: boolean
+      playDemoPath?: string
+      voiceHud?: boolean
+      startTick?: number
+    }) => Promise<LaunchResult>
     installGsi: () => Promise<string | null>
     locateInstall: () => Promise<string | null>
   }

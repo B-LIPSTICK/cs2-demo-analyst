@@ -70,22 +70,59 @@ export function DemoDetailPage({
     const cmd = `demo_gototick ${tick}`
     try {
       await navigator.clipboard.writeText(cmd)
-      toast.push(t('common.jumpCopied').replace('{cmd}', cmd))
     } catch {
-      toast.push(`demo_gototick ${tick}`)
+      /* ignore */
+    }
+    const status = await window.api.live.getStatus().catch(() => null)
+    if (status?.cs2Running) {
+      toast.push(t('common.jumpCopiedRunning').replace('{cmd}', cmd))
+    } else {
+      toast.push(t('common.jumpCopied').replace('{cmd}', cmd))
+    }
+  }
+
+  /** 局外一键启动或局内跳转 */
+  const playFromTick = async (tick?: number) => {
+    if (!detail) return
+    const cmd = typeof tick === 'number' && tick > 0 ? `demo_gototick ${tick}` : ''
+    if (cmd) {
+      try {
+        await navigator.clipboard.writeText(cmd)
+      } catch {
+        /* ignore */
+      }
+    }
+    const status = await window.api.live.getStatus().catch(() => null)
+    if (status?.cs2Running) {
+      if (cmd) {
+        toast.push(t('common.jumpCopiedRunning').replace('{cmd}', cmd), 'warn')
+      } else {
+        toast.push('CS2 正在运行中：请在游戏内按 ~ 打开控制台', 'warn')
+      }
+      return
+    }
+    const s = await window.api.settings.get()
+    const voiceHud = !!s.cs2?.voiceHud
+    if (voiceHud) toast.push(t('detail.voiceHudPreparing'))
+    const r = await window.api.live.launch({
+      playDemoPath: detail.meta.path,
+      voiceHud,
+      startTick: tick
+    })
+    if (r.ok) {
+      if (typeof tick === 'number' && tick > 0) {
+        toast.push(t('common.jumpLaunched').replace('{tick}', String(tick)))
+      } else {
+        toast.push(t('detail.playLaunched'))
+      }
+    } else {
+      toast.push(r.error ?? t('common.error'), 'warn')
     }
   }
 
   /** 播放：调用 CS2 原生内置播放器（+exec cfg）稳定原画质播放 */
   const playInCs2 = async () => {
-    if (!detail) return
-    const s = await window.api.settings.get()
-    const voiceHud = !!s.cs2?.voiceHud
-    if (voiceHud) toast.push(t('detail.voiceHudPreparing'))
-    const r = await window.api.live.launch({ playDemoPath: detail.meta.path, voiceHud })
-    if (r.ok) {
-      toast.push(t('detail.playLaunched'))
-    } else toast.push(r.error ?? t('common.error'), 'warn')
+    await playFromTick(round ? round.startTick : undefined)
   }
 
   const parseAndWait = async () => {
@@ -157,9 +194,14 @@ export function DemoDetailPage({
               </div>
             </div>
             <div className="flex gap-8" style={{ alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <Btn size="sm" variant="accent" onClick={playInCs2}>
+              <Btn
+                size="sm"
+                variant="accent"
+                onClick={playInCs2}
+                title={round ? `局外启动 CS2 并直接跳转至 R${round.roundNum} 开始播放` : '局外启动 CS2 播放完整录像'}
+              >
                 <IcJump size={12} />
-                {t('detail.playInCs2')}
+                {round ? t('detail.playRound').replace('{round}', String(round.roundNum)) : t('detail.playInCs2')}
               </Btn>
               <Btn
                 size="sm"
@@ -269,7 +311,13 @@ export function DemoDetailPage({
             />
             <div className="kill-list" style={{ maxHeight: 420, overflowY: 'auto' }}>
               {sortedKills.map((k, i) => (
-                <KillRow key={`${k.tick}-${i}`} kill={k} tickRate={meta.tickRate ?? 64} onJump={jump} />
+                <KillRow
+                  key={`${k.tick}-${i}`}
+                  kill={k}
+                  tickRate={meta.tickRate ?? 64}
+                  onJump={jump}
+                  onPlay={playFromTick}
+                />
               ))}
               {sortedKills.length === 0 && (
                 <div className="muted" style={{ padding: '18px 12px', fontSize: 12 }}>
@@ -438,6 +486,7 @@ export function DemoDetailPage({
           kills={allKills}
           tickRate={meta.tickRate ?? 64}
           onJump={jump}
+          onPlay={playFromTick}
           onClose={() => setPlayer(null)}
         />
       )}
@@ -700,18 +749,20 @@ function RoundBar({
 function KillRow({
   kill,
   tickRate,
-  onJump
+  onJump,
+  onPlay
 }: {
   kill: KillEvent
   tickRate: number
   onJump: (tick: number) => void
+  onPlay?: (tick: number) => void
 }) {
   // 自杀/环境击杀（attacker 与 victim 同一人，或 attacker=世界 65535）
   const isSuicide = kill.attackerUid === kill.victimUid || kill.attackerUid === 65535
   const attackerLabel = isSuicide ? '' : (kill.attackerName ?? '—')
   const victimLabel = isSuicide ? (kill.attackerName ?? kill.victimName ?? '—') : (kill.victimName ?? '—')
   return (
-    <div className="kill-row" onClick={() => onJump(kill.tick)}>
+    <div className="kill-row" onClick={() => onJump(kill.tick)} title="点击复制 demo_gototick 跳转指令">
       <span className="tk">{fmtTick(kill.tick, tickRate)}</span>
       <span
         className={`nm atk ${kill.attackerTeam === 'T' ? 't' : kill.attackerTeam === 'CT' ? 'ct' : ''}`}
@@ -730,6 +781,19 @@ function KillRow({
         {victimLabel}
       </span>
       <span className="rn">R{kill.roundNum}</span>
+      {onPlay && (
+        <button
+          type="button"
+          className="kill-play-btn"
+          title="局外直接启动 CS2 并跳转至此时刻"
+          onClick={(e) => {
+            e.stopPropagation()
+            onPlay(kill.tick)
+          }}
+        >
+          ▶
+        </button>
+      )}
     </div>
   )
 }
@@ -740,12 +804,14 @@ function PlayerModal({
   kills,
   tickRate,
   onJump,
+  onPlay,
   onClose
 }: {
   player: PlayerInfo
   kills: KillEvent[]
   tickRate: number
   onJump: (tick: number) => void
+  onPlay?: (tick: number) => void
   onClose: () => void
 }) {
   const t = useTKey()
@@ -873,6 +939,7 @@ function PlayerModal({
                   onJump(k.tick)
                   onClose()
                 }}
+                title="点击复制 demo_gototick 跳转指令"
               >
                 <span className="tm">{fmtTick(k.tick, tickRate)}</span>
                 <span className="wp">
@@ -881,6 +948,20 @@ function PlayerModal({
                 </span>
                 <span className="vic">{k.victimName ?? '—'}</span>
                 <span className="rn">R{k.roundNum}</span>
+                {onPlay && (
+                  <button
+                    type="button"
+                    className="kill-play-btn"
+                    title="局外直接启动 CS2 并跳转至此时刻"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onPlay(k.tick)
+                      onClose()
+                    }}
+                  >
+                    ▶
+                  </button>
+                )}
               </div>
             ))}
         </div>

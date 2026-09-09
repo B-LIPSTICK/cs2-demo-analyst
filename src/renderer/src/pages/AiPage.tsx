@@ -257,10 +257,29 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
     const cmd = `demo_gototick ${tick}`
     try {
       await navigator.clipboard.writeText(cmd)
-      toast.push(t('common.jumpCopied').replace('{cmd}', cmd))
     } catch {
-      toast.push(`demo_gototick ${tick}`)
+      /* ignore */
     }
+    const status = await window.api.live.getStatus().catch(() => null)
+    if (status?.cs2Running) {
+      toast.push(t('common.jumpCopiedRunning').replace('{cmd}', cmd))
+      return
+    }
+    if (detail?.meta.path) {
+      const s = await window.api.settings.get()
+      const voiceHud = !!s.cs2?.voiceHud
+      if (voiceHud) toast.push(t('detail.voiceHudPreparing'))
+      const r = await window.api.live.launch({
+        playDemoPath: detail.meta.path,
+        voiceHud,
+        startTick: tick
+      })
+      if (r.ok) {
+        toast.push(t('common.jumpLaunched').replace('{tick}', String(tick)))
+        return
+      }
+    }
+    toast.push(t('common.jumpCopied').replace('{cmd}', cmd))
   }
 
   const ask = async (q: string) => {
