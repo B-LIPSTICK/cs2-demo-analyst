@@ -907,6 +907,30 @@ export function getKillJumpTick(killTick: number, tickRate = 64, roundStartTick?
   return Math.max(1, target)
 }
 
+/** 武器名展示规范化（兼容旧缓存中带皮肤后缀的 hkp2000_txz04 等未解析原始字段） */
+export function displayWeapon(raw?: string): string {
+  if (!raw) return '—'
+  const s = raw.toLowerCase().trim()
+  if (s.startsWith('weapon_')) {
+    return displayWeapon(s.slice(7))
+  }
+  if (s.includes('hkp2000') || s.includes('p2000')) return 'P2000'
+  if (s.includes('usp_silencer')) return 'USP-S'
+  if (s.includes('m4a1_silencer')) return 'M4A1-S'
+  if (s.includes('ak47')) return 'AK-47'
+  if (s.includes('deagle')) return 'Desert Eagle'
+  if (s.includes('ssg08')) return 'SSG 08'
+  if (s.includes('taser') || s.includes('zeus')) return 'Zeus x27'
+  if (s.includes('cz75')) return 'CZ75-A'
+  if (s.includes('knife') || s.includes('bayonet')) return 'Knife'
+  // 剥除 5E 等对战平台前后缀
+  const cleaned = raw
+    .replace(/^weapon_/i, '')
+    .replace(/^5e_\w+_/i, '')
+    .replace(/_(txz?\d*|fm\d*|vip|gold|blood|dawn|volt|emerald|chroma|prem|elite|s\d+)$/i, '')
+  return cleaned || raw
+}
+
 function KillRow({
   kill,
   tickRate,
@@ -939,7 +963,7 @@ function KillRow({
         {attackerLabel}
       </span>
       <span className="wp">
-        <span className="wp-name">{isSuicide ? '自杀' : kill.weapon}</span>
+        <span className="wp-name">{isSuicide ? '自杀' : displayWeapon(kill.weapon)}</span>
         <KillIcons kill={kill} />
       </span>
       <span
@@ -991,7 +1015,10 @@ function PlayerModal({
   )
   const byWeapon = useMemo(() => {
     const map = new Map<string, number>()
-    for (const k of myKills) map.set(k.weapon, (map.get(k.weapon) ?? 0) + 1)
+    for (const k of myKills) {
+      const w = displayWeapon(k.weapon)
+      map.set(w, (map.get(w) ?? 0) + 1)
+    }
     return [...map.entries()].sort((a, b) => b[1] - a[1])
   }, [myKills])
 
@@ -1115,7 +1142,7 @@ function PlayerModal({
                 >
                   <span className="tm">{fmtTick(k.tick, tickRate)}</span>
                   <span className="wp">
-                    {k.weapon}
+                    {displayWeapon(k.weapon)}
                     <KillIcons kill={k} />
                   </span>
                   <span className="vic">{k.victimName ?? '—'}</span>

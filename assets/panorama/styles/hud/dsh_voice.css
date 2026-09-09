@@ -25,6 +25,8 @@
 	flow-children: right;
 	horizontal-align: left;
 	margin-top: 3px;
+	padding-left: 4px;
+	padding-right: 8px;
 	opacity: 0;
 	visibility: visible; /* 保持占位：说完消失时其他行不跳动 */
 	transition-property: opacity;
@@ -36,20 +38,20 @@
 	opacity: 1;
 }
 
-/* 方形头像（CS2 原生风格：小圆角方形，说话时轻微放大+发光） */
+/* 方形头像（CS2 原生风格：小圆角方形，左右对称不被容器截断） */
 .dsh-voice-avatar {
 	width: 28px;
 	height: 28px;
-	margin-right: 7px;
+	margin-left: 3px;
+	margin-right: 8px;
 	border-radius: 3px;
 	vertical-align: center;
 	box-shadow: 0px 0px 3px #000000aa;
-	transition-property: transform, box-shadow;
+	transition-property: box-shadow;
 	transition-duration: 0.08s;
 }
 
 .dsh-voice-item.visible .dsh-voice-avatar {
-	transform: scale3d(1.1, 1.1, 1);
 	box-shadow: 0px 0px 6px 1px #ffffff44;
 }
 

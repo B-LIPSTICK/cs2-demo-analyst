@@ -61,16 +61,20 @@ const TICK_RATE = 64
 const WEAPON_NAMES: Record<string, string> = {
   ak47: 'AK-47',
   m4a4: 'M4A4',
+  m4a1: 'M4A4',
   m4a1_silencer: 'M4A1-S',
   awp: 'AWP',
   ssg08: 'SSG 08',
   deagle: 'Desert Eagle',
   glock: 'Glock-18',
   usp_silencer: 'USP-S',
+  hkp2000: 'P2000',
+  p2000: 'P2000',
   p250: 'P250',
   fiveseven: 'Five-SeveN',
   tec9: 'Tec-9',
   cz75a: 'CZ75-A',
+  cz75: 'CZ75-A',
   elite: 'Dual Berettas',
   revolver: 'R8 Revolver',
   mac10: 'MAC-10',
@@ -92,14 +96,35 @@ const WEAPON_NAMES: Record<string, string> = {
   aug: 'AUG',
   scar20: 'SCAR-20',
   g3sg1: 'G3SG1',
+  taser: 'Zeus x27',
+  zeus: 'Zeus x27',
   knife: 'Knife',
   knife_t: 'Knife',
   bayonet: 'Knife',
   karambit: 'Knife',
-  zeus: 'Zeus x27',
+  knife_karambit: 'Knife',
+  knife_m9_bayonet: 'Knife',
+  knife_butterfly: 'Knife',
+  knife_falchion: 'Knife',
+  knife_flip: 'Knife',
+  knife_gut: 'Knife',
+  knife_tactical: 'Knife',
+  knife_push: 'Knife',
+  knife_survival_bowie: 'Knife',
+  knife_ursus: 'Knife',
+  knife_gypsy_jackknife: 'Knife',
+  knife_stiletto: 'Knife',
+  knife_widowmaker: 'Knife',
+  knife_canis: 'Knife',
+  knife_cord: 'Knife',
+  knife_skeleton: 'Knife',
+  knife_outdoor: 'Knife',
+  knife_kukri: 'Knife',
+  knife_css: 'Knife',
   hegrenade: 'HE Grenade',
   molotov: 'Molotov',
   incgrenade: 'Incendiary',
+  inferno: 'Molotov',
   flashbang: 'Flashbang',
   smokegrenade: 'Smoke',
   decoy: 'Decoy',
@@ -117,26 +142,30 @@ const CHAT_CHANNELS: Record<string, ChatChannel> = {
 }
 
 /**
- * 武器名规范化：官方 demo 事件里是 ak47/m4a1_silencer 等；
- * 5E 等平台带皮肤前缀/后缀（5e_2024pass5_awp、ak47_tx12、5e_2024pass5_knife_skeleton），
+ * 武器名规范化：官方 demo 事件里是 ak47/hkp2000/m4a1_silencer 等；
+ * 5E 等平台带皮肤前缀/后缀（5e_2024pass5_awp、hkp2000_txz04、ak47_tx12、5e_2024pass5_knife_skeleton），
  * 需剥掉皮肤部分再查表。
  */
 function weaponName(raw: unknown): string {
-  const s = String(raw ?? '').toLowerCase()
+  let s = String(raw ?? '').toLowerCase().trim()
   if (!s || s === 'world') return '—'
+  if (s.startsWith('weapon_')) s = s.slice(7)
   if (WEAPON_NAMES[s]) return WEAPON_NAMES[s]
-  // 剥 5E 皮肤前缀（如 5e_2024pass5_ / 5e_2025_）与 _tx12/_txz12/_vip 等皮肤后缀
+  // 剥 5E 等平台皮肤前缀（如 5e_2024pass5_ / 5e_2025_）与 _tx12/_txz04/_vip 等皮肤后缀
   const stripped = s
     .replace(/^5e_20\d{2}pass\d+_/, '')
     .replace(/^5e_[a-z0-9]+_/, '')
     .replace(/_(txz?\d*|fm\d*|vip|gold|blood|dawn|volt|emerald|chroma|prem|elite|s\d+)$/, '')
   if (WEAPON_NAMES[stripped]) return WEAPON_NAMES[stripped]
+  // 若剥除后仍残留类似 _txz04 / _tx01 之类的下划线后缀变种，尝试去掉末尾 _xxx 再次查表
+  const baseName = stripped.replace(/_[a-z0-9]+$/, '')
+  if (baseName && WEAPON_NAMES[baseName]) return WEAPON_NAMES[baseName]
   // 兜底：从长到短匹配已知武器名子串（如 5e_2024pass5_knife_skeleton → knife）
   const keys = Object.keys(WEAPON_NAMES).sort((a, b) => b.length - a.length)
   for (const k of keys) {
-    if (stripped.includes(k)) return WEAPON_NAMES[k]
+    if (stripped.includes(k) || s.includes(k)) return WEAPON_NAMES[k]
   }
-  if (stripped.includes('knife')) return 'Knife'
+  if (stripped.includes('knife') || s.includes('knife') || stripped.includes('bayonet')) return 'Knife'
   return s
 }
 
