@@ -10,6 +10,7 @@ import type { LaunchResult, LiveStatus } from '@shared/types'
 import { extractVoiceIndex } from './voiceIndex'
 import { buildVjsResource, buildVoiceDataJs, buildVpk } from './vpk'
 import { demoInjector } from './injector'
+import { VConsoleClient } from './vconsole'
 
 export interface LiveEvents {
   status: (s: LiveStatus) => void
@@ -24,6 +25,10 @@ export class LiveService {
     vconsoleConnected: false,
     gsiActive: false
   }
+  private vc: VConsoleClient | null = null
+  private vconsolePort = 29000
+  private pendingPlayDemo: string | null = null
+  private pendingStartTick: number | null = null
   private detectTimer: NodeJS.Timeout | null = null
   /** 普通模式播放 cfg（dsh-play.cfg）退出后清理定时器 */
   private playCfgCleanupTimer: NodeJS.Timeout | null = null
@@ -50,8 +55,10 @@ export class LiveService {
     }
   }
 
-  /** 兼容性保留 */
-  setPorts(_vconsolePort?: number, _gsiPort?: number): void {}
+  /** 设置 VConsole 端口 */
+  setPorts(vconsolePort?: number, _gsiPort?: number): void {
+    if (vconsolePort && vconsolePort > 0) this.vconsolePort = vconsolePort
+  }
 
   start(): void {
     this.detectTimer = setInterval(() => void this.poll(), 4000)
@@ -84,6 +91,8 @@ export class LiveService {
   stop(): void {
     if (this.detectTimer) clearInterval(this.detectTimer)
     if (this.playCfgCleanupTimer) clearTimeout(this.playCfgCleanupTimer)
+    this.vc?.close()
+    this.vc = null
   }
 
   // ─── 进程检测 ────────────────────────────────────────────────────────────
@@ -92,51 +101,136 @@ export class LiveService {
     const running = this.mockCs2 || (await isCs2Running())
     const changed = running !== this.status.cs2Running
     this.status.cs2Running = running
-    if (changed) {
-      this.status.state = running ? 'live' : 'idle'
+
+    if (running) {
+      if (!this.vc && !this.mockCs2) {
+        void this.connect()
+      }
+    } else {
+      if (this.vc) {
+        this.vc.close()
+        this.vc = null
+        this.status.vconsoleConnected = false
+      }
+    }
+
+    if (changed || (running && this.status.vconsoleConnected && this.status.state !== 'live')) {
+      this.status.state = running ? (this.status.vconsoleConnected ? 'live' : 'detected') : 'idle'
       this.emitStatus()
     }
   }
 
-  // ─── 指令兼容性桩 ───────────────────────────────────────────────────────
+  // ─── VConsole 控制台与指令 ───────────────────────────────────────────────
 
   async connect(): Promise<LiveStatus> {
+    if (this.vc && this.status.vconsoleConnected) return this.status
+    if (this.vc) {
+      this.vc.close()
+      this.vc = null
+    }
+    this.status.state = 'connecting'
+    this.emitStatus()
+
+    this.vc = new VConsoleClient(
+      {
+        onConnected: () => {
+          this.status.vconsoleConnected = true
+          this.status.state = 'live'
+          this.emitStatus()
+          if (process.env['DEBUG_LIVE'] === '1') console.log('[live] VConsole connected')
+        },
+        onReady: () => {
+          if (process.env['DEBUG_LIVE'] === '1') console.log('[live] VConsole ready')
+          if (this.pendingPlayDemo) {
+            const name = this.pendingPlayDemo
+            this.pendingPlayDemo = null
+            this.vc?.sendCommand(`playdemo ${name}`)
+            if (this.pendingStartTick) {
+              const tick = this.pendingStartTick
+              this.pendingStartTick = null
+              setTimeout(() => {
+                this.vc?.sendCommand(`demo_gototick ${tick}`)
+              }, 600)
+            }
+          }
+        },
+        onDisconnected: (_err) => {
+          this.status.vconsoleConnected = false
+          this.status.state = this.status.cs2Running ? 'detected' : 'idle'
+          this.emitStatus()
+          this.vc = null
+        },
+        onLine: (channel, text) => {
+          this.events.consoleLine?.(channel, text)
+        }
+      },
+      '127.0.0.1',
+      this.vconsolePort
+    )
+    this.vc.connect()
     return this.status
   }
 
-  sendCommand(_cmd: string): boolean {
-    return false
+  sendCommand(cmd: string): boolean {
+    return this.vc?.sendCommand(cmd) ?? false
   }
 
-  jumpTick(_tick: number): boolean {
+  jumpTick(tick: number): boolean {
+    if (this.vc && this.status.vconsoleConnected) {
+      const t = Math.round(tick)
+      return this.vc.sendCommand(`demo_gototick ${t}`)
+    }
     return false
   }
 
   pause(): boolean {
-    return false
+    return this.sendCommand('demo_pause')
   }
 
   resume(): boolean {
-    return false
+    return this.sendCommand('demo_resume')
   }
 
-  setTimescale(_x: number): boolean {
-    return false
+  setTimescale(x: number): boolean {
+    return this.sendCommand(`demo_timescale ${x}`)
   }
 
   specNext(): boolean {
-    return false
+    return this.sendCommand('spec_next')
   }
 
   specPrev(): boolean {
-    return false
+    return this.sendCommand('spec_prev')
   }
 
-  specGoto(_userid: number): boolean {
-    return false
+  specGoto(userid: number): boolean {
+    return this.sendCommand(`spec_goto ${userid}`)
   }
 
-  // ─── 播放与启动 ─────────────────────────────────────────────────────────
+  /**
+   * 为 VConsole / -tools 模式准备 demo：复制到 game/csgo/ 根目录
+   * （CS2 VConsole 的 playdemo 命令只按文件名加载——须放 game/csgo/ 根目录）。
+   * 返回可注入的文件名；失败返回 null。
+   */
+  private async stageDemoForPlay(demoPath: string, installPath?: string): Promise<string | null> {
+    const install = installPath ?? this.installPath ?? (await locateCs2Install(this.installPath))
+    if (!install) return null
+    const destDir = join(install, 'game', 'csgo')
+    try {
+      await fs.access(destDir)
+      const hash = createHash('sha1').update(demoPath).digest('hex').slice(0, 10)
+      const name = `dsh-${hash}.dem`
+      const dest = join(destDir, name)
+      try {
+        await fs.access(dest)
+      } catch {
+        await fs.copyFile(demoPath, dest)
+      }
+      return name
+    } catch {
+      return null
+    }
+  }
 
   /**
    * 为普通模式播放准备 demo：复制到「盘根:\dsh-demo\」目录（5E 同款思路）。
@@ -248,26 +342,75 @@ export class LiveService {
     installPath?: string,
     _display?: { mode?: string; resolution?: string }
   ): Promise<LaunchResult> {
+    const toolsMode = opts?.toolsMode ?? true
     const demoPath = opts?.playDemoPath
     const voiceHud = !!opts?.voiceHud
     const startTick = typeof opts?.startTick === 'number' && opts.startTick > 0 ? opts.startTick : undefined
     const extra: string[] = (userArgs ?? '').match(/\S+/g) ?? []
 
-    // ① 原生回放模式（写入 cfg 秒开，带 +cl_demo_predict 0 保证导播视角完全正常）
     if (demoPath) {
       const running = await isCs2Running()
+      // ① CS2 正在运行
       if (running) {
+        if (this.status.vconsoleConnected) {
+          const name = await this.stageDemoForPlay(demoPath, installPath)
+          if (name) {
+            const sent = this.sendCommand(`playdemo ${name}`)
+            if (sent) {
+              if (startTick) {
+                setTimeout(() => this.sendCommand(`demo_gototick ${startTick}`), 600)
+              }
+              return { ok: true, url: '', injected: true, demoFile: name }
+            }
+          }
+          return {
+            ok: false,
+            url: '',
+            error: '无法准备 demo 文件（复制到 CS2 目录失败）。请检查 CS2 安装路径设置。'
+          }
+        }
         return {
           ok: false,
           url: '',
-          error: 'CS2 正在运行：请先退出 CS2，再点击播放 Demo 录像。'
+          error: 'CS2 正在运行中（控制台未直连）。请先退出 CS2，再点击播放 Demo 录像。'
         }
       }
+
+      // ② CS2 未运行：根据 toolsMode 决定启动方式
       const install = await locateCs2Install(installPath)
       if (install) {
         const exe = join(install, 'game', 'bin', 'win64', 'cs2.exe')
         try {
           await fs.access(exe)
+
+          // 2.1 直连跳转模式 (toolsMode)：原生分辨率 + -tools -noassetbrowser，VConsole 远程控制
+          if (toolsMode && !voiceHud) {
+            const name = await this.stageDemoForPlay(demoPath, install)
+            if (!name) {
+              return {
+                ok: false,
+                url: '',
+                error: '无法准备 demo 文件（复制到 CS2 目录失败）。请检查磁盘空间或 CS2 路径设置。'
+              }
+            }
+            this.pendingPlayDemo = name
+            this.pendingStartTick = startTick ?? null
+
+            const args: string[] = ['-tools', '-noassetbrowser', '-novid', ...extra]
+            const child = spawn(exe, args, {
+              cwd: dirname(exe),
+              detached: true,
+              stdio: 'ignore',
+              windowsHide: false
+            })
+            child.on('error', () => {})
+            child.unref()
+
+            setTimeout(() => void this.connect(), 1500)
+            return { ok: true, url: '', direct: true, exe, demoFile: name, starting: true }
+          }
+
+          // 2.2 普通原生模式或带 voiceHud：+exec dsh-play.cfg 秒播
           const staged = await this.stageDemoForPlayNoSpace(demoPath, install)
           if (!staged) {
             return {
@@ -334,7 +477,8 @@ export class LiveService {
       }
 
       // 无法直启时的回退（steam:// URL）
-      const url = `steam://run/730//-novid%20${encodeURIComponent(extra.join(' '))}`
+      const fallbackTools = toolsMode ? '-tools -noassetbrowser ' : ''
+      const url = `steam://run/730//${fallbackTools}-novid%20${encodeURIComponent(extra.join(' '))}`
       try {
         await shell.openExternal(url)
         return { ok: true, url }
@@ -343,13 +487,15 @@ export class LiveService {
       }
     }
 
-    // ② 无 Demo 时直接启动 CS2（设置页测试启动）
+    // ③ 无 Demo 时直接启动 CS2（设置页测试启动）
     const install = await locateCs2Install(installPath)
     if (install) {
       const exe = join(install, 'game', 'bin', 'win64', 'cs2.exe')
       try {
         await fs.access(exe)
-        const args: string[] = ['-novid', ...extra]
+        const args: string[] = toolsMode
+          ? ['-tools', '-noassetbrowser', '-novid', ...extra]
+          : ['-novid', ...extra]
         const child = spawn(exe, args, {
           cwd: dirname(exe),
           detached: true,
@@ -358,13 +504,17 @@ export class LiveService {
         })
         child.on('error', () => {})
         child.unref()
+        if (toolsMode) {
+          setTimeout(() => void this.connect(), 1500)
+        }
         return { ok: true, url: '', direct: true, exe }
       } catch {
         /* noop */
       }
     }
 
-    const url = `steam://run/730//-novid%20${encodeURIComponent(extra.join(' '))}`
+    const fallbackTools = toolsMode ? '-tools -noassetbrowser ' : ''
+    const url = `steam://run/730//${fallbackTools}-novid%20${encodeURIComponent(extra.join(' '))}`
     try {
       await shell.openExternal(url)
       return { ok: true, url }

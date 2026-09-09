@@ -2118,11 +2118,11 @@ body {
 /* 击杀行窄容器（按实际宽度，而非窗口宽度）自适应换行 */
 @container (max-width: 540px) {
   .kill-row {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr auto auto;
     grid-template-areas:
-      'tk rn'
-      'atk wp'
-      'vic vic';
+      'tk rn jump'
+      'atk wp jump'
+      'vic vic jump';
     row-gap: 6px;
   }
 
@@ -2146,12 +2146,18 @@ body {
   .kill-row .nm:last-of-type {
     grid-area: vic;
   }
+
+  .kill-row .jump {
+    grid-area: jump;
+    align-self: center;
+    justify-self: end;
+  }
 }
 
 .kill-row {
   display: grid;
-  /* 时间 | 击杀者(右对齐靠近武器) | 武器胶囊(居中) | 受害者(左对齐紧随武器) | 回合 */
-  grid-template-columns: 56px 1fr auto 1fr 48px;
+  /* 时间 | 击杀者(右对齐靠近武器) | 武器胶囊(居中) | 受害者(左对齐紧随武器) | 回合 | 跳转按钮 */
+  grid-template-columns: 56px 1fr auto 1fr 48px 28px;
   align-items: center;
   gap: 12px;
   padding: 7px 14px;
@@ -2345,35 +2351,24 @@ body {
   justify-self: end;
 }
 
-/* 击杀行局外启动播放按钮 */
-.kill-play-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  border: 1px solid var(--accent);
-  background: rgba(var(--accent-rgb), 0.15);
-  color: var(--accent);
-  font-size: 10px;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s ease, transform 0.1s ease, background 0.15s ease;
-  padding: 0;
-  margin-left: 6px;
-  flex-shrink: 0;
+/* 击杀行与弹窗内的统一跳转按钮 */
+.kill-row .jump,
+.pm-kill .jump {
+  opacity: 0.65;
+  transition: opacity 0.15s ease, transform 0.15s ease, background 0.15s ease;
+  justify-self: end;
 }
 
-.kill-row:hover .kill-play-btn,
-.pm-kill:hover .kill-play-btn {
+.kill-row:hover .jump,
+.pm-kill:hover .jump {
   opacity: 1;
 }
 
-.kill-play-btn:hover {
-  background: var(--accent);
-  color: #fff;
-  transform: scale(1.1);
+.kill-row .jump:hover,
+.pm-kill .jump:hover {
+  background: var(--hover-bg);
+  color: var(--accent);
+  transform: scale(1.08);
 }
 
 /* 亮色模式适配 */
@@ -2611,7 +2606,7 @@ body {
 
 .pm-kill {
   display: grid;
-  grid-template-columns: 64px 1fr 1fr 48px;
+  grid-template-columns: 64px 1fr 1fr 48px 28px;
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
@@ -3183,7 +3178,7 @@ body {
   }
 
   .kill-row {
-    grid-template-columns: 70px 1fr auto 1fr 46px;
+    grid-template-columns: 60px 1fr auto 1fr 44px 28px;
     gap: 8px;
     padding: 9px 12px;
   }
@@ -3199,7 +3194,7 @@ body {
   }
 
   .pm-kill {
-    grid-template-columns: 60px 1fr 1fr 44px;
+    grid-template-columns: 60px 1fr 1fr 44px 28px;
     gap: 8px;
   }
 }
@@ -3222,11 +3217,11 @@ body {
   }
 
   .kill-row {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr auto auto;
     grid-template-areas:
-      'tk rn'
-      'atk wp'
-      'vic vic';
+      'tk rn jump'
+      'atk wp jump'
+      'vic vic jump';
     row-gap: 6px;
   }
 
@@ -3249,6 +3244,12 @@ body {
 
   .kill-row .nm:last-of-type {
     grid-area: vic;
+  }
+
+  .kill-row .jump {
+    grid-area: jump;
+    align-self: center;
+    justify-self: end;
   }
 
   .tline {

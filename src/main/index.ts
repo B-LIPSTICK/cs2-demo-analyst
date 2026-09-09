@@ -86,6 +86,9 @@ function registerIpc(): void {
     if (patch.cs2?.installPath !== undefined) {
       live.setInstallPath(patch.cs2.installPath)
     }
+    if (patch.cs2?.vconsolePort !== undefined) {
+      live.setPorts(patch.cs2.vconsolePort)
+    }
     // 事件载荷必须带 { settings } 包装（renderer 按 e.settings 读取；
     // 之前发裸对象导致 e.settings=undefined → App setSettings(undefined) → 页面全黑）
     mainWindow?.webContents.send('settings:changed', { settings })
@@ -183,7 +186,11 @@ function registerIpc(): void {
   ipcMain.handle('live:launch', async (_e, opts?: { toolsMode?: boolean; playDemoPath?: string; voiceHud?: boolean; startTick?: number }) => {
     const s = await getSettings()
     return live.launch(
-      { ...opts, voiceHud: opts?.voiceHud ?? s.cs2.voiceHud },
+      {
+        ...opts,
+        toolsMode: opts?.toolsMode ?? (s.cs2.playMode !== 'native'),
+        voiceHud: opts?.voiceHud ?? s.cs2.voiceHud
+      },
       s.cs2.launchArgs ?? '',
       s.cs2.installPath
     )

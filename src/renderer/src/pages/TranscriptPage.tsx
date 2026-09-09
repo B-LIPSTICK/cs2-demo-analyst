@@ -4,7 +4,6 @@ import {
   Btn,
   CustomSelect,
   Empty,
-  IcChevron,
   IcDownload,
   IcJump,
   IcMic,
@@ -176,6 +175,11 @@ export function TranscriptPage({
   }, [detail, players, round, query])
 
   const jump = async (tick: number) => {
+    const jumped = await window.api.live.jumpTick(tick).catch(() => false)
+    if (jumped) {
+      toast.push(t('common.jumpDirectSuccess').replace('{tick}', String(tick)))
+      return
+    }
     const cmd = `demo_gototick ${tick}`
     try {
       await navigator.clipboard.writeText(cmd)
@@ -481,6 +485,7 @@ function ChatRow({
   onJump: (tick: number) => void
   avatar?: string
 }) {
+  const t = useTKey()
   return (
     <div className="tline">
       <span className="tm">{fmtTick(msg.tick, tickRate)}</span>
@@ -492,8 +497,8 @@ function ChatRow({
         </Tag>
       </span>
       <span className="txt">{msg.text}</span>
-      <button className="icon-btn jump" onClick={() => onJump(msg.tick)}>
-        <IcChevron size={13} />
+      <button className="icon-btn jump" onClick={() => onJump(msg.tick)} title={t('transcript.jump')}>
+        <IcJump size={13} />
       </button>
     </div>
   )

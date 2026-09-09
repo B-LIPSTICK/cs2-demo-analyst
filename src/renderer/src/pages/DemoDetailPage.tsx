@@ -4,7 +4,6 @@ import {
   Btn,
   Empty,
   IcBack,
-  IcChat,
   IcChevronLeft,
   IcChevronRight,
   IcFolder,
@@ -67,6 +66,11 @@ export function DemoDetailPage({
   }, [id])
 
   const jump = async (tick: number) => {
+    const jumped = await window.api.live.jumpTick(tick).catch(() => false)
+    if (jumped) {
+      toast.push(t('common.jumpDirectSuccess').replace('{tick}', String(tick)))
+      return
+    }
     const cmd = `demo_gototick ${tick}`
     try {
       await navigator.clipboard.writeText(cmd)
@@ -84,6 +88,13 @@ export function DemoDetailPage({
   /** 局外一键启动或局内跳转 */
   const playFromTick = async (tick?: number) => {
     if (!detail) return
+    if (typeof tick === 'number' && tick > 0) {
+      const jumped = await window.api.live.jumpTick(tick).catch(() => false)
+      if (jumped) {
+        toast.push(t('common.jumpDirectSuccess').replace('{tick}', String(tick)))
+        return
+      }
+    }
     const cmd = typeof tick === 'number' && tick > 0 ? `demo_gototick ${tick}` : ''
     if (cmd) {
       try {
@@ -316,7 +327,6 @@ export function DemoDetailPage({
                   kill={k}
                   tickRate={meta.tickRate ?? 64}
                   onJump={jump}
-                  onPlay={playFromTick}
                 />
               ))}
               {sortedKills.length === 0 && (
@@ -381,12 +391,7 @@ export function DemoDetailPage({
                     >
                       {p.utilityDamage ?? 0}
                     </td>
-                    <td
-                      className="num"
-                      title={`闪光助攻: ${p.flashAssists ?? 0} · 致盲敌方: ${p.enemiesBlinded ?? 0}次 (${p.enemyBlindDuration ?? 0}s) · 误闪队友: ${p.teammatesBlinded ?? 0}次 (${p.teamBlindDuration ?? 0}s)`}
-                    >
-                      {p.flashAssists ?? 0}
-                    </td>
+                    <td className="num">{p.flashAssists ?? 0}</td>
                     <td className="num">{p.mvp}</td>
                   </tr>
                 ))}
@@ -399,30 +404,28 @@ export function DemoDetailPage({
       {/* 回合详情 */}
       {round && <RoundStrip round={round} tickRate={meta.tickRate ?? 64} onJump={jump} />}
 
-      {/* 语音 / 聊天概要 */}
-      <div className="grid-2" style={{ marginTop: 16 }}>
-        <Panel hd={t('detail.voice')} dot={voice.length > 0}>
+      {/* 底部两栏：语音转写列表 + 局内文字聊天 */}
+      <div className="grid-2" style={{ marginTop: 14 }}>
+        <Panel
+          hd={
+            <div className="flex between" style={{ alignItems: 'center', width: '100%' }}>
+              <span>{t('detail.voice')}</span>
+              {voice.length > 0 && (
+                <Btn size="sm" variant="ghost" onClick={onGoTranscript}>
+                  {t('detail.goTranscript')} ({voice.length}) →
+                </Btn>
+              )}
+            </div>
+          }
+        >
           <div className="panel-bd">
             {voice.length === 0 ? (
-              meta.hasVoice === true ? (
-                <div style={{ fontSize: 12, lineHeight: 1.7 }}>
-                  <span className="muted">
-                    {t('detail.voiceDetected').replace('{s}', String(Math.round(voiceSecs)))}
-                  </span>
-                  <div style={{ marginTop: 8 }}>
-                    <Btn size="sm" variant="accent" onClick={onGoTranscript}>
-                      {t('library.transcribe')} →
-                    </Btn>
-                  </div>
-                </div>
-              ) : (
-                <div className="muted" style={{ fontSize: 12 }}>
-                  {t('detail.noVoice')} · {t('detail.voiceHint')}
-                </div>
-              )
+              <div className="muted" style={{ fontSize: 12 }}>
+                {meta.hasVoice ? t('detail.noVoice') : t('library.noVoice')}
+              </div>
             ) : (
               <div style={{ maxHeight: 240, overflowY: 'auto' }}>
-                {voice.slice(0, 80).map((v, i) => (
+                {voice.slice(-60).reverse().map((v, i) => (
                   <div key={i} className="tline" onClick={() => jump(v.tick)}>
                     <span className="tm">{fmtTick(v.tick, meta.tickRate ?? 64)}</span>
                     <span className="who">
@@ -432,9 +435,11 @@ export function DemoDetailPage({
                         size={16}
                         avatar={(meta.players ?? []).find((x) => x.name === v.playerName)?.avatar}
                       />
-                      <span className={`nm ${v.team === 'T' ? 't' : v.team === 'CT' ? 'ct' : ''}`}>{v.playerName}</span>
+                      <span className={`nm ${v.team === 'T' ? 't' : v.team === 'CT' ? 'ct' : ''}`}>
+                        {v.playerName}
+                      </span>
                     </span>
-                    <span className={`txt ${v.text ? '' : 'no-text'}`}>{v.text || t('transcript.noText')}</span>
+                    <span className="txt">{v.text}</span>
                     <VoicePlayButton
                       demoId={id}
                       seg={{ steamId: v.steamId, playerName: v.playerName, startSec: v.timeSec, endSec: v.endSec }}
@@ -469,7 +474,7 @@ export function DemoDetailPage({
                     </span>
                     <span className="txt">{c.text}</span>
                     <span className="jump">
-                      <IcChat size={12} />
+                      <IcJump size={13} />
                     </span>
                   </div>
                 ))}
@@ -486,7 +491,6 @@ export function DemoDetailPage({
           kills={allKills}
           tickRate={meta.tickRate ?? 64}
           onJump={jump}
-          onPlay={playFromTick}
           onClose={() => setPlayer(null)}
         />
       )}
@@ -749,20 +753,19 @@ function RoundBar({
 function KillRow({
   kill,
   tickRate,
-  onJump,
-  onPlay
+  onJump
 }: {
   kill: KillEvent
   tickRate: number
   onJump: (tick: number) => void
-  onPlay?: (tick: number) => void
 }) {
+  const t = useTKey()
   // 自杀/环境击杀（attacker 与 victim 同一人，或 attacker=世界 65535）
   const isSuicide = kill.attackerUid === kill.victimUid || kill.attackerUid === 65535
   const attackerLabel = isSuicide ? '' : (kill.attackerName ?? '—')
   const victimLabel = isSuicide ? (kill.attackerName ?? kill.victimName ?? '—') : (kill.victimName ?? '—')
   return (
-    <div className="kill-row" onClick={() => onJump(kill.tick)} title="点击复制 demo_gototick 跳转指令">
+    <div className="kill-row" onClick={() => onJump(kill.tick)} title={t('transcript.jump')}>
       <span className="tk">{fmtTick(kill.tick, tickRate)}</span>
       <span
         className={`nm atk ${kill.attackerTeam === 'T' ? 't' : kill.attackerTeam === 'CT' ? 'ct' : ''}`}
@@ -781,19 +784,17 @@ function KillRow({
         {victimLabel}
       </span>
       <span className="rn">R{kill.roundNum}</span>
-      {onPlay && (
-        <button
-          type="button"
-          className="kill-play-btn"
-          title="局外直接启动 CS2 并跳转至此时刻"
-          onClick={(e) => {
-            e.stopPropagation()
-            onPlay(kill.tick)
-          }}
-        >
-          ▶
-        </button>
-      )}
+      <button
+        type="button"
+        className="icon-btn jump"
+        title={t('transcript.jump')}
+        onClick={(e) => {
+          e.stopPropagation()
+          onJump(kill.tick)
+        }}
+      >
+        <IcJump size={13} />
+      </button>
     </div>
   )
 }
@@ -804,14 +805,12 @@ function PlayerModal({
   kills,
   tickRate,
   onJump,
-  onPlay,
   onClose
 }: {
   player: PlayerInfo
   kills: KillEvent[]
   tickRate: number
   onJump: (tick: number) => void
-  onPlay?: (tick: number) => void
   onClose: () => void
 }) {
   const t = useTKey()
@@ -939,7 +938,7 @@ function PlayerModal({
                   onJump(k.tick)
                   onClose()
                 }}
-                title="点击复制 demo_gototick 跳转指令"
+                title={t('transcript.jump')}
               >
                 <span className="tm">{fmtTick(k.tick, tickRate)}</span>
                 <span className="wp">
@@ -948,20 +947,18 @@ function PlayerModal({
                 </span>
                 <span className="vic">{k.victimName ?? '—'}</span>
                 <span className="rn">R{k.roundNum}</span>
-                {onPlay && (
-                  <button
-                    type="button"
-                    className="kill-play-btn"
-                    title="局外直接启动 CS2 并跳转至此时刻"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onPlay(k.tick)
-                      onClose()
-                    }}
-                  >
-                    ▶
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="icon-btn jump"
+                  title={t('transcript.jump')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onJump(k.tick)
+                    onClose()
+                  }}
+                >
+                  <IcJump size={13} />
+                </button>
               </div>
             ))}
         </div>

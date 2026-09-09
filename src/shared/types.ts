@@ -306,7 +306,7 @@ export interface Settings {
     useToolsMode?: boolean
     /** 用户自定义启动项（空格分隔，如 "-novid"），软件启动 CS2 时自动带上 */
     launchArgs?: string
-    playMode?: 'auto' | 'fullscreen' | 'borderless' | 'windowed'
+    playMode?: 'tools' | 'native'
     playResolution?: string
     /** 游戏内语音 HUD：VPK 注入 Panorama，普通模式播放时在 CS2 画面内显示说话者 */
     voiceHud?: boolean
@@ -349,6 +349,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   cs2: {
     launchArgs: '',
+    playMode: 'tools',
     voiceHud: false
   },
   overlay: {

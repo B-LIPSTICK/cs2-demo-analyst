@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Btn, CustomSelect, IcFolder, IcPlus, IcRefresh, Panel, SectionHead, Tag, Toggle, useToast } from '@/components/ui'
 import { useT, type Lang } from '@/i18n'
@@ -55,6 +55,7 @@ const AI_PROVIDERS: AiProviderDef[] = [
     presetModels: [
       'Qwen/Qwen2.5-7B-Instruct',
       'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B',
+      'deepseek-ai/DeepSeek-V3',
       'THUDM/glm-4-9b-chat',
       'internlm/internlm2_5-7b-chat'
     ],
@@ -69,7 +70,7 @@ const AI_PROVIDERS: AiProviderDef[] = [
     defaultModel: 'glm-4-flash',
     keyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
     keyUrlText: 'open.bigmodel.cn/usercenter/apikeys',
-    presetModels: ['glm-4-flash', 'glm-4-plus', 'glm-4-air'],
+    presetModels: ['glm-4-flash', 'glm-4-flashx', 'glm-4-plus', 'glm-4-air', 'glm-4-long'],
     badge: '国内免翻 · GLM-4-Flash 免费',
     descKey: 'settings.aiZhipuHint'
   },
@@ -198,6 +199,170 @@ const ENGINE_ROWS: { kind: string; label: string }[] = [
   { kind: 'model-small', label: 'settings.engModelSmall' },
   { kind: 'model-medium', label: 'settings.engModelMedium' }
 ]
+
+/** 可编辑 + 下拉快速挑选的 AI 模型选择器（Combobox） */
+function ModelCombobox({
+  value,
+  onChange,
+  presets,
+  pulledModels,
+  loading,
+  onPull,
+  t
+}: {
+  value: string
+  onChange: (val: string) => void
+  presets: string[]
+  pulledModels: string[] | null
+  loading: boolean
+  onPull: () => void
+  t: (key: any) => string
+}) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDocClick = (e: MouseEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('mousedown', onDocClick, true)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onDocClick, true)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  // 聚合拉取模型与推荐预设（自动去重并分组）
+  const modelGroups = useMemo(() => {
+    const set = new Set<string>()
+    const groups: { title: string; items: string[] }[] = []
+    if (pulledModels && pulledModels.length > 0) {
+      groups.push({ title: `在线拉取模型 (${pulledModels.length})`, items: pulledModels })
+      for (const m of pulledModels) set.add(m)
+    }
+    const filteredPresets = presets.filter((p) => !set.has(p))
+    if (filteredPresets.length > 0) {
+      groups.push({ title: '推荐预设模型', items: filteredPresets })
+    }
+    return groups
+  }, [pulledModels, presets])
+
+  const hasOptions = modelGroups.length > 0
+
+  return (
+    <div className="flex" style={{ gap: 8, alignItems: 'center' }}>
+      <div ref={containerRef} style={{ position: 'relative', display: 'inline-flex', width: 280 }}>
+        <input
+          className="input"
+          style={{ width: '100%', paddingRight: hasOptions ? 30 : 10 }}
+          placeholder="例如: Qwen/Qwen2.5-7B-Instruct"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => {
+            if (hasOptions) setOpen(true)
+          }}
+        />
+        {hasOptions && (
+          <button
+            type="button"
+            className="cs-trigger"
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: 30,
+              padding: 0,
+              display: 'grid',
+              placeItems: 'center',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer'
+            }}
+            onClick={() => setOpen((v) => !v)}
+            title="展开候选模型列表"
+          >
+            <svg
+              className={`cs-arrow ${open ? 'open' : ''}`}
+              width="10"
+              height="6"
+              viewBox="0 0 10 6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M1 1l4 4 4-4" />
+            </svg>
+          </button>
+        )}
+        {open && hasOptions && (
+          <div
+            className="custom-select-menu"
+            style={{
+              maxHeight: 280,
+              overflowY: 'auto',
+              top: 'calc(100% + 4px)',
+              width: '100%',
+              zIndex: 100
+            }}
+          >
+            {modelGroups.map((g) => (
+              <div key={g.title}>
+                <div
+                  style={{
+                    padding: '8px 10px 4px',
+                    fontSize: 10.5,
+                    fontWeight: 600,
+                    color: 'var(--accent)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em'
+                  }}
+                >
+                  {g.title}
+                </div>
+                {g.items.map((m) => {
+                  const isSelected = m === value
+                  return (
+                    <div
+                      key={m}
+                      className={`cs-item ${isSelected ? 'selected' : ''}`}
+                      onClick={() => {
+                        onChange(m)
+                        setOpen(false)
+                      }}
+                      title={m}
+                    >
+                      <div className="cs-item-content">
+                        <span className="cs-item-label" style={{ fontSize: 12 }}>{m}</span>
+                      </div>
+                      {isSelected && (
+                        <svg className="cs-check" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M2.5 6.5l2.5 2.5 4.5-5" />
+                        </svg>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <Btn variant="ghost" size="sm" disabled={loading} onClick={onPull}>
+        {loading ? '…' : pulledModels ? t('common.refresh') : t('settings.aiPullModels')}
+      </Btn>
+    </div>
+  )
+}
 
 export function SettingsPage({ settings, version }: { settings: Settings; version?: string }) {
   const t = useT()
@@ -384,7 +549,9 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
   }
 
   const launchCs2 = async () => {
-    const r = await window.api.live.launch()
+    const r = await window.api.live.launch({
+      toolsMode: (draft.cs2.playMode ?? 'tools') !== 'native'
+    })
     if (r.ok) toast.push(t.t('settings.cs2Launched'))
     else toast.push(r.error ?? t.t('common.error'), 'warn')
   }
@@ -733,45 +900,42 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             <div className="t">{t.t('settings.aiModel')}</div>
             <div className="d">{t.t('settings.aiModelHint')}</div>
           </div>
-          <div className="flex" style={{ gap: 8, alignItems: 'center' }}>
-            {aiModels && aiModels.length > 0 ? (
-              <CustomSelect
-                width={260}
-                value={draft.ai.model}
-                options={[
-                  ...(!aiModels.includes(draft.ai.model) ? [{ value: draft.ai.model, label: draft.ai.model }] : []),
-                  ...aiModels.map((m) => ({ value: m, label: m }))
-                ]}
-                onChange={(v) => setAi({ model: v })}
-              />
-            ) : currentAiProvider.presetModels.length > 0 ? (
-              <CustomSelect
-                width={260}
-                value={draft.ai.model}
-                options={[
-                  ...(!currentAiProvider.presetModels.includes(draft.ai.model) ? [{ value: draft.ai.model, label: draft.ai.model }] : []),
-                  ...currentAiProvider.presetModels.map((m) => ({ value: m, label: m }))
-                ]}
-                onChange={(v) => setAi({ model: v })}
-              />
-            ) : (
-              <input
-                className="input"
-                style={{ width: 260 }}
-                placeholder="例如: Qwen/Qwen2.5-7B-Instruct"
-                value={draft.ai.model}
-                onChange={(e) => setAi({ model: e.target.value })}
-              />
-            )}
-            <Btn variant="ghost" size="sm" disabled={aiModelsLoading} onClick={pullModels}>
-              {aiModelsLoading ? '…' : aiModels ? t.t('common.refresh') : t.t('settings.aiPullModels')}
-            </Btn>
-          </div>
+          <ModelCombobox
+            value={draft.ai.model}
+            onChange={(m) => setAi({ model: m })}
+            presets={currentAiProvider.presetModels}
+            pulledModels={aiModels}
+            loading={aiModelsLoading}
+            onPull={pullModels}
+            t={t.t}
+          />
         </div>
       </Panel>
 
       <SectionHead idx={5}>{t.t('settings.cs2')}</SectionHead>
       <Panel>
+        {/* Demo 播放模式 */}
+        <div className="set-row">
+          <div className="info">
+            <div className="t">{t.t('settings.cs2PlayMode')}</div>
+            <div className="d">{t.t('settings.cs2PlayModeHint')}</div>
+          </div>
+          <div className="seg">
+            <span
+              className={`seg-item ${(draft.cs2.playMode ?? 'tools') === 'tools' ? 'on' : ''}`}
+              onClick={() => setCs2({ playMode: 'tools' })}
+            >
+              ⚡ {t.t('settings.cs2PlayModeTools')}
+            </span>
+            <span
+              className={`seg-item ${(draft.cs2.playMode ?? 'tools') === 'native' ? 'on' : ''}`}
+              onClick={() => setCs2({ playMode: 'native' })}
+            >
+              {t.t('settings.cs2PlayModeNative')}
+            </span>
+          </div>
+        </div>
+
         <div className="set-row">
           <div className="info">
             <div className="t">{t.t('settings.cs2Path')}</div>
