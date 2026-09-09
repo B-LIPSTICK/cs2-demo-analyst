@@ -117,6 +117,49 @@ export function createLibraryService(
 
   const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '')
 
+  /**
+   * 尝试从 demo 文件名中解析真实比赛日期/时间
+   * 支持常见格式：
+   * 1. auto-20240309-182822 / match-20240309-182822 / 20240309_182822
+   * 2. 2024-03-09_18-28-22 / 2024-03-09 18:28:22
+   * 3. 2024-03-09 纯日期（默认中午 12:00）
+   */
+  function parseDateFromFileName(fileName: string): number | undefined {
+    // 1. 20240309-182822 或 20240309_182822
+    const m1 = fileName.match(/(?:^|[^\d])(20\d{2})(\d{2})(\d{2})[-_](\d{2})(\d{2})(\d{2})(?:[^\d]|$)/)
+    if (m1) {
+      const [, y, m, d, h, min, s] = m1
+      const date = new Date(+y, +m - 1, +d, +h, +min, +s)
+      const t = date.getTime()
+      if (!isNaN(t) && date.getFullYear() >= 2012 && date.getFullYear() <= 2035) {
+        return t
+      }
+    }
+    // 2. 2024-03-09_18-28-22 或 2024-03-09 18:28:22
+    const m2 = fileName.match(
+      /(?:^|[^\d])(20\d{2})[-_.](\d{2})[-_.](\d{2})[T\s_]+(\d{2})[-_:.](\d{2})(?:[-_:.](\d{2}))?(?:[^\d]|$)/
+    )
+    if (m2) {
+      const [, y, m, d, h, min, s = '0'] = m2
+      const date = new Date(+y, +m - 1, +d, +h, +min, +s)
+      const t = date.getTime()
+      if (!isNaN(t) && date.getFullYear() >= 2012 && date.getFullYear() <= 2035) {
+        return t
+      }
+    }
+    // 3. 2024-03-09 纯日期
+    const m3 = fileName.match(/(?:^|[^\d])(20\d{2})[-_.](\d{2})[-_.](\d{2})(?:[^\d]|$)/)
+    if (m3) {
+      const [, y, m, d] = m3
+      const date = new Date(+y, +m - 1, +d, 12, 0, 0)
+      const t = date.getTime()
+      if (!isNaN(t) && date.getFullYear() >= 2012 && date.getFullYear() <= 2035) {
+        return t
+      }
+    }
+    return undefined
+  }
+
   const loadIgnored = async () => {
     try {
       const st = await fs.stat(ignoredPath()).catch(() => null)
@@ -326,19 +369,40 @@ export function createLibraryService(
   const zipCacheDir = () => join(app.getPath('userData'), 'cache', 'zips')
 
   /** 把 zip 内的 .dem 条目提取到缓存文件（解析/播放均用缓存路径） */
-  async function ensureZipEntry(zip: AdmZip, entry: { entryName: string }, id: string): Promise<string> {
+  async function ensureZipEntry(
+    zip: AdmZip,
+    entry: { entryName: string; header?: { time?: Date | number } },
+    id: string
+  ): Promise<string> {
     const name = basename(entry.entryName.replace(/\\/g, '/'))
     const destPath = join(zipCacheDir(), id, name)
+    let exists = false
     try {
       await fs.access(destPath)
-      return destPath
+      exists = true
     } catch {
       /* 缓存不存在 → 提取 */
     }
-    const data = zip.readFile(entry.entryName)
-    if (!data) throw new Error(`无法读取压缩包内文件：${entry.entryName}`)
-    await fs.mkdir(dirname(destPath), { recursive: true })
-    await fs.writeFile(destPath, data)
+    if (!exists) {
+      const data = zip.readFile(entry.entryName)
+      if (!data) throw new Error(`无法读取压缩包内文件：${entry.entryName}`)
+      await fs.mkdir(dirname(destPath), { recursive: true })
+      await fs.writeFile(destPath, data)
+    }
+
+    // 同步将缓存文件的 mtime/atime 设为 zip 内部条目的真实比赛时间
+    const rawTime =
+      entry.header?.time instanceof Date
+        ? entry.header.time
+        : typeof entry.header?.time === 'number'
+          ? new Date(entry.header.time)
+          : null
+    if (rawTime && !isNaN(rawTime.getTime())) {
+      try {
+        await fs.utimes(destPath, rawTime, rawTime)
+      } catch {}
+    }
+
     return destPath
   }
 
@@ -366,15 +430,25 @@ export function createLibraryService(
         if (isIgnored(path, st.mtimeMs)) continue
         const id = demoid(path, st.size, st.mtimeMs)
         seen.add(id)
+        const fileName = path.split(/[\\/]/).pop() ?? path
+        // 优先从文件名解析比赛时间，若无则使用文件系统 mtime
+        const inferredDate = parseDateFromFileName(fileName) ?? st.mtimeMs
+
         const existing = store.index[id]
-        if (existing) continue
+        if (existing) {
+          // 自动纠偏：若已有真实文件名时间，更新 dateMs
+          if (inferredDate && existing.dateMs && Math.abs(existing.dateMs - inferredDate) > 1000) {
+            existing.dateMs = inferredDate
+          }
+          continue
+        }
         const meta: DemoMeta = {
           id,
           path,
-          fileName: path.split(/[\\/]/).pop() ?? path,
+          fileName,
           sizeBytes: st.size,
           mtimeMs: st.mtimeMs,
-          dateMs: st.mtimeMs,
+          dateMs: inferredDate,
           addedAt: Date.now(),
           status: 'pending'
         }
@@ -411,8 +485,29 @@ export function createLibraryService(
           const legacy = store.index[legacyId]
           const id = legacy && legacy.containerPath === zp ? legacyId : newId
           seen.add(id)
+
+          // 提取真实比赛时间：
+          // 1. 文件名中解析出的比赛时间优先
+          // 2. zip 内部条目的 header.time（对战平台服务器录制/打包真实时间）
+          // 3. 兜底为 zip 下载保存时间
+          const rawEntryTime =
+            e.header.time instanceof Date
+              ? e.header.time.getTime()
+              : typeof e.header.time === 'number'
+                ? e.header.time
+                : undefined
+          const validEntryTime =
+            rawEntryTime && !isNaN(rawEntryTime) && rawEntryTime > 0 ? rawEntryTime : undefined
+          const inferredDate = parseDateFromFileName(name) ?? validEntryTime ?? zst.mtimeMs
+
           const existing = store.index[id]
-          if (existing && existing.containerPath === zp) continue
+          if (existing && existing.containerPath === zp) {
+            // 自动纠偏：若旧缓存仅记录了 zip 下载时间，更新为真实比赛时间
+            if (inferredDate && existing.dateMs && Math.abs(existing.dateMs - inferredDate) > 1000) {
+              existing.dateMs = inferredDate
+            }
+            continue
+          }
           try {
             const cachePath = await ensureZipEntry(zip, e, id)
             store.index[id] = {
@@ -422,7 +517,7 @@ export function createLibraryService(
               fileName: name,
               sizeBytes: e.header.size,
               mtimeMs: zst.mtimeMs,
-              dateMs: zst.mtimeMs,
+              dateMs: inferredDate,
               addedAt: Date.now(),
               status: 'pending'
             }
@@ -539,6 +634,7 @@ export function createLibraryService(
         // 注意：zip 条目的 id 基于「容器路径+条目名+解压大小」计算（见 scan），
         // 不能用缓存 .dem 的 path/size/mtime 反推校验（必然不一致 → 启动即清空列表）。
         // 因此 zip 条目只校验缓存 .dem 文件存在；普通 .dem 才做完整指纹比对。
+        let indexUpdated = false
         for (const id of Object.keys(store.index)) {
           const meta = store.index[id]
           try {
@@ -547,11 +643,51 @@ export function createLibraryService(
               const st = await fs.stat(meta.path)
               if (demoid(meta.path, st.size, st.mtimeMs) !== id) {
                 delete store.index[id]
+                indexUpdated = true
+                continue
               }
             }
           } catch {
             delete store.index[id]
+            indexUpdated = true
+            continue
           }
+
+          // 启动时检查纠偏真实比赛时间：
+          // 1. 文件名包含真实时间
+          const fromName = parseDateFromFileName(meta.fileName)
+          if (fromName && (!meta.dateMs || Math.abs(meta.dateMs - fromName) > 1000)) {
+            meta.dateMs = fromName
+            indexUpdated = true
+          } else if (
+            meta.containerPath &&
+            meta.dateMs &&
+            meta.mtimeMs &&
+            Math.abs(meta.dateMs - meta.mtimeMs) < 1000
+          ) {
+            // 2. zip 容器条目此前只保存了 zip 下载修改时间（dateMs === mtimeMs）
+            try {
+              if (extname(meta.containerPath).toLowerCase() === '.zip') {
+                const zip = new AdmZip(meta.containerPath)
+                const ent = zip
+                  .getEntries()
+                  .find(
+                    (e) =>
+                      !e.isDirectory && basename(e.entryName.replace(/\\/g, '/')) === meta.fileName
+                  )
+                if (ent?.header?.time instanceof Date && !isNaN(ent.header.time.getTime())) {
+                  const entryTime = ent.header.time.getTime()
+                  if (Math.abs(meta.dateMs - entryTime) > 1000) {
+                    meta.dateMs = entryTime
+                    indexUpdated = true
+                  }
+                }
+              }
+            } catch {}
+          }
+        }
+        if (indexUpdated) {
+          await persistIndex().catch(() => {})
         }
         const settings = await getSettings()
         store.roots = settings.libraryRoots
@@ -577,6 +713,9 @@ export function createLibraryService(
         const detail = JSON.parse(raw) as DemoDetail
         // 解析器版本不匹配（缓存是旧版解析结果）→ 视为无缓存，触发重新解析
         if (detail.parserVersion !== PARSER_VERSION) return null
+        if (store.index[id]) {
+          detail.meta = { ...store.index[id] }
+        }
         store.details.set(id, detail)
         return detail
       } catch {
