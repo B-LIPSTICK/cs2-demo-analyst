@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Btn, CustomSelect, IcFolder, IcPlus, IcRefresh, Panel, SectionHead, Tag, Toggle, useToast } from '@/components/ui'
+import { Btn, CustomSelect, IcFolder, IcPlus, IcRefresh, Panel, SectionHead, Tag, Toggle, useFloatingPosition, useToast } from '@/components/ui'
 import { useT, type Lang } from '@/i18n'
 import type { Settings } from '@shared/types'
 import { formatRootLabel } from './LibraryPage'
@@ -220,24 +220,42 @@ function ModelCombobox({
 }) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  const { coords } = useFloatingPosition(containerRef, open, { minWidth: 280, defaultMaxHeight: 320 })
 
   useEffect(() => {
     if (!open) return
     const onDocClick = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) {
-        setOpen(false)
+      const target = e.target as Node
+      if (containerRef.current?.contains(target) || menuRef.current?.contains(target)) {
+        return
       }
+      setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
+    const onScroll = (e: Event) => {
+      if (menuRef.current && menuRef.current.contains(e.target as Node)) return
+      setOpen(false)
+    }
     window.addEventListener('mousedown', onDocClick, true)
     window.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onScroll, true)
     return () => {
       window.removeEventListener('mousedown', onDocClick, true)
       window.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onScroll, true)
     }
   }, [open])
+
+  // 拉取到新模型列表后自动展开，方便用户直接查看和选择
+  useEffect(() => {
+    if (pulledModels && pulledModels.length > 0) {
+      setOpen(true)
+    }
+  }, [pulledModels])
 
   // 聚合拉取模型与推荐预设（自动去重并分组）
   const modelGroups = useMemo(() => {
@@ -304,61 +322,68 @@ function ModelCombobox({
             </svg>
           </button>
         )}
-        {open && hasOptions && (
-          <div
-            className="custom-select-menu"
-            style={{
-              maxHeight: 280,
-              overflowY: 'auto',
-              top: 'calc(100% + 4px)',
-              width: '100%',
-              zIndex: 100
-            }}
-          >
-            {modelGroups.map((g) => (
-              <div key={g.title}>
-                <div
-                  style={{
-                    padding: '8px 10px 4px',
-                    fontSize: 10.5,
-                    fontWeight: 600,
-                    color: 'var(--accent)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.04em'
-                  }}
-                >
-                  {g.title}
-                </div>
-                {g.items.map((m) => {
-                  const isSelected = m === value
-                  return (
-                    <div
-                      key={m}
-                      className={`cs-item ${isSelected ? 'selected' : ''}`}
-                      onClick={() => {
-                        onChange(m)
-                        setOpen(false)
-                      }}
-                      title={m}
-                    >
-                      <div className="cs-item-content">
-                        <span className="cs-item-label" style={{ fontSize: 12 }}>{m}</span>
+        {open &&
+          hasOptions &&
+          createPortal(
+            <div
+              ref={menuRef}
+              className="custom-select-menu"
+              style={{
+                position: 'fixed',
+                left: coords.left,
+                ...(coords.openUp ? { bottom: coords.bottom } : { top: coords.top }),
+                width: Math.max(coords.width, 320),
+                maxHeight: coords.maxHeight,
+                zIndex: 99999,
+                overflowY: 'auto'
+              }}
+            >
+              {modelGroups.map((g) => (
+                <div key={g.title}>
+                  <div
+                    style={{
+                      padding: '8px 10px 4px',
+                      fontSize: 10.5,
+                      fontWeight: 600,
+                      color: 'var(--accent)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em'
+                    }}
+                  >
+                    {g.title}
+                  </div>
+                  {g.items.map((m) => {
+                    const isSelected = m === value
+                    return (
+                      <div
+                        key={m}
+                        className={`cs-item ${isSelected ? 'selected' : ''}`}
+                        onClick={() => {
+                          onChange(m)
+                          setOpen(false)
+                        }}
+                        title={m}
+                      >
+                        <div className="cs-item-content">
+                          <span className="cs-item-label" style={{ fontSize: 12 }}>{m}</span>
+                        </div>
+                        {isSelected && (
+                          <svg className="cs-check" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M2.5 6.5l2.5 2.5 4.5-5" />
+                          </svg>
+                        )}
                       </div>
-                      {isSelected && (
-                        <svg className="cs-check" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M2.5 6.5l2.5 2.5 4.5-5" />
-                        </svg>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            ))}
-          </div>
-        )}
+                    )
+                  })}
+                </div>
+              ))}
+            </div>,
+            document.body
+          )}
       </div>
-      <Btn variant="ghost" size="sm" disabled={loading} onClick={onPull}>
-        {loading ? '…' : pulledModels ? t('common.refresh') : t('settings.aiPullModels')}
+      <Btn variant="ghost" size="sm" disabled={loading} onClick={onPull} title="从服务商在线拉取模型列表">
+        <IcRefresh size={13} className={loading ? 'spin' : ''} />
+        <span style={{ marginLeft: 4 }}>{loading ? t('settings.aiModelsFetching') : t('settings.aiModelsPull')}</span>
       </Btn>
     </div>
   )

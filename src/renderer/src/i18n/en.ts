@@ -201,6 +201,7 @@ export const en: Record<keyof ZhDict, string> = {
   'transcript.noSegments': 'No transcript yet',
   'transcript.noSegmentsHint': 'Pick a demo that contains voice, then run transcription',
   'transcript.jump': 'Jump',
+  'transcript.jumpKill': 'Jump to before kill (4s lead-in to watch the duel)',
   'transcript.export': 'Export',
   'transcript.exporting': 'Exporting…',
   'transcript.engine': 'ENGINE',

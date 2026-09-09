@@ -205,6 +205,7 @@ export const zh = {
   'transcript.noSegments': '暂无转写结果',
   'transcript.noSegmentsHint': '先在上方选择一个包含语音的 Demo，再开始转写',
   'transcript.jump': '跳转',
+  'transcript.jumpKill': '跳转至击杀发生前（提早 4 秒观看对枪过程）',
   'transcript.export': '导出',
   'transcript.exporting': '导出中',
   'transcript.engine': '引擎',

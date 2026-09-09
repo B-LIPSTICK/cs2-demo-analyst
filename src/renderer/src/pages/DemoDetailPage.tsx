@@ -321,14 +321,18 @@ export function DemoDetailPage({
               allLabel={t('common.all')}
             />
             <div className="kill-list" style={{ maxHeight: 420, overflowY: 'auto' }}>
-              {sortedKills.map((k, i) => (
-                <KillRow
-                  key={`${k.tick}-${i}`}
-                  kill={k}
-                  tickRate={meta.tickRate ?? 64}
-                  onJump={jump}
-                />
-              ))}
+              {sortedKills.map((k, i) => {
+                const roundObj = rounds.find((r) => r.roundNum === k.roundNum)
+                return (
+                  <KillRow
+                    key={`${k.tick}-${i}`}
+                    kill={k}
+                    tickRate={meta.tickRate ?? 64}
+                    roundStartTick={roundObj?.startTick}
+                    onJump={jump}
+                  />
+                )
+              })}
               {sortedKills.length === 0 && (
                 <div className="muted" style={{ padding: '18px 12px', fontSize: 12 }}>
                   —
@@ -490,6 +494,7 @@ export function DemoDetailPage({
           player={player}
           kills={allKills}
           tickRate={meta.tickRate ?? 64}
+          rounds={rounds}
           onJump={jump}
           onClose={() => setPlayer(null)}
         />
@@ -750,13 +755,28 @@ function RoundBar({
   )
 }
 
+/**
+ * 计算击杀跳转的目标 tick：提前 4 秒缓冲（64-tick 下约为 256 ticks），方便完整观看击杀前架枪、搜点及交火对枪全过程
+ */
+export function getKillJumpTick(killTick: number, tickRate = 64, roundStartTick?: number): number {
+  const leadSeconds = 4
+  const offset = Math.round((tickRate || 64) * leadSeconds)
+  const target = killTick - offset
+  if (typeof roundStartTick === 'number' && roundStartTick > 0) {
+    return Math.max(roundStartTick, target)
+  }
+  return Math.max(1, target)
+}
+
 function KillRow({
   kill,
   tickRate,
+  roundStartTick,
   onJump
 }: {
   kill: KillEvent
   tickRate: number
+  roundStartTick?: number
   onJump: (tick: number) => void
 }) {
   const t = useTKey()
@@ -764,8 +784,14 @@ function KillRow({
   const isSuicide = kill.attackerUid === kill.victimUid || kill.attackerUid === 65535
   const attackerLabel = isSuicide ? '' : (kill.attackerName ?? '—')
   const victimLabel = isSuicide ? (kill.attackerName ?? kill.victimName ?? '—') : (kill.victimName ?? '—')
+
+  const handleJump = () => {
+    const target = getKillJumpTick(kill.tick, tickRate, roundStartTick)
+    onJump(target)
+  }
+
   return (
-    <div className="kill-row" onClick={() => onJump(kill.tick)} title={t('transcript.jump')}>
+    <div className="kill-row" onClick={handleJump} title={t('transcript.jumpKill')}>
       <span className="tk">{fmtTick(kill.tick, tickRate)}</span>
       <span
         className={`nm atk ${kill.attackerTeam === 'T' ? 't' : kill.attackerTeam === 'CT' ? 'ct' : ''}`}
@@ -787,10 +813,10 @@ function KillRow({
       <button
         type="button"
         className="icon-btn jump"
-        title={t('transcript.jump')}
+        title={t('transcript.jumpKill')}
         onClick={(e) => {
           e.stopPropagation()
-          onJump(kill.tick)
+          handleJump()
         }}
       >
         <IcJump size={13} />
@@ -804,12 +830,14 @@ function PlayerModal({
   player,
   kills,
   tickRate,
+  rounds,
   onJump,
   onClose
 }: {
   player: PlayerInfo
   kills: KillEvent[]
   tickRate: number
+  rounds?: RoundInfo[]
   onJump: (tick: number) => void
   onClose: () => void
 }) {
@@ -930,37 +958,41 @@ function PlayerModal({
         <div className="pm-kills">
           {[...myKills]
             .sort((a, b) => a.tick - b.tick)
-            .map((k, i) => (
-              <div
-                key={`${k.tick}-${i}`}
-                className="pm-kill"
-                onClick={() => {
-                  onJump(k.tick)
-                  onClose()
-                }}
-                title={t('transcript.jump')}
-              >
-                <span className="tm">{fmtTick(k.tick, tickRate)}</span>
-                <span className="wp">
-                  {k.weapon}
-                  <KillIcons kill={k} />
-                </span>
-                <span className="vic">{k.victimName ?? '—'}</span>
-                <span className="rn">R{k.roundNum}</span>
-                <button
-                  type="button"
-                  className="icon-btn jump"
-                  title={t('transcript.jump')}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onJump(k.tick)
-                    onClose()
-                  }}
+            .map((k, i) => {
+              const roundObj = rounds?.find((r) => r.roundNum === k.roundNum)
+              const handleJump = () => {
+                const target = getKillJumpTick(k.tick, tickRate, roundObj?.startTick)
+                onJump(target)
+                onClose()
+              }
+              return (
+                <div
+                  key={`${k.tick}-${i}`}
+                  className="pm-kill"
+                  onClick={handleJump}
+                  title={t('transcript.jumpKill')}
                 >
-                  <IcJump size={13} />
-                </button>
-              </div>
-            ))}
+                  <span className="tm">{fmtTick(k.tick, tickRate)}</span>
+                  <span className="wp">
+                    {k.weapon}
+                    <KillIcons kill={k} />
+                  </span>
+                  <span className="vic">{k.victimName ?? '—'}</span>
+                  <span className="rn">R{k.roundNum}</span>
+                  <button
+                    type="button"
+                    className="icon-btn jump"
+                    title={t('transcript.jumpKill')}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleJump()
+                    }}
+                  >
+                    <IcJump size={13} />
+                  </button>
+                </div>
+              )
+            })}
         </div>
       </div>
     </div>

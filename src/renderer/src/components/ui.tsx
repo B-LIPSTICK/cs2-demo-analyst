@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -13,6 +14,7 @@ import {
   type ReactNode,
   type SVGProps
 } from 'react'
+import { createPortal } from 'react-dom'
 
 // ─── 图标（stroke 风格，与设计系统一致） ─────────────────────────────────────
 
@@ -574,6 +576,70 @@ export function VoicePlayButton({
   )
 }
 
+// ─── 浮层定位 Hook（用于各类下拉选择器与弹出菜单，彻底摆脱卡片 overflow 与堆叠上下文限制） ─
+
+export interface FloatingCoords {
+  left: number
+  top?: number
+  bottom?: number
+  width: number
+  maxHeight: number
+  openUp: boolean
+}
+
+export function useFloatingPosition(
+  triggerRef: React.RefObject<HTMLElement | null>,
+  open: boolean,
+  options?: { minWidth?: number; defaultMaxHeight?: number; gap?: number }
+) {
+  const minWidth = options?.minWidth ?? 160
+  const defaultMaxHeight = options?.defaultMaxHeight ?? 280
+  const gap = options?.gap ?? 4
+
+  const [coords, setCoords] = useState<FloatingCoords>({
+    left: 0,
+    top: 0,
+    width: minWidth,
+    maxHeight: defaultMaxHeight,
+    openUp: false
+  })
+
+  const update = useCallback(() => {
+    const el = triggerRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+    const width = Math.max(rect.width, minWidth)
+
+    // 若下方空间不足 220px 且上方空间更大，则向上弹出
+    const openUp = spaceBelow < 220 && spaceAbove > spaceBelow
+    const maxHeight = Math.max(120, Math.min(openUp ? spaceAbove - gap - 8 : spaceBelow - gap - 8, defaultMaxHeight))
+
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))
+
+    setCoords({
+      left,
+      width,
+      maxHeight,
+      openUp,
+      ...(openUp
+        ? { bottom: window.innerHeight - rect.top + gap }
+        : { top: rect.bottom + gap })
+    })
+  }, [triggerRef, minWidth, defaultMaxHeight, gap])
+
+  useLayoutEffect(() => {
+    if (!open) return
+    update()
+    const onResize = () => update()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [open, update])
+
+  return { coords, update }
+}
+
 // ─── 自定义高颜值亚克力下拉选择器 ──────────────────────────────────────────
 
 export interface CustomSelectOption<T extends string = string> {
@@ -602,22 +668,34 @@ export function CustomSelect<T extends string = string>({
 }) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  const minW = typeof width === 'number' ? width : 160
+  const { coords } = useFloatingPosition(containerRef, open, { minWidth: minW, defaultMaxHeight: 280 })
 
   useEffect(() => {
     if (!open) return
     const onDocClick = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) {
-        setOpen(false)
+      const target = e.target as Node
+      if (containerRef.current?.contains(target) || menuRef.current?.contains(target)) {
+        return
       }
+      setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
+    const onScroll = (e: Event) => {
+      if (menuRef.current && menuRef.current.contains(e.target as Node)) return
+      setOpen(false)
+    }
     window.addEventListener('mousedown', onDocClick, true)
     window.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onScroll, true)
     return () => {
       window.removeEventListener('mousedown', onDocClick, true)
       window.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onScroll, true)
     }
   }, [open])
 
@@ -659,34 +737,47 @@ export function CustomSelect<T extends string = string>({
           <path d="M1 1l4 4 4-4" />
         </svg>
       </button>
-      {open && (
-        <div className="custom-select-menu">
-          {options.map((opt) => {
-            const isSelected = opt.value === value
-            return (
-              <div
-                key={opt.value}
-                className={`cs-item ${isSelected ? 'selected' : ''}`}
-                onClick={() => {
-                  onChange(opt.value)
-                  setOpen(false)
-                }}
-              >
-                <div className="cs-item-content">
-                  {opt.icon && <span className="cs-icon">{opt.icon}</span>}
-                  <span className="cs-item-label">{opt.label}</span>
-                  {opt.sublabel && <span className="cs-item-sub">{opt.sublabel}</span>}
+      {open &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="custom-select-menu"
+            style={{
+              position: 'fixed',
+              left: coords.left,
+              ...(coords.openUp ? { bottom: coords.bottom } : { top: coords.top }),
+              width: coords.width,
+              maxHeight: coords.maxHeight,
+              zIndex: 99999
+            }}
+          >
+            {options.map((opt) => {
+              const isSelected = opt.value === value
+              return (
+                <div
+                  key={opt.value}
+                  className={`cs-item ${isSelected ? 'selected' : ''}`}
+                  onClick={() => {
+                    onChange(opt.value)
+                    setOpen(false)
+                  }}
+                >
+                  <div className="cs-item-content">
+                    {opt.icon && <span className="cs-icon">{opt.icon}</span>}
+                    <span className="cs-item-label">{opt.label}</span>
+                    {opt.sublabel && <span className="cs-item-sub">{opt.sublabel}</span>}
+                  </div>
+                  {isSelected && (
+                    <svg className="cs-check" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M2.5 6.5l2.5 2.5 4.5-5" />
+                    </svg>
+                  )}
                 </div>
-                {isSelected && (
-                  <svg className="cs-check" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M2.5 6.5l2.5 2.5 4.5-5" />
-                  </svg>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
+              )
+            })}
+          </div>,
+          document.body
+        )}
     </div>
   )
 }
