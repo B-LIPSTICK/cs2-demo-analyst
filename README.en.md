@@ -21,17 +21,6 @@
 
 ---
 
-## Why CS2 Demo Analyst?
-
-Reviewing demos is the most critical pathway to improving in CS2, yet competitive players, coaches, and content creators have long been hindered by:
-- **Clunky In-Game Controls**: CS2's default `Shift+F2` demo UI is notoriously laggy, difficult to scrub, and often misses critical engagement moments;
-- **Silent Voice Recordings**: Standard platforms rarely replay team comms, making it impossible to audit calls, tactical executions, and miscommunications;
-- **Boring Stat Tables**: Cold numerical charts fail to illustrate match momentum, clutch decisions, and turning points.
-
-**CS2 Demo Analyst** bridges this gap: a high-performance Windows desktop application that connects directly to the running CS2 process, transforming static `.dem` replay files into **searchable, voice-transcribed, AI-diagnosed tactical intelligence with interactive live playback**.
-
----
-
 ## Quick Start
 
 ### Download & Run
