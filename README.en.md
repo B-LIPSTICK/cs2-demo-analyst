@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/logo/csicon-512.png" alt="CS2 Demo Analyst Logo" width="150" />
+
 # CS2 Demo Analyst
 
 **Esports-Grade CS2 Replay & Voice Analysis Workstation**  
@@ -11,13 +13,15 @@
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**English** | [简体中文](README.md)
+<p>
+  <b>English</b> | <a href="README.md">简体中文</a>
+</p>
 
 </div>
 
 ---
 
-## 💡 Why CS2 Demo Analyst?
+## Why CS2 Demo Analyst?
 
 Reviewing demos is the most critical pathway to improving in CS2, yet competitive players, coaches, and content creators have long been hindered by:
 - **Clunky In-Game Controls**: CS2's default `Shift+F2` demo UI is notoriously laggy, difficult to scrub, and often misses the precise action moments;
@@ -28,9 +32,9 @@ Reviewing demos is the most critical pathway to improving in CS2, yet competitiv
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-### 1. 🎮 Official CS:GO / CS2 Dual-Track Match Timeline Bar
+### 1. Official CS:GO / CS2 Dual-Track Match Timeline Bar
 - **Pixel-perfect recreation of the official esports scoreboard timeline**:
   - Dual-track split (Upper/Lower teams) with half-time side swapping (T Amber Gold / CT Frost Blue);
   - Dynamic **5-bar Survivor Indicator** to distinguish between 1vX clutch miracles and flawless 5-man retakes;
@@ -39,27 +43,27 @@ Reviewing demos is the most critical pathway to improving in CS2, yet competitiv
 
 ![Match Timeline](docs/screenshots/timeline.png)
 
-### 2. ⚡ 4-Second Lead-In Live Seek (Live Jump with Lead-In)
+### 2. 4-Second Lead-In Live Seek (Live Jump with Lead-In)
 - **Firefight Pre-Roll Buffer**: Clicking any kill row, tactical event, or AI timestamp automatically seeks ~256 ticks (4 seconds) prior to the engagement, providing full context on crosshair placement, utility prep, and trades;
 - **Dual-Mode Adaptive Response**:
   - **While CS2 is running**: issues `demo_gototick` via native engine console IPC for instant, seamless seeking;
   - **While CS2 is closed**: one-click launch directly boots the game and fast-forwards straight to the target tick;
   - Inspecting duels inside player popups keeps your current view uninterrupted.
 
-### 3. 🎙 In-Game Voice HUD Overlay (Valve Panorama)
+### 3. In-Game Voice HUD Overlay (Valve Panorama)
 - **Native Team Comm Indicators**:
   - Displays speaking teammates in the bottom-left corner of the game screen during demo playback;
   - Native rounded avatar square + team-colored handle (`color-T` / `color-CT`) + subtle glow;
   - Packed as a compliant Valve Panorama VPK (`dsh_voice_override.vpk`): **no DLL injection, no memory manipulation, 100% clean and VAC safe**.
 
-### 4. 🤖 AI-Powered Tactical Post-Mortem
+### 4. AI-Powered Tactical Post-Mortem
 - **Zero-Barrier Provider Support**:
   - Native integration for domestic free & affordable providers (Zhipu GLM-4-Flash, SiliconFlow, DeepSeek, Moonshot Kimi) alongside OpenAI-compatible APIs and local **Ollama**;
 - **Interactive Timestamp Seeking**:
   - Every round tag (e.g. `R2`) and timestamp (e.g. `[02:15]`) mentioned by the AI assistant is **instantly clickable to jump in-game**;
   - Built-in prompt enforcement and OpenCC normalization for clean, natural Chinese/English output.
 
-### 5. 🎨 Minimalist Apple HUD Design System
+### 5. Minimalist Apple HUD Design System
 - **Seamless Light & Dark Themes**:
   - **Light Mode**: crisp white tactile cards, subtle grey borders, high-contrast typography, and gentle micro-shadows;
   - **Dark Mode**: deep near-black glass paneling, hairline strokes, and subtle aurora gradients;
@@ -67,14 +71,14 @@ Reviewing demos is the most critical pathway to improving in CS2, yet competitiv
   - All crude system emojis removed in favor of bespoke 1.6px stroke SVGs (Radar scanner, Defuse pliers, Timeline marks);
   - Standardized Secondary tactile button variants for a responsive, desktop-grade feel.
 
-### 6. 🛠 Platform Compatibility & Smart Normalization
+### 6. Platform Compatibility & Smart Normalization
 - **Auto-Discovery**: One-click detection for Steam, Wanmei (PW), and 5E platform demo storage folders;
 - **Weapon Normalization**: Automatically strips platform skin suffixes and perk tags (e.g. `hkp2000_txz04` → `P2000`), fully supporting Zeus, CZ75, and knife models;
 - **Match Date Extraction**: Reads real match timestamps from zip entry headers and file conventions, eliminating download mtime inaccuracies.
 
 ---
 
-## 📸 Screenshots
+## Screenshots
 
 | Library | Demo Detail | Transcript |
 | :---: | :---: | :---: |
@@ -82,7 +86,7 @@ Reviewing demos is the most critical pathway to improving in CS2, yet competitiv
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
@@ -102,7 +106,7 @@ Download the latest build from [GitHub Releases](https://github.com/B-LIPSTICK/c
 
 ---
 
-## 🔒 Privacy & Safety Guarantee
+## Privacy & Safety Guarantee
 
 - **Local-First Architecture**: Your demo files, kill databases, and audio transcriptions stay strictly on your local disk;
 - **VAC & Account Safety**:
@@ -111,7 +115,7 @@ Download the latest build from [GitHub Releases](https://github.com/B-LIPSTICK/c
 
 ---
 
-## 🛠 Development & Build
+## Development & Build
 
 ```bash
 # Clone the repository
@@ -137,6 +141,6 @@ npm run dist:zip
 
 ---
 
-## 📄 License
+## License
 
 Distributed under the [MIT License](LICENSE).
