@@ -4,6 +4,7 @@ import {
   CustomSelect,
   Empty,
   IcPlus,
+  IcRadar,
   IcRefresh,
   IcSearch,
   Ring,
@@ -439,7 +440,7 @@ function LibraryPageInner({
                           onAutoDetectRoots()
                         }}
                       >
-                        <span>⚡</span>
+                        <IcRadar size={13} />
                         <span>{t('library.autoDetect')}</span>
                       </button>
                       <button
@@ -450,7 +451,7 @@ function LibraryPageInner({
                           onAddRoot()
                         }}
                       >
-                        <span>➕</span>
+                        <IcPlus size={13} />
                         <span>{t('library.addCustomDir')}</span>
                       </button>
                     </div>
@@ -476,11 +477,11 @@ function LibraryPageInner({
                 ]}
                 onChange={(v) => setSortMode(v as 'date' | 'added')}
               />
-              <Btn variant="ghost" onClick={onAddRoot}>
+              <Btn variant="secondary" onClick={onAddRoot}>
                 <IcPlus size={13} />
                 {t('library.addRoot')}
               </Btn>
-              <Btn variant="ghost" onClick={onRescan}>
+              <Btn variant="secondary" onClick={onRescan}>
                 <IcRefresh size={13} />
                 {t('library.rescan')}
               </Btn>
@@ -495,10 +496,10 @@ function LibraryPageInner({
                   {t('library.parseAll')}（{pendingCount}）
                 </Btn>
               )}
-              <Btn variant="ghost" onClick={() => window.api.favorites.reveal()}>
+              <Btn variant="secondary" onClick={() => window.api.favorites.reveal()}>
                 ★ {t('library.favFolder')}
               </Btn>
-              <Btn variant="ghost" onClick={() => setSelectMode(true)}>
+              <Btn variant="secondary" onClick={() => setSelectMode(true)}>
                 {t('library.select')}
               </Btn>
             </>
@@ -510,16 +511,17 @@ function LibraryPageInner({
         <Empty ghost="SCANNING" hint="…" />
       ) : filtered.length === 0 && demos.length === 0 ? (
         <Empty ghost="NO DEMOS" hint={t('library.emptyHint')}>
-          <div className="row" style={{ gap: 8, marginTop: 8 }}>
-            <Btn variant="accent" onClick={onAutoDetectRoots}>
-              ⚡ {t('library.autoDetect')}
+          <div className="empty-actions">
+            <Btn variant="accent" className="empty-action-btn" onClick={onAutoDetectRoots}>
+              <IcRadar size={15} />
+              {t('library.autoDetect')}
             </Btn>
-            <Btn variant="ghost" onClick={onAddRoot}>
-              <IcPlus size={13} />
+            <Btn variant="secondary" className="empty-action-btn" onClick={onAddRoot}>
+              <IcPlus size={14} />
               {t('library.addRoot')}
             </Btn>
-            <Btn variant="ghost" onClick={onRescan}>
-              <IcRefresh size={13} />
+            <Btn variant="secondary" className="empty-action-btn" onClick={onRescan}>
+              <IcRefresh size={14} />
               {t('library.rescan')}
             </Btn>
           </div>

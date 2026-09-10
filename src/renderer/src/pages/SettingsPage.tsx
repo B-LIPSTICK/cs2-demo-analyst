@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Btn, CustomSelect, IcFolder, IcPlus, IcRefresh, Panel, SectionHead, Tag, Toggle, useFloatingPosition, useToast } from '@/components/ui'
+import { Btn, CustomSelect, IcFolder, IcPlus, IcRadar, IcRefresh, Panel, SectionHead, Tag, Toggle, useFloatingPosition, useToast } from '@/components/ui'
 import { useT, type Lang } from '@/i18n'
 import type { Settings } from '@shared/types'
 import { formatRootLabel } from './LibraryPage'
@@ -640,10 +640,11 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             <div className="d">{t.t('settings.libraryHint')}</div>
           </div>
           <div className="row" style={{ gap: 8 }}>
-            <Btn variant="ghost" size="sm" onClick={autoDetectRoots}>
-              ⚡ {t.t('library.autoDetect')}
+            <Btn variant="secondary" size="sm" onClick={autoDetectRoots}>
+              <IcRadar size={13} />
+              {t.t('library.autoDetect')}
             </Btn>
-            <Btn variant="ghost" size="sm" onClick={addRoot}>
+            <Btn variant="secondary" size="sm" onClick={addRoot}>
               <IcPlus size={12} />
               {t.t('library.addRoot')}
             </Btn>

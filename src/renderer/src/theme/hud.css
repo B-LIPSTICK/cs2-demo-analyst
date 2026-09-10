@@ -843,6 +843,20 @@ body {
   background: rgba(10, 132, 255, 0.24);
 }
 
+.btn.secondary {
+  background: var(--bg-1);
+  border-color: var(--line-2);
+  color: var(--text-0);
+  box-shadow: var(--shadow-1);
+  font-weight: 500;
+}
+
+.btn.secondary:hover {
+  background: var(--bg-2);
+  border-color: var(--line-3);
+  color: var(--text-0);
+}
+
 .btn.danger {
   background: var(--red-dim);
   border-color: rgba(255, 69, 58, 0.4);
@@ -857,6 +871,7 @@ body {
 
 .btn.ghost:hover {
   background: var(--hover-bg);
+  border-color: var(--line-2);
   color: var(--text-0);
 }
 
@@ -3158,6 +3173,32 @@ body {
   color: var(--text-2);
 }
 
+.empty-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.empty-action-btn {
+  height: 35px;
+  padding: 0 16px;
+  font-size: 12.5px;
+  border-radius: var(--r-md);
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.12s;
+}
+
+.empty-action-btn:hover {
+  transform: translateY(-1px);
+}
+
+.empty-action-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
 /* ─── Toast ───────────────────────────────────────────────────────────────── */
 
 .toasts {
@@ -3517,6 +3558,46 @@ body {
 
 :root[data-theme='light'] .empty .ghost {
   color: rgba(0, 0, 0, 0.08);
+}
+
+:root[data-theme='light'] .btn.accent {
+  background: rgba(0, 122, 255, 0.1);
+  border-color: rgba(0, 122, 255, 0.35);
+  color: #007aff;
+  box-shadow: 0 1px 3px rgba(0, 122, 255, 0.1);
+}
+
+:root[data-theme='light'] .btn.accent:hover {
+  background: rgba(0, 122, 255, 0.18);
+  border-color: rgba(0, 122, 255, 0.55);
+  color: #0062cc;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.2);
+}
+
+:root[data-theme='light'] .btn.secondary {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.13);
+  color: #1d1d1f;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+:root[data-theme='light'] .btn.secondary:hover {
+  background: #fbfbfd;
+  border-color: rgba(0, 0, 0, 0.24);
+  color: #000000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+:root[data-theme='light'] .btn.ghost {
+  background: rgba(0, 0, 0, 0.025);
+  border-color: rgba(0, 0, 0, 0.09);
+  color: var(--text-0);
+}
+
+:root[data-theme='light'] .btn.ghost:hover {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.18);
+  color: var(--text-0);
 }
 
 :root[data-theme='light'] .seg .seg-item.on {

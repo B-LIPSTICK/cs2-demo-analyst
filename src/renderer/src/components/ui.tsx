@@ -202,6 +202,15 @@ export const IcStop = (p: IcProps) => (
   </Base>
 )
 
+export const IcRadar = (p: IcProps) => (
+  <Base {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="4.5" />
+    <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    <path d="M12 12l4.5 -4.5" />
+  </Base>
+)
+
 // ─── 面板 ───────────────────────────────────────────────────────────────────
 
 export function Panel({
@@ -259,7 +268,7 @@ export function Btn({
   className = '',
   ...rest
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'accent' | 'danger' | 'ghost' | ''
+  variant?: 'primary' | 'accent' | 'secondary' | 'danger' | 'ghost' | ''
   size?: 'sm' | 'lg' | ''
 }) {
   return (
