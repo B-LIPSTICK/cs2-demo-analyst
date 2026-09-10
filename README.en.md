@@ -1,95 +1,142 @@
+<div align="center">
+
 # CS2 Demo Analyst
 
-![CS2 Demo Analyst](assets/logo/csicon-512.png)
+**Esports-Grade CS2 Replay & Voice Analysis Workstation**  
+*In-game Voice Transcription · Panorama Voice HUD · 4s Lead-In Live Jump · Official Dual-Track Round Timeline · Built-In AI Match Post-Mortem*
 
-English | [简体中文](README.md)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-blue?logo=windows)](https://github.com/B-LIPSTICK/cs2-demo-analyst/releases)
+[![Version](https://img.shields.io/badge/version-v1.0.0-007aff)](https://github.com/B-LIPSTICK/cs2-demo-analyst/releases/tag/v1.0.0)
+[![Electron](https://img.shields.io/badge/Electron-43.4-47848F?logo=electron)](https://www.electronjs.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Turn a CS2 demo into replayable, searchable match evidence.
+**English** | [简体中文](README.md)
 
-CS2 Demo Analyst is a Windows desktop replay-analysis tool. Drop in a `.dem` file to parse the score, rounds, kills and player stats. When the recording carries in-game voice, the app can transcribe it by player and timestamp, then link the results back to CS2's built-in demo player.
+</div>
 
-## What you can do
+---
 
-- **Understand the entire match**: inspect the map, score, round timeline, kill feed, advanced player metrics (Rating / ADR / KAST% / Opening Duels) and round economy buys.
-- **Find the important moments**: click a round, kill or transcript line to seek CS2 to that timestamp.
-- **Search team voice**: transcribe player voice from the demo and browse it by player, round and time.
-- **See who is speaking in-game**: optionally enable the voice HUD to show the current speaker and team color during playback.
-- **Ask an AI about the match**: use any OpenAI-compatible model to investigate highlights, turning points and player performance.
+## 💡 Why CS2 Demo Analyst?
 
-## Workflow
+Reviewing demos is the most critical pathway to improving in CS2, yet competitive players, coaches, and content creators have long been hindered by:
+- **Clunky In-Game Controls**: CS2's default `Shift+F2` demo UI is notoriously laggy, difficult to scrub, and often misses the precise action moments;
+- **Silent Voice Recordings**: Standard platforms rarely replay team comms, making it impossible to audit calls, tactical executions, and miscommunications;
+- **Boring Stat Tables**: Cold numerical charts fail to illustrate match momentum, clutch decisions, and turning points.
 
-```text
-Add a folder containing demos
-             ↓
-Parse score, rounds, kills and player data
-             ↓
-Optional: extract and transcribe in-game voice
-             ↓
-Search, inspect and replay the key moments in CS2
-```
+**CS2 Demo Analyst** bridges this gap: a high-performance Windows desktop application that connects directly to the running CS2 process, transforming static `.dem` replay files into **searchable, voice-transcribed, AI-diagnosed tactical intelligence with interactive live playback**.
 
-## Screenshots
+---
 
-| Library | Demo detail | Transcript |
-| --- | --- | --- |
-| ![Library](docs/screenshots/1.0-library.png) | ![Demo detail](docs/screenshots/1.0-detail.png) | ![Transcript](docs/screenshots/1.0-transcript.png) |
+## ✨ Key Features
 
-## Install
+### 1. 🎮 Official CS:GO / CS2 Dual-Track Match Timeline Bar
+- **Pixel-perfect recreation of the official esports scoreboard timeline**:
+  - Dual-track split (Upper/Lower teams) with half-time side swapping (T Amber Gold / CT Frost Blue);
+  - Dynamic **5-bar Survivor Indicator** to distinguish between 1vX clutch miracles and flawless 5-man retakes;
+  - 5 official victory vector icons: Elimination, Bomb Exploded, Bomb Defused, Timeout, and Matchpoint Trophy;
+  - Click any round or icon to filter the kill feed and highlight key duels.
 
-Download a release from [Releases](https://github.com/B-LIPSTICK/cs2-demo-analyst/releases):
+![Match Timeline](docs/screenshots/timeline.png)
 
-- `CS2-Demo-Analyst-1.0.0-setup.exe`: installer with a selectable install directory plus desktop and Start Menu shortcuts.
-- `CS2-Demo-Analyst-1.0.0-win64-portable.zip`: portable build; extract and run.
+### 2. ⚡ 4-Second Lead-In Live Seek (Live Jump with Lead-In)
+- **Firefight Pre-Roll Buffer**: Clicking any kill row, tactical event, or AI timestamp automatically seeks ~256 ticks (4 seconds) prior to the engagement, providing full context on crosshair placement, utility prep, and trades;
+- **Dual-Mode Adaptive Response**:
+  - **While CS2 is running**: issues `demo_gototick` via native engine console IPC for instant, seamless seeking;
+  - **While CS2 is closed**: one-click launch directly boots the game and fast-forwards straight to the target tick;
+  - Inspecting duels inside player popups keeps your current view uninterrupted.
 
-CS2 must already be installed. On first launch, add a folder containing your `.dem` files in Settings.
+### 3. 🎙 In-Game Voice HUD Overlay (Valve Panorama)
+- **Native Team Comm Indicators**:
+  - Displays speaking teammates in the bottom-left corner of the game screen during demo playback;
+  - Native rounded avatar square + team-colored handle (`color-T` / `color-CT`) + subtle glow;
+  - Packed as a compliant Valve Panorama VPK (`dsh_voice_override.vpk`): **no DLL injection, no memory manipulation, 100% clean and VAC safe**.
 
-## Usage
+### 4. 🤖 AI-Powered Tactical Post-Mortem
+- **Zero-Barrier Provider Support**:
+  - Native integration for domestic free & affordable providers (Zhipu GLM-4-Flash, SiliconFlow, DeepSeek, Moonshot Kimi) alongside OpenAI-compatible APIs and local **Ollama**;
+- **Interactive Timestamp Seeking**:
+  - Every round tag (e.g. `R2`) and timestamp (e.g. `[02:15]`) mentioned by the AI assistant is **instantly clickable to jump in-game**;
+  - Built-in prompt enforcement and OpenCC normalization for clean, natural Chinese/English output.
 
-1. Open the app and add a folder containing `.dem` files to the library.
-2. Wait for parsing to finish, then open a demo to inspect rounds, kills and player data.
-3. Click **Play in CS2** to use CS2's built-in demo player.
-4. For text-based review, choose local Whisper or a cloud API on the Transcript page and start transcription.
-5. To show speakers inside the game, enable the voice HUD in Settings and play the demo from its detail page.
+### 5. 🎨 Minimalist Apple HUD Design System
+- **Seamless Light & Dark Themes**:
+  - **Light Mode**: crisp white tactile cards, subtle grey borders, high-contrast typography, and gentle micro-shadows;
+  - **Dark Mode**: deep near-black glass paneling, hairline strokes, and subtle aurora gradients;
+- **Pure Vector Iconography**:
+  - All crude system emojis removed in favor of bespoke 1.6px stroke SVGs (Radar scanner, Defuse pliers, Timeline marks);
+  - Standardized Secondary tactile button variants for a responsive, desktop-grade feel.
 
-## Voice and privacy
+### 6. 🛠 Platform Compatibility & Smart Normalization
+- **Auto-Discovery**: One-click detection for Steam, Wanmei (PW), and 5E platform demo storage folders;
+- **Weapon Normalization**: Automatically strips platform skin suffixes and perk tags (e.g. `hkp2000_txz04` → `P2000`), fully supporting Zeus, CZ75, and knife models;
+- **Match Date Extraction**: Reads real match timestamps from zip entry headers and file conventions, eliminating download mtime inaccuracies.
 
-Transcription only works when the demo actually contains player voice. FACEIT, Wanmei and other third-party recordings may include voice; Valve matchmaking demos usually do not.
+---
 
-- **Local Whisper**: audio stays on your machine, but csgove, Whisper and a model file must be downloaded.
-- **Cloud API**: audio is uploaded to the provider you configure, such as Groq. Review that provider's privacy policy before use.
-- **Voice HUD**: the app temporarily injects a CS2 Panorama search path to load the HUD, then restores the related files when playback ends or the app exits.
+## 📸 Screenshots
 
-## AI review
+| Library | Demo Detail | Transcript |
+| :---: | :---: | :---: |
+| ![Library](docs/screenshots/1.0-library.png) | ![Demo Detail](docs/screenshots/1.0-detail.png) | ![Transcript](docs/screenshots/1.0-transcript.png) |
 
-The AI page sends structured match data to any OpenAI-compatible API. Example questions include:
+---
 
-- Which rounds changed the direction of the match?
-- Which kills or clutches are worth reviewing?
-- How did a player perform on the T and CT sides?
+## 🚀 Quick Start
 
-API keys and service URLs are stored in the local app settings. With a cloud model, the data sent depends on the provider and endpoint you configure.
+### Installation
 
-## Development
+Download the latest build from [GitHub Releases](https://github.com/B-LIPSTICK/cs2-demo-analyst/releases):
 
-Read [AGENTS.md](AGENTS.md) before working on the project. It documents the current architecture, verification workflow and known issues.
+- **Portable Green Build (Recommended)**:
+  Download `CS2-Demo-Analyst-1.0.0-win64-portable.zip`, extract to any directory, and double-click `CS2 Demo Analyst.exe` to run immediately without installation.
+
+### Basic Workflow
+
+1. **Add Demo Folders**: Click "Auto-Detect Platform Dirs" to discover your Wanmei, 5E, or Steam replay folders;
+2. **Parse Demos**: Parsed stats, scores, and timelines are cached locally for fast retrieval;
+3. **Live Seek**: Click any round or kill to seek directly inside CS2 with a 4-second buffer;
+4. **Voice & AI Review**:
+   - Transcribe voice comms using local Whisper or cloud engines;
+   - Ask AI assistants for high-impact turning points and click timestamps to inspect.
+
+---
+
+## 🔒 Privacy & Safety Guarantee
+
+- **Local-First Architecture**: Your demo files, kill databases, and audio transcriptions stay strictly on your local disk;
+- **VAC & Account Safety**:
+  - In-game replay communication uses CS2's native console/IPC commands;
+  - The voice HUD utilizes Valve's official Panorama search path priority. **No memory reading, no DLL injection, and no code tampering**.
+
+---
+
+## 🛠 Development & Build
 
 ```bash
+# Clone the repository
+git clone https://github.com/B-LIPSTICK/cs2-demo-analyst.git
+cd cs2-demo-analyst
+
+# Install dependencies
 npm install
-npm run dev          # development mode
-npm run typecheck    # TypeScript checks
-npm run build        # build Electron resources
-npm run dist:zip     # package the Windows portable ZIP
+
+# Start development mode
+npm run dev
+
+# TypeScript type check
+npm run typecheck
+
+# Build and package Windows portable ZIP
+npm run build
+npm run dist:zip
 ```
 
-Stack: Electron, React 19 and TypeScript. Demo parsing uses [deadem](https://github.com/Igor-Losev/deadem), voice extraction uses csgove, and transcription supports whisper.cpp and Groq.
+- **Tech Stack**: Electron + React 19 + TypeScript + Vite + Valve Panorama Engine
+- **Engines**: [deadem](https://github.com/Igor-Losev/deadem), csgove, whisper.cpp, OpenCC
 
-## Current limitations
+---
 
-- Windows only.
-- Demo parsing follows the CS2 demo format and may need updates after CS2 changes.
-- Standard Valve matchmaking demos usually do not contain player voice, so they cannot be transcribed.
-- The in-game voice HUD requires Steam and CS2 to be installed and may trigger Steam's game-file verification.
+## 📄 License
 
-## License
-
-MIT. Windows only.
+Distributed under the [MIT License](LICENSE).
