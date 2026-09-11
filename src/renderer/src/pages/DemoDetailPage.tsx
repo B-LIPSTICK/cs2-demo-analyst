@@ -299,6 +299,8 @@ export function DemoDetailPage({
     }
   }
 
+  const [bottomTab, setBottomTab] = useState<'voice' | 'chat'>('voice')
+
   // 保证所有 Hook 在组件顶层无条件执行（严禁放在 if (!detail) 之后，避免 React Error #310）
   const allKills = useMemo(() => (detail ? detail.rounds.flatMap((r) => r.kills) : []), [detail])
   const round = useMemo(
@@ -311,6 +313,34 @@ export function DemoDetailPage({
   const feedKills = round ? round.kills : allKills
   // 击杀流按时间正序：比赛开始 → 结束
   const sortedKills = useMemo(() => [...feedKills].sort((a, b) => a.tick - b.tick), [feedKills])
+
+  // 局内语音：联动 selectedRound 对局筛选，并按时间正序排列
+  const filteredVoice = useMemo(() => {
+    if (!detail) return []
+    const list =
+      selectedRound === 'all'
+        ? detail.voice
+        : detail.voice.filter((v) => {
+            if (v.roundNum !== undefined) return v.roundNum === selectedRound
+            const r = detail.rounds.find((x) => x.roundNum === selectedRound)
+            return r ? v.tick >= r.startTick && v.tick <= r.endTick : false
+          })
+    return [...list].sort((a, b) => a.tick - b.tick)
+  }, [detail, selectedRound])
+
+  // 局内文字：联动 selectedRound 对局筛选，并按时间正序排列
+  const filteredChat = useMemo(() => {
+    if (!detail) return []
+    const list =
+      selectedRound === 'all'
+        ? detail.chat
+        : detail.chat.filter((c) => {
+            if (c.roundNum !== undefined) return c.roundNum === selectedRound
+            const r = detail.rounds.find((x) => x.roundNum === selectedRound)
+            return r ? c.tick >= r.startTick && c.tick <= r.endTick : false
+          })
+    return [...list].sort((a, b) => a.tick - b.tick)
+  }, [detail, selectedRound])
 
   if (!detail) {
     return (
@@ -325,37 +355,10 @@ export function DemoDetailPage({
   }
 
   const { meta, rounds, chat, voice } = detail
-  const [bottomTab, setBottomTab] = useState<'voice' | 'chat'>('voice')
 
   // 已转写：用转写段累计时长；未转写：回退用解析时检测到的语音时长（meta.voiceSec）
   const voiceSecs =
     voice.length > 0 ? voice.reduce((s, v) => s + (v.endSec - v.timeSec), 0) : (meta.voiceSec ?? 0)
-
-  // 局内语音：联动 selectedRound 对局筛选，并按时间正序排列
-  const filteredVoice = useMemo(() => {
-    const list =
-      selectedRound === 'all'
-        ? voice
-        : voice.filter((v) => {
-            if (v.roundNum !== undefined) return v.roundNum === selectedRound
-            const r = rounds.find((x) => x.roundNum === selectedRound)
-            return r ? v.tick >= r.startTick && v.tick <= r.endTick : false
-          })
-    return [...list].sort((a, b) => a.tick - b.tick)
-  }, [voice, selectedRound, rounds])
-
-  // 局内文字：联动 selectedRound 对局筛选，并按时间正序排列
-  const filteredChat = useMemo(() => {
-    const list =
-      selectedRound === 'all'
-        ? chat
-        : chat.filter((c) => {
-            if (c.roundNum !== undefined) return c.roundNum === selectedRound
-            const r = rounds.find((x) => x.roundNum === selectedRound)
-            return r ? c.tick >= r.startTick && c.tick <= r.endTick : false
-          })
-    return [...list].sort((a, b) => a.tick - b.tick)
-  }, [chat, selectedRound, rounds])
 
   return (
     <div className="page">
