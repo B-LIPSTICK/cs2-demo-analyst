@@ -37,6 +37,52 @@ export function DemoDetailPage({
   const [selectedRound, setSelectedRound] = useState<number | 'all'>('all')
   const [player, setPlayer] = useState<PlayerInfo | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
+  const [transcribing, setTranscribing] = useState(false)
+  const [splitting, setSplitting] = useState(false)
+  const [progress, setProgress] = useState<{ stage: string; done: number; total: number; message?: string } | null>(null)
+
+  useEffect(() => {
+    const offProg = window.api.onEvent('asr:progress', (e) => {
+      if (e.demoId === id) {
+        setProgress({ stage: e.stage, done: e.done, total: e.total, message: e.message })
+      }
+    })
+    return () => offProg()
+  }, [id])
+
+  const runSplit = async () => {
+    if (splitting || transcribing) return
+    setSplitting(true)
+    setProgress({ stage: 'voice-extract', done: 0, total: 1, message: '正在提取录像队内语音…' })
+    try {
+      const n = await window.api.voice.split(id)
+      toast.push(`语音分割完成，已提取 ${n} 条玩家说话片段`)
+      const d = await window.api.library.detail(id)
+      if (d) setDetail(d)
+    } catch (err) {
+      toast.push(err instanceof Error ? err.message : String(err), 'err')
+    } finally {
+      setSplitting(false)
+      setProgress(null)
+    }
+  }
+
+  const runTranscribe = async () => {
+    if (splitting || transcribing) return
+    setTranscribing(true)
+    setProgress({ stage: 'voice-extract', done: 0, total: 1, message: '正在提取并转写语音…' })
+    try {
+      await window.api.asr.transcribe(id)
+      toast.push(t('library.transcribeDone'))
+      const d = await window.api.library.detail(id)
+      if (d) setDetail(d)
+    } catch (err) {
+      toast.push(err instanceof Error ? err.message : String(err), 'err')
+    } finally {
+      setTranscribing(false)
+      setProgress(null)
+    }
+  }
 
   useEffect(() => {
     window.api.settings.get().then(setSettings).catch(() => {})
@@ -317,9 +363,33 @@ export function DemoDetailPage({
                 <IcJump size={12} />
                 {round ? t('detail.playRound').replace('{round}', String(round.roundNum)) : t('detail.playInCs2')}
               </Btn>
+              {meta.hasVoice && voice.length === 0 && (
+                <>
+                  <Btn
+                    size="sm"
+                    variant="secondary"
+                    disabled={splitting || transcribing}
+                    onClick={runSplit}
+                    title="一键切分提取玩家原声音频片段，可直接播放试听（无需 API Key）"
+                  >
+                    <IcMic size={12} />
+                    {splitting ? '切分中…' : '语音分割'}
+                  </Btn>
+                  <Btn
+                    size="sm"
+                    variant="primary"
+                    disabled={splitting || transcribing}
+                    onClick={runTranscribe}
+                    title="使用 Whisper / AI 智能转写语音为文字字幕"
+                  >
+                    <IcTranscript size={12} />
+                    {transcribing ? '转写中…' : '语音转写'}
+                  </Btn>
+                </>
+              )}
               <Btn
                 size="sm"
-                variant="primary"
+                variant={meta.hasVoice && voice.length === 0 ? 'ghost' : 'primary'}
                 onClick={() => onGoTranscript()}
                 title={t('detail.goTranscriptHint')}
               >
@@ -620,20 +690,140 @@ export function DemoDetailPage({
       <div className="grid-2" style={{ marginTop: 14 }}>
         <Panel
           hd={
-            <div className="flex between" style={{ alignItems: 'center', width: '100%' }}>
-              <span>{t('detail.voice')}</span>
-              {voice.length > 0 && (
-                <Btn size="sm" variant="ghost" onClick={onGoTranscript}>
-                  {t('detail.goTranscript')} ({voice.length}) →
+            <div className="flex between" style={{ alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: 6 }}>
+              <div className="flex" style={{ alignItems: 'center', gap: 8 }}>
+                <span>{t('detail.voice')}</span>
+                {voice.length > 0 ? (
+                  <span className="tag voice" style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999 }}>
+                    已切分 {voice.length} 段
+                  </span>
+                ) : meta.hasVoice ? (
+                  <span className="tag voice" style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999 }}>
+                    含语音约 {Math.round(voiceSecs)} 秒
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex" style={{ gap: 6, alignItems: 'center' }}>
+                {meta.hasVoice && (
+                  <>
+                    <Btn
+                      size="sm"
+                      variant="secondary"
+                      disabled={splitting || transcribing}
+                      onClick={runSplit}
+                      title="一键切分提取玩家原声音频片段，可直接播放试听（无需 API Key）"
+                      style={{ fontSize: 11, height: 26, padding: '0 8px' }}
+                    >
+                      <IcMic size={12} />
+                      <span>{splitting ? '切分中…' : '快速切分'}</span>
+                    </Btn>
+                    <Btn
+                      size="sm"
+                      variant="accent"
+                      disabled={splitting || transcribing}
+                      onClick={runTranscribe}
+                      title="使用 Whisper / AI 智能转写语音为文字字幕"
+                      style={{ fontSize: 11, height: 26, padding: '0 8px' }}
+                    >
+                      <IcTranscript size={12} />
+                      <span>{transcribing ? '转写中…' : '语音转写'}</span>
+                    </Btn>
+                  </>
+                )}
+                <Btn
+                  size="sm"
+                  variant="ghost"
+                  onClick={onGoTranscript}
+                  title="前往完整转写页查看与筛选"
+                  style={{ fontSize: 11, height: 26, padding: '0 8px' }}
+                >
+                  <span>完整转写</span>
+                  <span>→</span>
                 </Btn>
-              )}
+              </div>
             </div>
           }
         >
           <div className="panel-bd">
+            {progress && (
+              <div style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--bg-2)', border: '1px solid var(--line-1)', borderRadius: 8 }}>
+                <div className="flex" style={{ alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-1)' }}>
+                    {progress.message || (progress.stage === 'voice-extract' ? '正在提取语音…' : progress.stage === 'voice-split' ? '正在切分玩家语音…' : '正在识别文字…')}
+                  </span>
+                  <span className="mono muted" style={{ fontSize: 11 }}>
+                    {progress.total > 0 ? `${progress.done}/${progress.total}` : '…'}
+                  </span>
+                </div>
+                <div style={{ height: 4, background: 'var(--bg-3)', position: 'relative', overflow: 'hidden', borderRadius: 2 }}>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      width: `${progress.total ? Math.min(100, Math.max(0, (progress.done / progress.total) * 100)) : 0}%`,
+                      background: 'linear-gradient(90deg, var(--accent), var(--ct))',
+                      transition: 'width .2s var(--ease-out)'
+                    }}
+                  />
+                </div>
+              </div>
+            )}
             {voice.length === 0 ? (
-              <div className="muted" style={{ fontSize: 12 }}>
-                {meta.hasVoice ? t('detail.noVoice') : t('library.noVoice')}
+              <div
+                style={{
+                  padding: '24px 16px',
+                  textAlign: 'center',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 10
+                }}
+              >
+                {meta.hasVoice ? (
+                  <>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-0)' }}>
+                      检测到本局包含队内语音数据（约 {Math.round(voiceSecs)} 秒）
+                    </div>
+                    <div className="muted" style={{ fontSize: 12, maxWidth: 440, lineHeight: 1.6 }}>
+                      录像内包含玩家麦克风音频，但尚未切分或转写识别。点击下方按钮即可快速切分听取原声或识别文字：
+                    </div>
+                    <div className="flex" style={{ gap: 8, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
+                      <Btn
+                        variant="secondary"
+                        size="sm"
+                        disabled={splitting || transcribing}
+                        onClick={runSplit}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px' }}
+                      >
+                        <IcMic size={13} />
+                        <span>{splitting ? '正在切分中…' : '快速语音切分 (无需 Key · 秒出)'}</span>
+                      </Btn>
+                      <Btn
+                        variant="accent"
+                        size="sm"
+                        disabled={splitting || transcribing}
+                        onClick={runTranscribe}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px' }}
+                      >
+                        <IcTranscript size={13} />
+                        <span>{transcribing ? '正在转写中…' : 'AI 智能转写文字'}</span>
+                      </Btn>
+                      <Btn
+                        variant="ghost"
+                        size="sm"
+                        onClick={onGoTranscript}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px' }}
+                      >
+                        <span>转写中心</span>
+                        <span>→</span>
+                      </Btn>
+                    </div>
+                  </>
+                ) : (
+                  <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
+                    此 Demo 未录制队内语音（官方比赛 HLTV Demo 或无语音录像通常不包含麦克风音频）
+                  </div>
+                )}
               </div>
             ) : (
               <div style={{ maxHeight: 240, overflowY: 'auto' }}>
