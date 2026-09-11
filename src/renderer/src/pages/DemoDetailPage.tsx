@@ -126,7 +126,6 @@ export function DemoDetailPage({
   }, [])
 
   const mutedSet = useMemo(() => new Set(settings?.overlay?.mutedPlayers ?? []), [settings?.overlay?.mutedPlayers])
-  const showMutedSpeakers = settings?.overlay?.showMutedSpeakers !== false
 
   const isPlayerMuted = useCallback(
     (p?: { steamId?: string; name: string } | null) => {
@@ -223,36 +222,45 @@ export function DemoDetailPage({
     toast.push('已解除全部选手的静音')
   }, [settings, syncVoiceMaskToLive, toast])
 
-  const muteTeam = useCallback(
+  const isTeamMuted = useCallback(
+    (team: 'T' | 'CT') => {
+      const teamPlayers = (detail?.meta.players ?? []).filter((p) => p.team === team)
+      if (teamPlayers.length === 0) return false
+      return teamPlayers.every((p) => isPlayerMuted(p))
+    },
+    [detail, isPlayerMuted]
+  )
+
+  const toggleTeamMute = useCallback(
     async (team: 'T' | 'CT') => {
       if (!detail) return
-      const teamKeys = (detail.meta.players ?? []).filter((p) => p.team === team).map((p) => p.steamId || p.name).filter(Boolean)
+      const teamPlayers = (detail.meta.players ?? []).filter((p) => p.team === team)
+      if (teamPlayers.length === 0) return
+
       const cur = settings?.overlay?.mutedPlayers ?? []
-      const combined = [...new Set([...cur, ...teamKeys])]
+      const allMuted = teamPlayers.every((p) => isPlayerMuted(p))
+
+      let nextList: string[]
+      if (allMuted) {
+        nextList = cur.filter((x) => !teamPlayers.some((p) => x === p.steamId || x === p.name))
+        toast.push(`已恢复 ${team === 'T' ? 'T 阵营' : 'CT 阵营'} 全体选手语音`)
+      } else {
+        const teamKeys = teamPlayers.map((p) => p.steamId || p.name).filter(Boolean)
+        nextList = [...new Set([...cur, ...teamKeys])]
+        toast.push(`已静音 ${team === 'T' ? 'T 阵营' : 'CT 阵营'} 全体选手`, 'warn')
+      }
+
       const updated = await window.api.settings.set({
         overlay: {
           ...(settings?.overlay ?? { enabled: false, position: 'bottom-left', clickThrough: false, scale: 1 }),
-          mutedPlayers: combined
+          mutedPlayers: nextList
         }
       })
       setSettings(updated)
-      void syncVoiceMaskToLive(combined)
-      toast.push(`已静音 ${team === 'T' ? 'T 阵营' : 'CT 阵营'} 全体选手`, 'warn')
+      void syncVoiceMaskToLive(nextList)
     },
-    [detail, settings, syncVoiceMaskToLive, toast]
+    [detail, isPlayerMuted, settings, syncVoiceMaskToLive, toast]
   )
-
-  const toggleShowMutedSpeakers = useCallback(async () => {
-    const cur = settings?.overlay?.showMutedSpeakers !== false
-    const updated = await window.api.settings.set({
-      overlay: {
-        ...(settings?.overlay ?? { enabled: false, position: 'bottom-left', clickThrough: false, scale: 1 }),
-        showMutedSpeakers: !cur
-      }
-    })
-    setSettings(updated)
-    toast.push(!cur ? '悬浮层：显示闭麦头像（叠加红底闭麦角标）' : '悬浮层：完全隐藏静音选手头像')
-  }, [settings, toast])
 
 
   useEffect(() => {
@@ -548,20 +556,6 @@ export function DemoDetailPage({
               )}
             </div>
             <div className="flex" style={{ alignItems: 'center', gap: 6 }}>
-              <Btn
-                size="sm"
-                variant="secondary"
-                onClick={toggleShowMutedSpeakers}
-                title={
-                  showMutedSpeakers
-                    ? '当前模式：悬浮层显示闭麦图标头像（点击切换为完全隐藏）'
-                    : '当前模式：悬浮层完全隐藏静音选手头像（点击切换为显示闭麦头像）'
-                }
-                style={{ fontSize: 11, height: 26, padding: '0 8px' }}
-              >
-                <IcMicOff size={12} style={{ marginRight: 4 }} />
-                {showMutedSpeakers ? '悬浮层：显示闭麦头像' : '悬浮层：隐藏静音头像'}
-              </Btn>
               {(meta.players ?? []).filter((p) => isPlayerMuted(p)).length > 0 ? (
                 <Btn size="sm" variant="ghost" onClick={unmuteAll} style={{ fontSize: 11, height: 26, padding: '0 8px' }}>
                   全员恢复
@@ -573,21 +567,21 @@ export function DemoDetailPage({
               )}
               <Btn
                 size="sm"
-                variant="ghost"
-                onClick={() => muteTeam('T')}
+                variant={isTeamMuted('T') ? 'secondary' : 'ghost'}
+                onClick={() => toggleTeamMute('T')}
                 style={{ fontSize: 11, height: 26, padding: '0 8px' }}
-                title="静音进攻方 (T) 全体选手"
+                title={isTeamMuted('T') ? '恢复进攻方 (T) 全体选手语音' : '静音进攻方 (T) 全体选手'}
               >
-                静音 T
+                {isTeamMuted('T') ? '恢复 T' : '静音 T'}
               </Btn>
               <Btn
                 size="sm"
-                variant="ghost"
-                onClick={() => muteTeam('CT')}
+                variant={isTeamMuted('CT') ? 'secondary' : 'ghost'}
+                onClick={() => toggleTeamMute('CT')}
                 style={{ fontSize: 11, height: 26, padding: '0 8px' }}
-                title="静音防守方 (CT) 全体选手"
+                title={isTeamMuted('CT') ? '恢复防守方 (CT) 全体选手语音' : '静音防守方 (CT) 全体选手'}
               >
-                静音 CT
+                {isTeamMuted('CT') ? '恢复 CT' : '静音 CT'}
               </Btn>
               <Btn
                 size="sm"

@@ -1055,16 +1055,6 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
 
         {draft.cs2.voiceHud && (
           <>
-            <div className="set-row">
-              <div className="info">
-                <div className="t">{t.t('settings.overlayShowMuted')}</div>
-                <div className="d">{t.t('settings.overlayShowMutedHint')}</div>
-              </div>
-              <Toggle
-                on={draft.overlay?.showMutedSpeakers !== false}
-                onChange={(v) => setOverlay({ showMutedSpeakers: v })}
-              />
-            </div>
 
             <div className="set-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
               <div className="flex between" style={{ alignItems: 'center' }}>
