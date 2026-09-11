@@ -2,16 +2,12 @@
 # Output: dist/win-unpacked/ -> single zip, extract & run, no installation needed.
 $ErrorActionPreference = 'Stop'
 
-$stageBuild = Join-Path $PWD 'dist\.build-stage'
-if (Test-Path $stageBuild) { Remove-Item $stageBuild -Recurse -Force }
-
 Write-Host '[zip] electron-builder --dir ...' -ForegroundColor Cyan
 # electronDist 已在 electron-builder.yml 指向本地 node_modules（离线打包，不下载）
-# 使用独立输出目录避免用户正在运行 win-unpacked 时因 dll 锁定导致打包失败
-npx electron-builder --dir --config.directories.output="dist/.build-stage"
+npx electron-builder --dir
 if ($LASTEXITCODE -ne 0) { throw "electron-builder --dir failed" }
 
-$unpacked = Join-Path $stageBuild 'win-unpacked'
+$unpacked = Join-Path $PWD 'dist\win-unpacked'
 if (-not (Test-Path $unpacked)) { throw "win-unpacked not found: $unpacked" }
 
 $version = (node -p "require('./package.json').version").Trim()
@@ -26,19 +22,6 @@ Copy-Item $unpacked $stage -Recurse
 Write-Host '[zip] compressing (Compress-Archive) ...' -ForegroundColor Cyan
 Compress-Archive -Path $stage -DestinationPath $zipPath -CompressionLevel Fastest
 Remove-Item (Split-Path $stage -Parent) -Recurse -Force
-
-# 同步回 dist\win-unpacked（若当前未被运行占用）
-$finalUnpacked = Join-Path $PWD 'dist\win-unpacked'
-try {
-  if (Test-Path $finalUnpacked) {
-    Copy-Item "$unpacked\*" $finalUnpacked -Recurse -Force -ErrorAction Stop
-  } else {
-    Copy-Item $unpacked $finalUnpacked -Recurse -Force -ErrorAction Stop
-  }
-} catch {
-  Write-Host '[zip] win-unpacked 正在被运行中的程序占用，已保留便携 zip' -ForegroundColor Yellow
-}
-Remove-Item $stageBuild -Recurse -Force
 
 $sizeMB = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
 Write-Host "[zip] DONE -> $zipPath ($sizeMB MB)" -ForegroundColor Green
