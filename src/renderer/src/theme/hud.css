@@ -2328,46 +2328,6 @@ body {
 .kill-list {
   display: flex;
   flex-direction: column;
-  container-type: inline-size;
-}
-
-/* 击杀行窄容器（按实际宽度，而非窗口宽度）自适应换行 */
-@container (max-width: 540px) {
-  .kill-row {
-    grid-template-columns: 1fr auto auto;
-    grid-template-areas:
-      'tk rn jump'
-      'atk wp jump'
-      'vic vic jump';
-    row-gap: 6px;
-  }
-
-  .kill-row .tk {
-    grid-area: tk;
-  }
-
-  .kill-row .rn {
-    grid-area: rn;
-  }
-
-  .kill-row .nm:first-of-type {
-    grid-area: atk;
-  }
-
-  .kill-row .wp {
-    grid-area: wp;
-    justify-self: start;
-  }
-
-  .kill-row .nm:last-of-type {
-    grid-area: vic;
-  }
-
-  .kill-row .jump {
-    grid-area: jump;
-    align-self: center;
-    justify-self: end;
-  }
 }
 
 .kill-row {
@@ -3399,10 +3359,12 @@ body {
   flex: 1;
 }
 
-.grid-2 {
+.grid-2,
+.demo-bottom-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
+  align-items: stretch;
 }
 
 .grid-3 {
@@ -3411,8 +3373,9 @@ body {
   gap: 16px;
 }
 
-@media (max-width: 1180px) {
-  .grid-2 {
+@media (max-width: 800px) {
+  .grid-2,
+  .demo-bottom-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -3474,39 +3437,9 @@ body {
   }
 
   .kill-row {
-    grid-template-columns: 1fr auto auto;
-    grid-template-areas:
-      'tk rn jump'
-      'atk wp jump'
-      'vic vic jump';
-    row-gap: 6px;
-  }
-
-  .kill-row .tk {
-    grid-area: tk;
-  }
-
-  .kill-row .rn {
-    grid-area: rn;
-  }
-
-  .kill-row .nm:first-of-type {
-    grid-area: atk;
-  }
-
-  .kill-row .wp {
-    grid-area: wp;
-    justify-self: start;
-  }
-
-  .kill-row .nm:last-of-type {
-    grid-area: vic;
-  }
-
-  .kill-row .jump {
-    grid-area: jump;
-    align-self: center;
-    justify-self: end;
+    grid-template-columns: 46px minmax(0, 1fr) auto minmax(0, 1fr) 38px 26px;
+    gap: 6px;
+    padding: 6px 10px;
   }
 
   .tline {

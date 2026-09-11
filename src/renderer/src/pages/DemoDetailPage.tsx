@@ -704,7 +704,7 @@ export function DemoDetailPage({
       {round && <RoundStrip round={round} tickRate={meta.tickRate ?? 64} onJump={jump} />}
 
       {/* 底部两栏：击杀战报 + 局内通信（语音 & 聊天，随选定回合联动） */}
-      <div className="grid-2" style={{ marginTop: 16 }}>
+      <div className="grid-2 demo-bottom-grid" style={{ marginTop: 16 }}>
         {/* 左栏：击杀战报 */}
         <Panel
           hd={
@@ -853,7 +853,7 @@ export function DemoDetailPage({
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    gap: 10
+                    gap: 12
                   }}
                 >
                   {meta.hasVoice ? (
@@ -861,29 +861,28 @@ export function DemoDetailPage({
                       <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-0)' }}>
                         检测到本局包含队内语音数据（约 {Math.round(voiceSecs)} 秒）
                       </div>
-                      <div className="muted" style={{ fontSize: 12, maxWidth: 440, lineHeight: 1.6 }}>
-                        录像包含玩家麦克风音频，尚未提取切分或转写识别。可快速切分听取原声或识别文字：
-                      </div>
-                      <div className="flex" style={{ gap: 10, marginTop: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+                      <div className="flex" style={{ gap: 10, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
                         <Btn
                           variant="secondary"
                           size="sm"
                           disabled={splitting || transcribing}
                           onClick={runSplit}
+                          title="快速提取并按语音分段（无需 API Key，切完可逐段播放试听）"
                           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px' }}
                         >
                           <IcMic size={13} />
-                          <span>{splitting ? '正在切分中…' : '快速语音切分 (无需 Key · 秒出)'}</span>
+                          <span>{splitting ? '正在切分…' : '快速切分'}</span>
                         </Btn>
                         <Btn
                           variant="accent"
                           size="sm"
                           disabled={splitting || transcribing}
                           onClick={runTranscribe}
+                          title="使用 AI 语音转写模型将队内语音转为文字"
                           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px' }}
                         >
                           <IcTranscript size={13} />
-                          <span>{transcribing ? '正在转写中…' : 'AI 智能转写文字'}</span>
+                          <span>{transcribing ? '正在转写…' : '智能转写'}</span>
                         </Btn>
                       </div>
                     </>
