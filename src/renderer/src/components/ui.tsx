@@ -97,6 +97,16 @@ export const IcPause = (p: IcProps) => (
   </Base>
 )
 
+export const IcMicOff = (p: IcProps) => (
+  <Base {...p}>
+    <line x1="1" y1="1" x2="23" y2="23" />
+    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+    <line x1="12" y1="19" x2="12" y2="23" />
+    <line x1="8" y1="23" x2="16" y2="23" />
+  </Base>
+)
+
 export const IcJump = (p: IcProps) => (
   <Base {...p}>
     <path d="M4 12h13M13 6l6 6-6 6" />
@@ -360,23 +370,97 @@ export function Avatar({
   name,
   team,
   size = 20,
-  avatar
+  avatar,
+  muted
 }: {
   name: string
   team: 'T' | 'CT' | 'SPEC' | 'NONE'
   size?: number
   avatar?: string
+  muted?: boolean
 }) {
   const cls = team === 'T' ? 't' : team === 'CT' ? 'ct' : team
+  const badgeSize = Math.max(9, Math.round(size * 0.48))
   return (
     <span
-      className={`av ${cls}`}
-      style={{ width: size, height: size, fontSize: Math.max(8, size * 0.46), overflow: 'hidden' }}
+      className={`av ${cls} ${muted ? 'muted' : ''}`}
+      style={{
+        position: 'relative',
+        width: size,
+        height: size,
+        fontSize: Math.max(8, size * 0.46),
+        overflow: muted ? 'visible' : 'hidden',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flex: 'none'
+      }}
+      title={muted ? `${name} (已静音)` : name}
     >
-      {avatar ? (
-        <img src={avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-      ) : (
-        (name[0] ?? '?').toUpperCase()
+      <span
+        style={{
+          width: '100%',
+          height: '100%',
+          borderRadius: '50%',
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        {avatar ? (
+          <img
+            src={avatar}
+            alt=""
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              display: 'block',
+              filter: muted ? 'grayscale(40%) opacity(0.7)' : undefined
+            }}
+          />
+        ) : (
+          (name[0] ?? '?').toUpperCase()
+        )}
+      </span>
+      {muted && (
+        <span
+          className="av-mute-badge"
+          style={{
+            position: 'absolute',
+            right: -2,
+            bottom: -2,
+            width: badgeSize,
+            height: badgeSize,
+            background: '#ff453a',
+            border: '1.5px solid var(--panel, #18181c)',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#ffffff',
+            zIndex: 2,
+            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.5)'
+          }}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="75%"
+            height="75%"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="1" y1="1" x2="23" y2="23" />
+            <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+            <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
+          </svg>
+        </span>
       )}
     </span>
   )

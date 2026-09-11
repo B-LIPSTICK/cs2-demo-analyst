@@ -6,6 +6,13 @@
  */
 import './overlay.css'
 
+interface OverlaySpeaker {
+  name: string
+  team: string
+  avatar?: string
+  muted?: boolean
+}
+
 interface OverlayState {
   mode: 'demo' | 'live' | 'idle'
   tick: number
@@ -14,8 +21,9 @@ interface OverlayState {
   round?: number
   scoreT?: number
   scoreCT?: number
-  speakers: { name: string; team: string; avatar?: string }[]
+  speakers: OverlaySpeaker[]
   lines: { text: string; playerName: string; team: string; tick: number }[]
+  showMutedSpeakers?: boolean
 }
 
 const speakersEl = document.getElementById('speakers')!
@@ -28,16 +36,19 @@ function teamCls(team: string): string {
 }
 
 function render(state: OverlayState): void {
+  const showMuted = state.showMutedSpeakers !== false
+
   // 字幕：取最近一条正在播（或刚播完）的语音文字
   const now = state.lines[state.lines.length - 1]
-  if (now) {
+  const nowMuted = state.speakers.find((s) => s.name === now?.playerName)?.muted
+  if (now && (!nowMuted || showMuted)) {
     captionEl.classList.add('on')
     captionEl.innerHTML = ''
     const who = document.createElement('span')
-    who.className = `cap-who ${teamCls(now.team)}`
-    who.textContent = now.playerName
+    who.className = `cap-who ${teamCls(now.team)} ${nowMuted ? 'muted' : ''}`
+    who.textContent = now.playerName + (nowMuted ? ' (已静音)' : '')
     const txt = document.createElement('span')
-    txt.className = 'cap-txt'
+    txt.className = `cap-txt ${nowMuted ? 'muted' : ''}`
     txt.textContent = now.text
     captionEl.appendChild(who)
     captionEl.appendChild(txt)
@@ -47,14 +58,15 @@ function render(state: OverlayState): void {
   }
 
   // 说话者（语音 HUD）
-  const want = new Set(state.speakers.map((s) => s.name))
+  const visibleSpeakers = state.speakers.filter((s) => showMuted || !s.muted)
+  const want = new Set(visibleSpeakers.map((s) => s.name))
   const existing = new Map<string, HTMLElement>()
   for (const el of Array.from(speakersEl.children) as HTMLElement[]) {
     const name = el.dataset.name ?? ''
     if (want.has(name)) existing.set(name, el)
     else el.classList.remove('on')
   }
-  for (const s of state.speakers) {
+  for (const s of visibleSpeakers) {
     let el = existing.get(s.name)
     if (!el) {
       el = document.createElement('div')
@@ -68,6 +80,7 @@ function render(state: OverlayState): void {
       speakersEl.appendChild(el)
     }
     el.classList.add('on')
+    el.classList.toggle('muted', Boolean(s.muted))
     const avEl = el.querySelector('.av') as HTMLElement
     if (s.avatar) {
       avEl.innerHTML = ''
@@ -78,7 +91,13 @@ function render(state: OverlayState): void {
     } else {
       avEl.textContent = s.name[0]?.toUpperCase() ?? '?'
     }
-    ;(el.querySelector('.nm') as HTMLElement).textContent = s.name
+    if (s.muted) {
+      const badge = document.createElement('span')
+      badge.className = 'av-mute-badge'
+      badge.innerHTML = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>`
+      avEl.appendChild(badge)
+    }
+    ;(el.querySelector('.nm') as HTMLElement).textContent = s.name + (s.muted ? ' (已静音)' : '')
   }
   while (speakersEl.children.length > 6) {
     speakersEl.removeChild(speakersEl.firstChild!)

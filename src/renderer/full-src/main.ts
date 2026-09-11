@@ -12,21 +12,25 @@ interface VPState {
   round?: number
   scoreT?: number
   scoreCT?: number
-  speakers: { name: string; team: string; avatar?: string }[]
+  speakers: { name: string; team: string; avatar?: string; muted?: boolean }[]
   lines: { text: string; playerName: string; team: string; tick?: number }[]
+  showMutedSpeakers?: boolean
 }
 
 const $ = (id: string) => document.getElementById(id)!
 const teamCls = (t?: string) => (t === 'T' ? 't' : t === 'CT' ? 'ct' : '')
 
 function render(s: VPState): void {
+  const showMuted = s.showMutedSpeakers !== false
+  const visibleSpeakers = s.speakers.filter((x) => showMuted || !x.muted)
+
   // 说话者
   const spEl = $('speakers')
-  const want = new Set(s.speakers.map((x) => x.name))
+  const want = new Set(visibleSpeakers.map((x) => x.name))
   for (const el of Array.from(spEl.children) as HTMLElement[]) {
     if (!want.has(el.dataset.name ?? '')) el.classList.remove('on')
   }
-  for (const sp of s.speakers.slice(0, 4)) {
+  for (const sp of visibleSpeakers.slice(0, 4)) {
     let el = Array.from(spEl.children).find((c) => (c as HTMLElement).dataset.name === sp.name) as HTMLElement | undefined
     if (!el) {
       el = document.createElement('div')
@@ -36,6 +40,7 @@ function render(s: VPState): void {
       spEl.appendChild(el)
     }
     el.classList.add('on')
+    el.classList.toggle('muted', Boolean(sp.muted))
     const avEl = el.querySelector('.av') as HTMLElement
     if (sp.avatar) {
       avEl.innerHTML = ''
@@ -46,7 +51,13 @@ function render(s: VPState): void {
     } else {
       avEl.textContent = sp.name[0]?.toUpperCase() ?? '?'
     }
-    ;(el.querySelector('.nm') as HTMLElement).textContent = sp.name
+    if (sp.muted) {
+      const badge = document.createElement('span')
+      badge.className = 'av-mute-badge'
+      badge.innerHTML = `<svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>`
+      avEl.appendChild(badge)
+    }
+    ;(el.querySelector('.nm') as HTMLElement).textContent = sp.name + (sp.muted ? ' (已静音)' : '')
   }
 
   // 转写字幕（最近 3 条）

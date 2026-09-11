@@ -8,6 +8,8 @@ import {
   IcChevronRight,
   IcFolder,
   IcJump,
+  IcMic,
+  IcMicOff,
   IcTranscript,
   Panel,
   Tag,
@@ -18,7 +20,7 @@ import {
   useToast
 } from '@/components/ui'
 import { useTKey } from '@/i18n'
-import type { DemoDetail, KillEvent, PlayerInfo, RoundEndType, RoundInfo, TeamSide } from '@shared/types'
+import type { DemoDetail, KillEvent, PlayerInfo, RoundEndType, RoundInfo, Settings, TeamSide } from '@shared/types'
 
 export function DemoDetailPage({
   id,
@@ -34,6 +36,107 @@ export function DemoDetailPage({
   const [detail, setDetail] = useState<DemoDetail | null>(null)
   const [selectedRound, setSelectedRound] = useState<number | 'all'>('all')
   const [player, setPlayer] = useState<PlayerInfo | null>(null)
+  const [settings, setSettings] = useState<Settings | null>(null)
+
+  useEffect(() => {
+    window.api.settings.get().then(setSettings).catch(() => {})
+    const off = window.api.onEvent('settings:changed', (e) => {
+      if (e.settings) setSettings(e.settings)
+    })
+    return off
+  }, [])
+
+  const mutedSet = useMemo(() => new Set(settings?.overlay?.mutedPlayers ?? []), [settings?.overlay?.mutedPlayers])
+  const showMutedSpeakers = settings?.overlay?.showMutedSpeakers !== false
+
+  const isPlayerMuted = useCallback(
+    (p?: { steamId?: string; name: string } | null) => {
+      if (!p) return false
+      return (p.steamId ? mutedSet.has(p.steamId) : false) || (p.name ? mutedSet.has(p.name) : false)
+    },
+    [mutedSet]
+  )
+
+  const togglePlayerMute = useCallback(
+    async (p: { steamId?: string; name: string }) => {
+      const key = p.steamId || p.name
+      if (!key) return
+      const curList = settings?.overlay?.mutedPlayers ?? []
+      const isAlready = curList.includes(key) || (p.name && curList.includes(p.name)) || (p.steamId && curList.includes(p.steamId))
+      const nextList = isAlready
+        ? curList.filter((x) => x !== key && x !== p.name && x !== p.steamId)
+        : [...curList, key]
+
+      const updated = await window.api.settings.set({
+        overlay: {
+          ...(settings?.overlay ?? { enabled: false, position: 'bottom-left', clickThrough: false, scale: 1 }),
+          mutedPlayers: nextList
+        }
+      })
+      setSettings(updated)
+      if (isAlready) {
+        toast.push(`${p.name} 已解除静音`)
+      } else {
+        toast.push(`${p.name} 已静音（悬浮层将显示闭麦标或屏蔽）`, 'warn')
+      }
+    },
+    [settings, toast]
+  )
+
+  const muteAll = useCallback(async () => {
+    if (!detail) return
+    const allKeys = (detail.meta.players ?? []).map((p) => p.steamId || p.name).filter(Boolean)
+    const updated = await window.api.settings.set({
+      overlay: {
+        ...(settings?.overlay ?? { enabled: false, position: 'bottom-left', clickThrough: false, scale: 1 }),
+        mutedPlayers: allKeys
+      }
+    })
+    setSettings(updated)
+    toast.push('已一键静音全场 10 位选手', 'warn')
+  }, [detail, settings, toast])
+
+  const unmuteAll = useCallback(async () => {
+    const updated = await window.api.settings.set({
+      overlay: {
+        ...(settings?.overlay ?? { enabled: false, position: 'bottom-left', clickThrough: false, scale: 1 }),
+        mutedPlayers: []
+      }
+    })
+    setSettings(updated)
+    toast.push('已解除全部选手的静音')
+  }, [settings, toast])
+
+  const muteTeam = useCallback(
+    async (team: 'T' | 'CT') => {
+      if (!detail) return
+      const teamKeys = (detail.meta.players ?? []).filter((p) => p.team === team).map((p) => p.steamId || p.name).filter(Boolean)
+      const cur = settings?.overlay?.mutedPlayers ?? []
+      const combined = [...new Set([...cur, ...teamKeys])]
+      const updated = await window.api.settings.set({
+        overlay: {
+          ...(settings?.overlay ?? { enabled: false, position: 'bottom-left', clickThrough: false, scale: 1 }),
+          mutedPlayers: combined
+        }
+      })
+      setSettings(updated)
+      toast.push(`已静音 ${team === 'T' ? 'T 阵营' : 'CT 阵营'} 全体选手`, 'warn')
+    },
+    [detail, settings, toast]
+  )
+
+  const toggleShowMutedSpeakers = useCallback(async () => {
+    const cur = settings?.overlay?.showMutedSpeakers !== false
+    const updated = await window.api.settings.set({
+      overlay: {
+        ...(settings?.overlay ?? { enabled: false, position: 'bottom-left', clickThrough: false, scale: 1 }),
+        showMutedSpeakers: !cur
+      }
+    })
+    setSettings(updated)
+    toast.push(!cur ? '悬浮层：显示闭麦头像（叠加红底闭麦角标）' : '悬浮层：完全隐藏静音选手头像')
+  }, [settings, toast])
+
 
   useEffect(() => {
     let alive = true
@@ -343,13 +446,85 @@ export function DemoDetailPage({
         </Panel>
 
         {/* 选手数据 */}
-        <Panel hd={t('detail.players')}>
+        <Panel
+          hd={
+            <div className="flex between" style={{ alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: 8 }}>
+              <div className="flex" style={{ alignItems: 'center', gap: 8 }}>
+                <span>{t('detail.players')}</span>
+                {(meta.players ?? []).filter((p) => isPlayerMuted(p)).length > 0 ? (
+                  <span
+                    className="tag alert"
+                    style={{
+                      fontSize: 11,
+                      padding: '2px 8px',
+                      borderRadius: 999,
+                      height: 'auto',
+                      background: 'rgba(255, 69, 58, 0.15)',
+                      color: '#ff453a',
+                      borderColor: 'rgba(255, 69, 58, 0.35)'
+                    }}
+                  >
+                    已静音 {(meta.players ?? []).filter((p) => isPlayerMuted(p)).length} 人
+                  </span>
+                ) : (
+                  <span className="muted" style={{ fontSize: 11, fontWeight: 'normal' }}>
+                    全员开麦
+                  </span>
+                )}
+              </div>
+              <div className="flex" style={{ alignItems: 'center', gap: 6 }}>
+                <Btn
+                  size="sm"
+                  variant="secondary"
+                  onClick={toggleShowMutedSpeakers}
+                  title={
+                    showMutedSpeakers
+                      ? '当前模式：悬浮层显示闭麦图标头像（点击切换为完全隐藏）'
+                      : '当前模式：悬浮层完全隐藏静音选手头像（点击切换为显示闭麦头像）'
+                  }
+                  style={{ fontSize: 11, height: 26, padding: '0 8px' }}
+                >
+                  <IcMicOff size={12} style={{ marginRight: 4 }} />
+                  {showMutedSpeakers ? '悬浮层：显示闭麦头像' : '悬浮层：隐藏静音头像'}
+                </Btn>
+                {(meta.players ?? []).filter((p) => isPlayerMuted(p)).length > 0 ? (
+                  <Btn size="sm" variant="ghost" onClick={unmuteAll} style={{ fontSize: 11, height: 26, padding: '0 8px' }}>
+                    全员恢复
+                  </Btn>
+                ) : (
+                  <Btn size="sm" variant="ghost" onClick={muteAll} style={{ fontSize: 11, height: 26, padding: '0 8px' }}>
+                    一键全员静音
+                  </Btn>
+                )}
+                <Btn
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => muteTeam('T')}
+                  style={{ fontSize: 11, height: 26, padding: '0 8px' }}
+                  title="静音进攻方 (T) 全体选手"
+                >
+                  静音 T
+                </Btn>
+                <Btn
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => muteTeam('CT')}
+                  style={{ fontSize: 11, height: 26, padding: '0 8px' }}
+                  title="静音防守方 (CT) 全体选手"
+                >
+                  静音 CT
+                </Btn>
+              </div>
+            </div>
+          }
+        >
           <div className="tbl-wrap" style={{ padding: '6px 0' }}>
             <table className="tbl">
               <thead>
                 <tr>
                   <th>#</th>
                   <th>{t('detail.players')}</th>
+                  <th style={{ textAlign: 'center' }}>麦克风</th>
                   <th>{t('detail.hud.rating')}</th>
                   <th>{t('detail.hud.adr')}</th>
                   <th>{t('detail.hud.kast')}</th>
@@ -363,42 +538,75 @@ export function DemoDetailPage({
                 </tr>
               </thead>
               <tbody>
-                {(meta.players ?? []).map((p, i) => (
-                  <tr
-                    key={p.steamId || p.name}
-                    className="player-row"
-                    onClick={() => setPlayer(p)}
-                    title={t('detail.playerDetail')}
-                  >
-                    <td className="num muted">{i + 1}</td>
-                    <td>
-                      <span className="flex gap-8" style={{ alignItems: 'center' }}>
-                        <Avatar name={p.name} team={p.team} size={20} avatar={p.avatar} />
-                        <span className={`nm ${p.team === 'T' ? 't' : p.team === 'CT' ? 'ct' : ''}`}>{p.name}</span>
-                      </span>
-                    </td>
-                    <td
-                      className={`num ${p.rating && p.rating >= 1.2 ? 'win-rating' : p.rating && p.rating < 0.85 ? 'low-rating' : ''}`}
-                      style={{ fontWeight: 700 }}
+                {(meta.players ?? []).map((p, i) => {
+                  const muted = isPlayerMuted(p)
+                  return (
+                    <tr
+                      key={p.steamId || p.name}
+                      className={`player-row ${muted ? 'player-muted' : ''}`}
+                      onClick={() => setPlayer(p)}
+                      title={t('detail.playerDetail')}
                     >
-                      {p.rating !== undefined ? p.rating.toFixed(2) : '—'}
-                    </td>
-                    <td className="num" style={{ fontWeight: 600 }}>{p.adr !== undefined ? p.adr : '—'}</td>
-                    <td className="num">{p.kast !== undefined ? `${p.kast}%` : '—'}</td>
-                    <td className="num">{p.kills}</td>
-                    <td className="num">{p.deaths}</td>
-                    <td className="num">{p.hsp}%</td>
-                    <td className="num">{p.firstKills !== undefined ? `${p.firstKills}/${p.firstDeaths ?? 0}` : '—'}</td>
-                    <td
-                      className="num"
-                      title={`总投掷伤害: ${p.utilityDamage ?? 0} · 局均: ${p.utilityDamagePerRound ?? 0}`}
-                    >
-                      {p.utilityDamage ?? 0}
-                    </td>
-                    <td className="num">{p.flashAssists ?? 0}</td>
-                    <td className="num">{p.mvp}</td>
-                  </tr>
-                ))}
+                      <td className="num muted">{i + 1}</td>
+                      <td>
+                        <span className="flex gap-8" style={{ alignItems: 'center' }}>
+                          <Avatar name={p.name} team={p.team} size={20} avatar={p.avatar} muted={muted} />
+                          <span
+                            className={`nm ${p.team === 'T' ? 't' : p.team === 'CT' ? 'ct' : ''}`}
+                            style={muted ? { opacity: 0.65 } : undefined}
+                          >
+                            {p.name}
+                          </span>
+                        </span>
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          className={`btn-mic-toggle ${muted ? 'muted' : 'active'}`}
+                          onClick={() => togglePlayerMute(p)}
+                          title={muted ? `点击恢复 ${p.name} 开麦` : `点击静音 ${p.name}`}
+                          style={{
+                            background: muted ? 'rgba(255, 69, 58, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                            border: `1px solid ${muted ? 'rgba(255, 69, 58, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+                            color: muted ? '#ff453a' : 'var(--text-muted, #999)',
+                            borderRadius: 6,
+                            padding: '3px 8px',
+                            fontSize: 11,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            lineHeight: 1,
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {muted ? <IcMicOff size={12} /> : <IcMic size={12} />}
+                          <span>{muted ? '已静音' : '开麦'}</span>
+                        </button>
+                      </td>
+                      <td
+                        className={`num ${p.rating && p.rating >= 1.2 ? 'win-rating' : p.rating && p.rating < 0.85 ? 'low-rating' : ''}`}
+                        style={{ fontWeight: 700 }}
+                      >
+                        {p.rating !== undefined ? p.rating.toFixed(2) : '—'}
+                      </td>
+                      <td className="num" style={{ fontWeight: 600 }}>{p.adr !== undefined ? p.adr : '—'}</td>
+                      <td className="num">{p.kast !== undefined ? `${p.kast}%` : '—'}</td>
+                      <td className="num">{p.kills}</td>
+                      <td className="num">{p.deaths}</td>
+                      <td className="num">{p.hsp}%</td>
+                      <td className="num">{p.firstKills !== undefined ? `${p.firstKills}/${p.firstDeaths ?? 0}` : '—'}</td>
+                      <td
+                        className="num"
+                        title={`总投掷伤害: ${p.utilityDamage ?? 0} · 局均: ${p.utilityDamagePerRound ?? 0}`}
+                      >
+                        {p.utilityDamage ?? 0}
+                      </td>
+                      <td className="num">{p.flashAssists ?? 0}</td>
+                      <td className="num">{p.mvp}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -429,31 +637,38 @@ export function DemoDetailPage({
               </div>
             ) : (
               <div style={{ maxHeight: 240, overflowY: 'auto' }}>
-                {voice.slice(-60).reverse().map((v, i) => (
-                  <div key={i} className="tline" onClick={() => jump(v.tick)}>
-                    <span className="tm">{fmtTick(v.tick, meta.tickRate ?? 64)}</span>
-                    <span className="who">
-                      <Avatar
-                        name={v.playerName}
-                        team={v.team}
-                        size={16}
-                        avatar={(meta.players ?? []).find((x) => x.name === v.playerName)?.avatar}
-                      />
-                      <span className={`nm ${v.team === 'T' ? 't' : v.team === 'CT' ? 'ct' : ''}`}>
-                        {v.playerName}
+                {voice.slice(-60).reverse().map((v, i) => {
+                  const vMuted = isPlayerMuted({ steamId: v.steamId, name: v.playerName })
+                  return (
+                    <div key={i} className={`tline ${vMuted ? 'muted-line' : ''}`} onClick={() => jump(v.tick)}>
+                      <span className="tm">{fmtTick(v.tick, meta.tickRate ?? 64)}</span>
+                      <span className="who">
+                        <Avatar
+                          name={v.playerName}
+                          team={v.team}
+                          size={16}
+                          avatar={(meta.players ?? []).find((x) => x.name === v.playerName)?.avatar}
+                          muted={vMuted}
+                        />
+                        <span className={`nm ${v.team === 'T' ? 't' : v.team === 'CT' ? 'ct' : ''}`}>
+                          {v.playerName}
+                          {vMuted && <span style={{ fontSize: 10, color: '#ff453a', marginLeft: 4 }}>(已静音)</span>}
+                        </span>
                       </span>
-                    </span>
-                    <span className="txt">{v.text}</span>
-                    <VoicePlayButton
-                      demoId={id}
-                      seg={{ steamId: v.steamId, playerName: v.playerName, startSec: v.timeSec, endSec: v.endSec }}
-                      size={13}
-                    />
-                    <span className="jump">
-                      <IcJump size={13} />
-                    </span>
-                  </div>
-                ))}
+                      <span className={`txt ${vMuted ? 'muted' : ''}`} style={vMuted ? { opacity: 0.6 } : undefined}>
+                        {v.text}
+                      </span>
+                      <VoicePlayButton
+                        demoId={id}
+                        seg={{ steamId: v.steamId, playerName: v.playerName, startSec: v.timeSec, endSec: v.endSec }}
+                        size={13}
+                      />
+                      <span className="jump">
+                        <IcJump size={13} />
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -495,6 +710,8 @@ export function DemoDetailPage({
           kills={allKills}
           tickRate={meta.tickRate ?? 64}
           rounds={rounds}
+          isMuted={isPlayerMuted(player)}
+          onToggleMute={() => togglePlayerMute(player)}
           onJump={jump}
           onClose={() => setPlayer(null)}
         />
@@ -994,6 +1211,8 @@ function PlayerModal({
   kills,
   tickRate,
   rounds,
+  isMuted,
+  onToggleMute,
   onJump,
   onClose
 }: {
@@ -1001,6 +1220,8 @@ function PlayerModal({
   kills: KillEvent[]
   tickRate: number
   rounds?: RoundInfo[]
+  isMuted?: boolean
+  onToggleMute?: () => void
   onJump: (tick: number) => void
   onClose: () => void
 }) {
@@ -1026,14 +1247,42 @@ function PlayerModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal player-modal" onClick={(e) => e.stopPropagation()}>
         <div className="pm-head">
-          <Avatar name={player.name} team={player.team} size={46} avatar={player.avatar} />
+          <Avatar name={player.name} team={player.team} size={46} avatar={player.avatar} muted={isMuted} />
           <div style={{ minWidth: 0 }}>
-            <div className="pm-name">{player.name}</div>
+            <div className="pm-name" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>{player.name}</span>
+              {isMuted && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: '#ff453a',
+                    background: 'rgba(255, 69, 58, 0.12)',
+                    padding: '1px 6px',
+                    borderRadius: 4,
+                    fontWeight: 500
+                  }}
+                >
+                  已静音
+                </span>
+              )}
+            </div>
             <div className="pm-sub">
               {player.team === 'T' ? 'T 队' : player.team === 'CT' ? 'CT 队' : '—'}
             </div>
           </div>
           <div className="grow" />
+          {onToggleMute && (
+            <Btn
+              variant={isMuted ? 'danger' : 'secondary'}
+              size="sm"
+              onClick={onToggleMute}
+              title={isMuted ? '点击取消静音该选手' : '点击静音该选手麦克风'}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginRight: 6 }}
+            >
+              {isMuted ? <IcMicOff size={13} /> : <IcMic size={13} />}
+              <span>{isMuted ? '已静音' : '静音选手'}</span>
+            </Btn>
+          )}
           <Btn variant="ghost" size="sm" onClick={onClose}>
             ✕
           </Btn>

@@ -7,6 +7,7 @@ import {
   IcDownload,
   IcJump,
   IcMic,
+  IcMicOff,
   IcSearch,
   Panel,
   Tag,
@@ -15,7 +16,7 @@ import {
   useToast
 } from '@/components/ui'
 import { useTKey } from '@/i18n'
-import type { ChatMessage, DemoDetail, DemoMeta, VoiceSegment } from '@shared/types'
+import type { ChatMessage, DemoDetail, DemoMeta, Settings, VoiceSegment } from '@shared/types'
 
 export function TranscriptPage({
   initialDemoId,
@@ -42,6 +43,8 @@ export function TranscriptPage({
   const [progress, setProgress] = useState<{ stage: string; done: number; total: number; message?: string } | null>(null)
   const [hasCloudKey, setHasCloudKey] = useState(false)
 
+  const [settings, setSettings] = useState<Settings | null>(null)
+
   // 页面常驻（App 只切换 display）后，从详情页跳转带入新的 demoId 时同步切换；
   // navSeq 变化（即使 demoId 相同）也强制重新选中，保证「点转写必打开对应 demo」
   useEffect(() => {
@@ -49,8 +52,21 @@ export function TranscriptPage({
   }, [initialDemoId, navSeq])
 
   useEffect(() => {
-    window.api.settings.get().then((s) => setHasCloudKey(Boolean(s.asr?.cloudApiKey))).catch(() => {})
+    window.api.settings.get().then((s) => {
+      setSettings(s)
+      setHasCloudKey(Boolean(s.asr?.cloudApiKey))
+    }).catch(() => {})
+    const off = window.api.onEvent('settings:changed', (e) => {
+      if (e.settings) setSettings(e.settings)
+    })
+    return () => off()
   }, [])
+
+  const mutedSet = useMemo(() => new Set(settings?.overlay?.mutedPlayers ?? []), [settings?.overlay?.mutedPlayers])
+
+  const isPlayerMuted = (name: string, steamId?: string) => {
+    return (steamId ? mutedSet.has(steamId) : false) || mutedSet.has(name)
+  }
 
   useEffect(() => {
     window.api.library.list().then(setDemos)
@@ -355,14 +371,26 @@ export function TranscriptPage({
             <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
               {voicePlayers.map((p) => {
                 const on = players.has(p)
+                const playerInfo = (detail?.meta.players ?? []).find((x) => x.name === p)
+                const muted = isPlayerMuted(p, playerInfo?.steamId)
                 return (
                   <span
                     key={p}
-                    className={`tag ${on ? 'voice' : 'ghost'}`}
-                    style={{ cursor: 'pointer' }}
+                    className={`tag ${on ? 'voice' : 'ghost'} ${muted ? 'player-muted-tag' : ''}`}
+                    style={{
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      borderColor: muted ? 'rgba(255, 69, 58, 0.45)' : undefined,
+                      color: muted && !on ? '#ff6961' : undefined
+                    }}
                     onClick={() => togglePlayer(p)}
+                    title={muted ? `${p} (已静音)` : p}
                   >
-                    {p}
+                    {muted && <IcMicOff size={11} style={{ color: '#ff453a' }} />}
+                    <span>{p}</span>
+                    {muted && <span style={{ fontSize: 9, color: '#ff453a', opacity: 0.85 }}>[已静音]</span>}
                   </span>
                 )
               })}
@@ -412,9 +440,20 @@ export function TranscriptPage({
                 <Empty ghost="NO VOICE" hint={t('transcript.noSegmentsHint')} />
               ) : (
                 <div style={{ maxHeight: 560, overflowY: 'auto', padding: '8px 0' }}>
-                  {filteredVoice.map((v, i) => (
-                    <VoiceRow key={`${v.tick}-${i}-${i}`} demoId={demoId!} seg={v} tickRate={detail.meta.tickRate ?? 64} onJump={jump} avatar={(detail.meta.players ?? []).find((p) => p.name === v.playerName)?.avatar} />
-                  ))}
+                  {filteredVoice.map((v, i) => {
+                    const muted = isPlayerMuted(v.playerName, v.steamId)
+                    return (
+                      <VoiceRow
+                        key={`${v.tick}-${i}-${i}`}
+                        demoId={demoId!}
+                        seg={v}
+                        tickRate={detail.meta.tickRate ?? 64}
+                        muted={muted}
+                        onJump={jump}
+                        avatar={(detail.meta.players ?? []).find((p) => p.name === v.playerName)?.avatar}
+                      />
+                    )
+                  })}
                 </div>
               )
             ) : filteredChat.length === 0 ? (
@@ -437,18 +476,20 @@ function VoiceRow({
   demoId,
   seg,
   tickRate,
+  muted,
   onJump,
   avatar
 }: {
   demoId: string
   seg: VoiceSegment
   tickRate: number
+  muted?: boolean
   onJump: (tick: number) => void
   avatar?: string
 }) {
   const t = useTKey()
   return (
-    <div className="tline">
+    <div className={`tline ${muted ? 'muted-line' : ''}`}>
       <span className="tm">
         {fmtTick(seg.tick, tickRate)}
         <span className="eng" style={{ marginLeft: 6 }}>
@@ -456,13 +497,16 @@ function VoiceRow({
         </span>
       </span>
       <span className="who">
-        <Avatar name={seg.playerName} team={seg.team} size={18} avatar={avatar} />
+        <Avatar name={seg.playerName} team={seg.team} size={18} avatar={avatar} muted={muted} />
         <span className={`nm ${seg.team === 'T' ? 't' : seg.team === 'CT' ? 'ct' : ''}`}>
           {seg.playerName}
+          {muted && <span style={{ fontSize: 10, color: '#ff453a', marginLeft: 4 }}>(已静音)</span>}
         </span>
         {seg.roundNum !== undefined && <Tag tone="ghost">R{seg.roundNum}</Tag>}
       </span>
-      <span className={`txt ${seg.text ? '' : 'no-text'}`}>{seg.text || t('transcript.noText')}</span>
+      <span className={`txt ${seg.text ? '' : 'no-text'}`} style={muted ? { opacity: 0.6 } : undefined}>
+        {seg.text || t('transcript.noText')}
+      </span>
       <VoicePlayButton
         demoId={demoId}
         seg={{ steamId: seg.steamId, playerName: seg.playerName, startSec: seg.timeSec, endSec: seg.endSec }}

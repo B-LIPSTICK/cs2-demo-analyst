@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Btn, CustomSelect, IcFolder, IcPlus, IcRadar, IcRefresh, Panel, SectionHead, Tag, Toggle, useFloatingPosition, useToast } from '@/components/ui'
+import { Btn, CustomSelect, IcFolder, IcMicOff, IcPlus, IcRadar, IcRefresh, Panel, SectionHead, Tag, Toggle, useFloatingPosition, useToast } from '@/components/ui'
 import { useT, type Lang } from '@/i18n'
 import type { Settings } from '@shared/types'
 import { formatRootLabel } from './LibraryPage'
@@ -546,6 +546,36 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
     set({ cs2: { ...draft.cs2, ...patch } })
   }
 
+  const setOverlay = (patch: Partial<NonNullable<Settings['overlay']>>) => {
+    set({ overlay: { ...(draft.overlay ?? {}), ...patch } })
+  }
+
+  const [newMutedInput, setNewMutedInput] = useState('')
+
+  const addMutedPlayer = () => {
+    const val = newMutedInput.trim()
+    if (!val) return
+    const cur = draft.overlay?.mutedPlayers ?? []
+    if (cur.includes(val)) {
+      toast.push('该选手已在静音名单中', 'warn')
+      return
+    }
+    setOverlay({ mutedPlayers: [...cur, val] })
+    setNewMutedInput('')
+    toast.push(`已将 ${val} 加入静音名单`)
+  }
+
+  const removeMutedPlayer = (nameOrId: string) => {
+    const cur = draft.overlay?.mutedPlayers ?? []
+    setOverlay({ mutedPlayers: cur.filter((x) => x !== nameOrId) })
+    toast.push(`已解除 ${nameOrId} 的静音`)
+  }
+
+  const clearAllMutedPlayers = () => {
+    setOverlay({ mutedPlayers: [] })
+    toast.push('已清空静音名单')
+  }
+
   const addRoot = async () => {
     const roots = await window.api.library.addRoot()
     if (roots && roots.length) {
@@ -955,7 +985,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
               className={`seg-item ${(draft.cs2.playMode ?? 'tools') === 'tools' ? 'on' : ''}`}
               onClick={() => setCs2({ playMode: 'tools' })}
             >
-              ⚡ {t.t('settings.cs2PlayModeTools')}
+              {t.t('settings.cs2PlayModeTools')}
             </span>
             <span
               className={`seg-item ${(draft.cs2.playMode ?? 'tools') === 'native' ? 'on' : ''}`}
@@ -1022,6 +1052,99 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             onChange={(v) => setCs2({ voiceHud: v })}
           />
         </div>
+
+        {draft.cs2.voiceHud && (
+          <>
+            <div className="set-row">
+              <div className="info">
+                <div className="t">{t.t('settings.overlayShowMuted')}</div>
+                <div className="d">{t.t('settings.overlayShowMutedHint')}</div>
+              </div>
+              <Toggle
+                on={draft.overlay?.showMutedSpeakers !== false}
+                onChange={(v) => setOverlay({ showMutedSpeakers: v })}
+              />
+            </div>
+
+            <div className="set-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+              <div className="flex between" style={{ alignItems: 'center' }}>
+                <div className="info">
+                  <div className="t">{t.t('settings.overlayMutedPlayers')}</div>
+                  <div className="d">{t.t('settings.overlayMutedPlayersHint')}</div>
+                </div>
+                {(draft.overlay?.mutedPlayers?.length ?? 0) > 0 && (
+                  <Btn variant="ghost" size="sm" onClick={clearAllMutedPlayers} style={{ color: '#ff453a' }}>
+                    {t.t('settings.overlayClearMuted')}
+                  </Btn>
+                )}
+              </div>
+
+              {/* 手动添加输入框 */}
+              <div className="flex" style={{ gap: 8, alignItems: 'center' }}>
+                <input
+                  className="input"
+                  style={{ width: 280 }}
+                  placeholder="输入选手昵称或 SteamID64"
+                  value={newMutedInput}
+                  onChange={(e) => setNewMutedInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') addMutedPlayer()
+                  }}
+                />
+                <Btn variant="secondary" size="sm" onClick={addMutedPlayer} disabled={!newMutedInput.trim()}>
+                  <IcPlus size={12} />
+                  <span>添加静音</span>
+                </Btn>
+              </div>
+
+              {/* 现存静音名单 */}
+              {(draft.overlay?.mutedPlayers ?? []).length > 0 ? (
+                <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                  {(draft.overlay?.mutedPlayers ?? []).map((p) => (
+                    <span
+                      key={p}
+                      className="tag"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        background: 'rgba(255, 69, 58, 0.12)',
+                        border: '1px solid rgba(255, 69, 58, 0.35)',
+                        color: '#ff6961',
+                        padding: '4px 8px',
+                        borderRadius: 6
+                      }}
+                    >
+                      <IcMicOff size={12} />
+                      <span>{p}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeMutedPlayer(p)}
+                        title={`解除 ${p} 静音`}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#ff6961',
+                          cursor: 'pointer',
+                          padding: '0 2px',
+                          fontSize: 12,
+                          lineHeight: 1
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="muted" style={{ fontSize: 11.5 }}>
+                  当前无全局静音选手（可在 Demo 详情页选手列表快速点选或在此添加）
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
         <div className="set-row">
           <div className="info">
             <div className="t">{t.t('settings.cs2Setup')}</div>
@@ -1043,7 +1166,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           </div>
           <div className="flex" style={{ gap: 8, flexWrap: 'wrap' }}>
             <Btn variant="ghost" size="sm" onClick={() => setShowOfflineModal(true)}>
-              💡 {t.t('settings.offlineGuide')}
+              {t.t('settings.offlineGuide')}
             </Btn>
             <Btn variant="ghost" size="sm" onClick={openEnginesDir}>
               <IcFolder size={12} />

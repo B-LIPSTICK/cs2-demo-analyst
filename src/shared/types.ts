@@ -318,6 +318,10 @@ export interface Settings {
     y?: number
     clickThrough: boolean
     scale: number
+    /** 静音选手列表（steamId 或 选手名） */
+    mutedPlayers?: string[]
+    /** 悬浮层是否显示静音选手的闭麦头像（true: 显示闭麦图标头像; false: 完全不显示静音选手） */
+    showMutedSpeakers?: boolean
   }
 }
 
@@ -356,7 +360,9 @@ export const DEFAULT_SETTINGS: Settings = {
     enabled: false,
     position: 'bottom-left',
     clickThrough: false,
-    scale: 1
+    scale: 1,
+    mutedPlayers: [],
+    showMutedSpeakers: true
   }
 }
 
@@ -504,6 +510,7 @@ export interface OverlaySpeaker {
   name: string
   team: TeamSide
   avatar?: string
+  muted?: boolean
 }
 
 export interface OverlayLine {
@@ -523,6 +530,8 @@ export interface OverlayState {
   scoreCT?: number
   speakers: OverlaySpeaker[]
   lines: OverlayLine[]
+  /** 是否允许在 HUD 上渲染带闭麦标的静音选手头像（若为 false 则完全不渲染） */
+  showMutedSpeakers?: boolean
   /** 全屏面板数据 */
   full?: boolean
   events?: {

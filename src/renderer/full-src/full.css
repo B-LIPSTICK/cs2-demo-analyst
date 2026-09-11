@@ -113,6 +113,7 @@ body {
 }
 
 .vp-spk .av {
+  position: relative;
   width: 32px;
   height: 32px;
   border-radius: 50%;
@@ -124,7 +125,6 @@ body {
   background: #3a3a40;
   border: 1.5px solid rgba(255, 255, 255, 0.3);
   flex: none;
-  overflow: hidden;
 }
 
 .vp-spk.t .av {
@@ -133,6 +133,46 @@ body {
 
 .vp-spk.ct .av {
   border-color: rgba(107, 168, 229, 0.65);
+}
+
+.vp-spk .av-mute-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 15px;
+  height: 15px;
+  background: #ff453a;
+  border: 1.5px solid rgba(24, 24, 28, 0.95);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  z-index: 3;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.vp-spk.muted {
+  background: rgba(28, 18, 20, 0.68);
+  border-color: rgba(255, 69, 58, 0.35);
+}
+
+.vp-spk.muted .av img {
+  filter: grayscale(40%) opacity(0.75);
+}
+
+.vp-spk.muted .nm {
+  color: rgba(245, 245, 247, 0.6);
+}
+
+.vp-spk.muted .vu {
+  opacity: 0.6;
+}
+
+.vp-spk.muted .vu i {
+  animation: none !important;
+  height: 2.5px !important;
+  background: rgba(255, 69, 58, 0.8) !important;
 }
 
 .vp-spk .nm {

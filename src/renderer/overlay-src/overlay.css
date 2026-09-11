@@ -74,6 +74,7 @@ body {
 }
 
 .speaker .av {
+  position: relative;
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -85,7 +86,6 @@ body {
   background: #3a3a40;
   border: 1.5px solid rgba(255, 255, 255, 0.3);
   flex: none;
-  overflow: hidden;
 }
 
 .speaker.t .av {
@@ -94,6 +94,52 @@ body {
 
 .speaker.ct .av {
   border-color: rgba(107, 168, 229, 0.65);
+}
+
+.av-mute-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 14px;
+  height: 14px;
+  background: #ff453a;
+  border: 1.5px solid rgba(24, 24, 28, 0.95);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  z-index: 3;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.speaker.muted {
+  background: rgba(28, 18, 20, 0.6);
+  border-color: rgba(255, 69, 58, 0.35);
+}
+
+.speaker.muted .av img {
+  filter: grayscale(40%) opacity(0.75);
+}
+
+.speaker.muted .nm {
+  color: rgba(245, 245, 247, 0.6);
+}
+
+.speaker.muted .vu {
+  opacity: 0.6;
+}
+
+.speaker.muted .vu i {
+  animation: none !important;
+  height: 2.5px !important;
+  background: rgba(255, 69, 58, 0.8) !important;
+}
+
+.cap-who.muted,
+.cap-txt.muted {
+  opacity: 0.55;
+  color: #999;
 }
 
 .speaker .nm {

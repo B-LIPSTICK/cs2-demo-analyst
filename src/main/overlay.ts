@@ -4,35 +4,9 @@
  */
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'node:path'
-import type { DemoDetail, GsiGameState, OverlayPosition, TeamSide } from '@shared/types'
+import type { DemoDetail, GsiGameState, OverlayLine, OverlayPosition, OverlaySpeaker, OverlayState } from '@shared/types'
+import { getSettings } from './services/settings'
 
-interface OverlaySpeaker {
-  name: string
-  team: TeamSide
-}
-
-interface OverlayLine {
-  text: string
-  playerName: string
-  team: TeamSide
-  tick: number
-}
-
-interface OverlayState {
-  mode: 'demo' | 'live' | 'idle'
-  tick: number
-  tickRate: number
-  map?: string
-  round?: number
-  scoreT?: number
-  scoreCT?: number
-  speakers: OverlaySpeaker[]
-  lines: OverlayLine[]
-  full?: boolean
-  events?: { type: 'kill' | 'voice' | 'bomb'; tick: number; text: string; sub?: string; team?: TeamSide }[]
-  players?: { name: string; team: TeamSide; kills: number; deaths: number; hs: number }[]
-  rounds?: { num: number; startTick: number; endTick: number; winner: 'T' | 'CT' | 'none' }[]
-}
 
 let win: BrowserWindow | null = null
 let fullWin: BrowserWindow | null = null
@@ -115,7 +89,34 @@ function applyClickThrough(on: boolean): void {
   win.setIgnoreMouseEvents(on, { forward: true })
 }
 
-function sendState(): void {
+async function sendState(): Promise<void> {
+  const settings = await getSettings().catch(() => null)
+  const mutedList = settings?.overlay?.mutedPlayers ?? []
+  const mutedSet = new Set(mutedList)
+  const showMuted = settings?.overlay?.showMutedSpeakers !== false
+
+  let speakers: OverlaySpeaker[] = []
+  let lines: OverlayLine[] = []
+
+  if (simDetail) {
+    const mappedSpeakers: OverlaySpeaker[] = lastSpeakers.map((s) => {
+      const player = (simDetail?.meta.players ?? []).find((p) => p.name === s.name)
+      const isMuted = mutedSet.has(player?.steamId ?? '') || mutedSet.has(s.name)
+      return {
+        name: s.name,
+        team: s.team,
+        avatar: player?.avatar,
+        muted: isMuted
+      }
+    })
+    speakers = showMuted ? mappedSpeakers : mappedSpeakers.filter((s) => !s.muted)
+    lines = lineHistory.slice(-3).filter((l) => {
+      if (showMuted) return true
+      const player = (simDetail?.meta.players ?? []).find((p) => p.name === l.playerName)
+      return !mutedSet.has(player?.steamId ?? '') && !mutedSet.has(l.playerName)
+    })
+  }
+
   const state: OverlayState = simDetail
     ? {
         mode: simTimer ? 'demo' : 'idle',
@@ -125,11 +126,9 @@ function sendState(): void {
         round: roundOf(simTick),
         scoreT: simDetail.meta.scoreT,
         scoreCT: simDetail.meta.scoreCT,
-        speakers: lastSpeakers.map((s) => ({
-          ...s,
-          avatar: (simDetail?.meta.players ?? []).find((p) => p.name === s.name)?.avatar
-        })),
-        lines: lineHistory.slice(-3),
+        speakers,
+        lines,
+        showMutedSpeakers: showMuted,
         full: true,
         events: eventHistory.slice(-24),
         players: (simDetail.meta.players ?? []).slice(0, 10).map((p) => ({
@@ -156,9 +155,10 @@ function sendState(): void {
           scoreT: liveGsi.scoreT,
           scoreCT: liveGsi.scoreCT,
           speakers: [],
-          lines: []
+          lines: [],
+          showMutedSpeakers: showMuted
         }
-      : { mode: 'idle', tick: 0, tickRate: 64, speakers: [], lines: [] }
+      : { mode: 'idle', tick: 0, tickRate: 64, speakers: [], lines: [], showMutedSpeakers: showMuted }
   if (win && !win.isDestroyed()) win.webContents.send('overlay:state', { state })
   if (fullWin && !fullWin.isDestroyed()) fullWin.webContents.send('overlay:state', { state })
 }
