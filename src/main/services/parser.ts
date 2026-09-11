@@ -175,6 +175,7 @@ interface PlayerSlot {
   userid: number
   name: string
   steamId?: string
+  slot?: number
   team: TeamSide
   kills: number
   deaths: number
@@ -298,6 +299,9 @@ export async function parseDemo(
   //   曾导致 uid=8 击杀被回填成"圣洁首脑"）
   const idxNameNow = new Map<number, string>()
   const idxTeamNow = new Map<number, TeamSide>()
+  // CS2 底层槽位 (0~63)：供 tv_listen_voice_indices 位掩码消音
+  const slotBySteamId = new Map<string, number>()
+  const slotByName = new Map<string, number>()
   // ★上半场分配（R1 采样）与名字；R13+ 按回合号翻转（换边时刻实体采样不可靠）
   const firstHalfTeams = new Map<number, TeamSide>()
   const firstHalfNames = new Map<number, string>()
@@ -897,16 +901,23 @@ export async function parseDemo(
             idxTeamNow.set(uid, team)
           }
           const steamId = c.getField('m_steamID') ? String(c.getField('m_steamID')) : undefined
+          const entitySlot = uid >= 1 && uid <= 64 ? uid - 1 : undefined
+          if (entitySlot !== undefined) {
+            if (steamId && !slotBySteamId.has(steamId)) slotBySteamId.set(steamId, entitySlot)
+            if (name && !slotByName.has(name)) slotByName.set(name, entitySlot)
+          }
           const slot = playersByUserid.get(uid)
           if (slot) {
-            // 已有条目：不覆盖名字（USER_INFO/击杀名优先；实体名可能中途变化），只补 team/steamId
+            // 已有条目：不覆盖名字（USER_INFO/击杀名优先；实体名可能中途变化），只补 team/steamId/slot
             if (!slot.steamId && steamId) slot.steamId = steamId
             if (slot.team === 'NONE' && team !== 'NONE') slot.team = team
+            if (slot.slot === undefined && entitySlot !== undefined) slot.slot = entitySlot
           } else {
             playersByUserid.set(uid, {
               userid: uid,
               name,
               steamId,
+              slot: entitySlot,
               team,
               kills: 0,
               deaths: 0,
@@ -962,6 +973,20 @@ export async function parseDemo(
         case MessagePacketType.SVC_VOICE_DATA: {
           voiceCount++
           voiceTicks.add(tick)
+          const d = messagePacket.data as { entity?: number; clientDeprecated?: number; xuid?: string } | null
+          if (d) {
+            const ent = Number.isInteger(d.entity) && (d.entity as number) >= 1 && (d.entity as number) <= 64
+              ? (d.entity as number)
+              : Number.isInteger(d.clientDeprecated) && (d.clientDeprecated as number) >= 0 && (d.clientDeprecated as number) < 64
+                ? (d.clientDeprecated as number) + 1
+                : 0
+            if (ent > 0) {
+              const voiceSlot = ent - 1
+              if (d.xuid && !slotBySteamId.has(d.xuid)) {
+                slotBySteamId.set(d.xuid, voiceSlot)
+              }
+            }
+          }
           break
         }
         default:
@@ -1184,22 +1209,30 @@ export async function parseDemo(
   const players: PlayerInfo[] = [...playersByUserid.values()]
     .filter((s) => !['GOTV', '5EGOTV', 'SourceTV'].includes(s.name) && !s.name.includes('CSTV'))
     .filter((s) => s.kills > 0 || s.deaths > 0 || s.assists > 0 || (s.steamId && s.team !== 'NONE'))
-    .map((s) => ({
-    steamId: s.steamId ?? '',
-    name: s.name,
-    // ★开局阵营（黄=开局匪 T，蓝=开局警 CT）——与击杀记录上半场颜色一致；
-    //   不用最终阵营（换边后相反，导致选手数据与击杀记录颜色反了）
-    team: firstHalfTeamByName.get(s.name) ?? s.team,
-    kills: s.kills,
-    deaths: s.deaths,
-    assists: s.assists,
-    headshots: s.headshots,
-    score: s.kills * 3 + s.assists,
-    mvp: mvpBySteamId.get(s.steamId ?? '') ?? s.mvp,
-    hsp: s.kills ? Math.round((s.headshots / s.kills) * 100) : 0,
-    avatar: s.avatar,
-    flashAssists: s.flashAssists
-  }))
+    .map((s, idx) => {
+      const slot =
+        (s.steamId ? slotBySteamId.get(s.steamId) : undefined) ??
+        slotByName.get(s.name) ??
+        s.slot ??
+        (typeof s.userid === 'number' && s.userid >= 1 && s.userid <= 64 ? s.userid - 1 : idx)
+      return {
+        steamId: s.steamId ?? '',
+        name: s.name,
+        slot,
+        // ★开局阵营（黄=开局匪 T，蓝=开局警 CT）——与击杀记录上半场颜色一致；
+        //   不用最终阵营（换边后相反，导致选手数据与击杀记录颜色反了）
+        team: firstHalfTeamByName.get(s.name) ?? s.team,
+        kills: s.kills,
+        deaths: s.deaths,
+        assists: s.assists,
+        headshots: s.headshots,
+        score: s.kills * 3 + s.assists,
+        mvp: mvpBySteamId.get(s.steamId ?? '') ?? s.mvp,
+        hsp: s.kills ? Math.round((s.headshots / s.kills) * 100) : 0,
+        avatar: s.avatar,
+        flashAssists: s.flashAssists
+      }
+    })
   // ★按 steamId 去重（实体名中途变化/uid 漂移会产生同名或同 steamId 重复条目）：
   //   同 steamId 保留 team 非 NONE 且击杀最多的；无 steamId 的同名条目也合并。
   {
@@ -1211,9 +1244,9 @@ export async function parseDemo(
         byKey.set(key, p)
       } else if (existing.team === 'NONE' && p.team !== 'NONE') {
         // 优先保留有阵营的（实体采样版本；幽灵条目 team=NONE 但有击杀统计）
-        byKey.set(key, { ...p, kills: existing.kills, deaths: existing.deaths, assists: existing.assists, headshots: existing.headshots, mvp: existing.mvp, score: existing.score, hsp: existing.hsp, flashAssists: existing.flashAssists })
+        byKey.set(key, { ...p, slot: p.slot ?? existing.slot, kills: existing.kills, deaths: existing.deaths, assists: existing.assists, headshots: existing.headshots, mvp: existing.mvp, score: existing.score, hsp: existing.hsp, flashAssists: existing.flashAssists })
       } else if (p.team !== 'NONE' && existing.team === p.team && p.kills > existing.kills) {
-        byKey.set(key, p)
+        byKey.set(key, { ...p, slot: p.slot ?? existing.slot })
       }
     }
     const deduped = [...byKey.values()]

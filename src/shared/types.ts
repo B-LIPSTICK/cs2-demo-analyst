@@ -50,6 +50,8 @@ export interface PlayerInfo {
   steamId: string
   name: string
   team: TeamSide
+  /** CS2 底层槽位 (0~63)，用于 tv_listen_voice_indices 录像语音位掩码消音 */
+  slot?: number
   kills: number
   deaths: number
   assists: number
@@ -439,7 +441,9 @@ export interface Api {
       playDemoPath?: string
       voiceHud?: boolean
       startTick?: number
+      tvVoiceIndices?: { low: number; high: number }
     }) => Promise<LaunchResult>
+    setVoiceMask: (mask: { low: number; high: number }) => Promise<{ sent: boolean; cmd: string }>
     installGsi: () => Promise<string | null>
     locateInstall: () => Promise<string | null>
   }

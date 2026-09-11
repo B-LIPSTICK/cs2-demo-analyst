@@ -23,6 +23,38 @@ import {
 import { useTKey } from '@/i18n'
 import type { DemoDetail, KillEvent, PlayerInfo, RoundEndType, RoundInfo, Settings, TeamSide } from '@shared/types'
 
+/**
+ * 根据选手列表与静音名单，计算 CS2 GOTV 录像回放语音位掩码 (tv_listen_voice_indices)
+ * CS2: slot 0~31 对应 tv_listen_voice_indices 的 bit 0~31
+ *      slot 32~63 对应 tv_listen_voice_indices_h 的 bit 0~31
+ * 全开为 -1 (0xFFFFFFFF)
+ */
+export function computeVoiceMask(
+  players: PlayerInfo[],
+  muted: Set<string>
+): { low: number; high: number } {
+  if (!muted || muted.size === 0) {
+    return { low: -1, high: -1 }
+  }
+
+  let low = 0xffffffff
+  let high = 0xffffffff
+
+  players.forEach((p, idx) => {
+    const isMuted = (p.steamId && muted.has(p.steamId)) || (p.name && muted.has(p.name))
+    if (isMuted) {
+      const slot = typeof p.slot === 'number' ? p.slot : idx
+      if (slot >= 0 && slot < 32) {
+        low = (low & ~(1 << slot)) >>> 0
+      } else if (slot >= 32 && slot < 64) {
+        high = (high & ~(1 << (slot - 32))) >>> 0
+      }
+    }
+  })
+
+  return { low: low | 0, high: high | 0 }
+}
+
 export function DemoDetailPage({
   id,
   onBack,
@@ -104,6 +136,40 @@ export function DemoDetailPage({
     [mutedSet]
   )
 
+  const syncVoiceMaskToLive = useCallback(
+    async (nextMutedKeys: string[]) => {
+      if (!detail) return
+      const mask = computeVoiceMask(detail.meta.players ?? [], new Set(nextMutedKeys))
+      const status = await window.api.live.getStatus().catch(() => null)
+      if (status?.cs2Running) {
+        const res = await window.api.live.setVoiceMask(mask).catch(() => null)
+        if (res?.sent) {
+          toast.push(`已向 CS2 发送消音指令 (tv_listen_voice_indices ${mask.low})`)
+        } else if (res?.cmd) {
+          try {
+            await navigator.clipboard.writeText(res.cmd)
+            toast.push(`已复制 CS2 闭麦指令 (${res.cmd})，可在控制台按 ~ 粘贴`, 'warn')
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    },
+    [detail, toast]
+  )
+
+  const copyVoiceMaskCommand = useCallback(async () => {
+    if (!detail) return
+    const mask = computeVoiceMask(detail.meta.players ?? [], mutedSet)
+    const cmd = `tv_listen_voice_indices ${mask.low}; tv_listen_voice_indices_h ${mask.high}`
+    try {
+      await navigator.clipboard.writeText(cmd)
+      toast.push(`已复制 CS2 原生消音指令: ${cmd}`)
+    } catch {
+      toast.push('复制失败，请检查剪贴板权限', 'err')
+    }
+  }, [detail, mutedSet, toast])
+
   const togglePlayerMute = useCallback(
     async (p: { steamId?: string; name: string }) => {
       const key = p.steamId || p.name
@@ -121,13 +187,14 @@ export function DemoDetailPage({
         }
       })
       setSettings(updated)
+      void syncVoiceMaskToLive(nextList)
       if (isAlready) {
         toast.push(`${p.name} 已解除静音`)
       } else {
         toast.push(`${p.name} 已静音（悬浮层将显示闭麦标或屏蔽）`, 'warn')
       }
     },
-    [settings, toast]
+    [settings, syncVoiceMaskToLive, toast]
   )
 
   const muteAll = useCallback(async () => {
@@ -140,8 +207,9 @@ export function DemoDetailPage({
       }
     })
     setSettings(updated)
+    void syncVoiceMaskToLive(allKeys)
     toast.push('已一键静音全场 10 位选手', 'warn')
-  }, [detail, settings, toast])
+  }, [detail, settings, syncVoiceMaskToLive, toast])
 
   const unmuteAll = useCallback(async () => {
     const updated = await window.api.settings.set({
@@ -151,8 +219,9 @@ export function DemoDetailPage({
       }
     })
     setSettings(updated)
+    void syncVoiceMaskToLive([])
     toast.push('已解除全部选手的静音')
-  }, [settings, toast])
+  }, [settings, syncVoiceMaskToLive, toast])
 
   const muteTeam = useCallback(
     async (team: 'T' | 'CT') => {
@@ -167,9 +236,10 @@ export function DemoDetailPage({
         }
       })
       setSettings(updated)
+      void syncVoiceMaskToLive(combined)
       toast.push(`已静音 ${team === 'T' ? 'T 阵营' : 'CT 阵营'} 全体选手`, 'warn')
     },
-    [detail, settings, toast]
+    [detail, settings, syncVoiceMaskToLive, toast]
   )
 
   const toggleShowMutedSpeakers = useCallback(async () => {
@@ -265,10 +335,12 @@ export function DemoDetailPage({
     const s = await window.api.settings.get()
     const voiceHud = !!s.cs2?.voiceHud
     if (voiceHud) toast.push(t('detail.voiceHudPreparing'))
+    const voiceIndices = computeVoiceMask(detail.meta.players ?? [], mutedSet)
     const r = await window.api.live.launch({
       playDemoPath: detail.meta.path,
       voiceHud,
-      startTick: tick
+      startTick: tick,
+      tvVoiceIndices: voiceIndices
     })
     if (r.ok) {
       if (typeof tick === 'number' && tick > 0) {
@@ -516,6 +588,15 @@ export function DemoDetailPage({
                 title="静音防守方 (CT) 全体选手"
               >
                 静音 CT
+              </Btn>
+              <Btn
+                size="sm"
+                variant="ghost"
+                onClick={copyVoiceMaskCommand}
+                style={{ fontSize: 11, height: 26, padding: '0 8px' }}
+                title="复制当前设置对应的 CS2 原生控制台消音指令 (tv_listen_voice_indices)"
+              >
+                复制 CS2 闭麦指令
               </Btn>
             </div>
           </div>

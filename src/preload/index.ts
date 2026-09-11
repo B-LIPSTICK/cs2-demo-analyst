@@ -71,7 +71,10 @@ const api: ApiWithEvents = {
       playDemoPath?: string
       voiceHud?: boolean
       startTick?: number
+      tvVoiceIndices?: { low: number; high: number }
     }) => ipcRenderer.invoke('live:launch', opts),
+    setVoiceMask: (mask: { low: number; high: number }) =>
+      ipcRenderer.invoke('live:setVoiceMask', mask),
     installGsi: () => ipcRenderer.invoke('live:installGsi'),
     locateInstall: () => ipcRenderer.invoke('live:locateInstall')
   },

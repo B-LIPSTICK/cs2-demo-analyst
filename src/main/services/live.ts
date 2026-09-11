@@ -29,6 +29,7 @@ export class LiveService {
   private vconsolePort = 29000
   private pendingPlayDemo: string | null = null
   private pendingStartTick: number | null = null
+  private pendingTvVoiceIndices: { low: number; high: number } | null = null
   private detectTimer: NodeJS.Timeout | null = null
   /** 普通模式播放 cfg（dsh-play.cfg）退出后清理定时器 */
   private playCfgCleanupTimer: NodeJS.Timeout | null = null
@@ -144,6 +145,12 @@ export class LiveService {
           if (this.pendingPlayDemo) {
             const name = this.pendingPlayDemo
             this.pendingPlayDemo = null
+            if (this.pendingTvVoiceIndices) {
+              const mask = this.pendingTvVoiceIndices
+              this.pendingTvVoiceIndices = null
+              this.vc?.sendCommand(`tv_listen_voice_indices ${mask.low}`)
+              this.vc?.sendCommand(`tv_listen_voice_indices_h ${mask.high}`)
+            }
             this.vc?.sendCommand(`playdemo ${name}`)
             if (this.pendingStartTick) {
               const tick = this.pendingStartTick
@@ -205,6 +212,21 @@ export class LiveService {
 
   specGoto(userid: number): boolean {
     return this.sendCommand(`spec_goto ${userid}`)
+  }
+
+  /**
+   * 实时设置 CS2 录像回放语音位掩码（GOTV/SourceTV 官方消音指令）：
+   * tv_listen_voice_indices <低32位> ; tv_listen_voice_indices_h <高32位>
+   */
+  setVoiceMask(low: number, high: number): { sent: boolean; cmd: string } {
+    const cmd = `tv_listen_voice_indices ${low}; tv_listen_voice_indices_h ${high}`
+    let sent = false
+    if (this.vc && this.status.vconsoleConnected) {
+      const s1 = this.vc.sendCommand(`tv_listen_voice_indices ${low}`)
+      const s2 = this.vc.sendCommand(`tv_listen_voice_indices_h ${high}`)
+      sent = s1 && s2
+    }
+    return { sent, cmd }
   }
 
   /**
@@ -337,7 +359,13 @@ export class LiveService {
 
   /** 一键启动/原生回放 */
   async launch(
-    opts?: { toolsMode?: boolean; playDemoPath?: string; voiceHud?: boolean; startTick?: number },
+    opts?: {
+      toolsMode?: boolean
+      playDemoPath?: string
+      voiceHud?: boolean
+      startTick?: number
+      tvVoiceIndices?: { low: number; high: number }
+    },
     userArgs?: string,
     installPath?: string,
     _display?: { mode?: string; resolution?: string }
@@ -355,6 +383,10 @@ export class LiveService {
         if (this.status.vconsoleConnected) {
           const name = await this.stageDemoForPlay(demoPath, installPath)
           if (name) {
+            if (opts?.tvVoiceIndices) {
+              this.sendCommand(`tv_listen_voice_indices ${opts.tvVoiceIndices.low}`)
+              this.sendCommand(`tv_listen_voice_indices_h ${opts.tvVoiceIndices.high}`)
+            }
             const sent = this.sendCommand(`playdemo ${name}`)
             if (sent) {
               if (startTick) {
@@ -395,6 +427,7 @@ export class LiveService {
             }
             this.pendingPlayDemo = name
             this.pendingStartTick = startTick ?? null
+            this.pendingTvVoiceIndices = opts?.tvVoiceIndices ?? null
 
             const args: string[] = ['-tools', '-noassetbrowser', '-novid', ...extra]
             const child = spawn(exe, args, {
@@ -426,9 +459,15 @@ export class LiveService {
           }
           // 写播放 cfg（完美平台同款原生机制；退出后自动清理）
           const cfgFile = join(install, 'game', 'csgo', 'cfg', 'dsh-play.cfg')
-          const cfgLines = voiceHud
-            ? ['demo_ui_mode 2', 'cl_demo_predict 0', 'tv_listen_voice_indices -1', 'tv_listen_voice_indices_h -1', `playdemo "${staged}"`]
-            : ['demo_ui_mode 2', 'cl_demo_predict 0', `playdemo "${staged}"`]
+          const low = opts?.tvVoiceIndices?.low ?? -1
+          const high = opts?.tvVoiceIndices?.high ?? -1
+          const cfgLines = [
+            'demo_ui_mode 2',
+            'cl_demo_predict 0',
+            `tv_listen_voice_indices ${low}`,
+            `tv_listen_voice_indices_h ${high}`,
+            `playdemo "${staged}"`
+          ]
           if (startTick) {
             cfgLines.push(`demo_gototick ${startTick}`)
             cfgLines.push(`bind "F8" "demo_gototick ${startTick}"`)
