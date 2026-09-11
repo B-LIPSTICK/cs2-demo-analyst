@@ -2345,7 +2345,9 @@ body {
   transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
   min-width: 0;
-  overflow: hidden;
+  min-height: 40px;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .kill-row:last-child {
@@ -3440,6 +3442,8 @@ body {
     grid-template-columns: 46px minmax(0, 1fr) auto minmax(0, 1fr) 38px 26px;
     gap: 6px;
     padding: 6px 10px;
+    min-height: 38px;
+    flex-shrink: 0;
   }
 
   .tline {
