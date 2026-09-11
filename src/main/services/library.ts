@@ -99,8 +99,8 @@ export function createLibraryService(
   }
 
   // 解析器版本：解析逻辑变更（如击杀阵营实时跟踪）时 +1，旧详情缓存自动失效重解析
-  // v7: 提取精确 CSTV 实体槽位 (0~63)，支持 tv_listen_voice_indices 单人精准消音
-  const PARSER_VERSION = 7
+  // v8: 修复控制器实体索引与 USER_INFO 偏移导致的选手错位与机器人污染，修正语音槽位
+  const PARSER_VERSION = 8
 
   const libDir = () => join(app.getPath('userData'), 'library')
   const indexPath = () => join(libDir(), 'index.json')

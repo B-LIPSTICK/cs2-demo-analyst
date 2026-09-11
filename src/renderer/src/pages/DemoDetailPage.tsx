@@ -148,7 +148,7 @@ export function DemoDetailPage({
         } else if (res?.cmd) {
           try {
             await navigator.clipboard.writeText(res.cmd)
-            toast.push(`已复制 CS2 闭麦指令 (${res.cmd})，可在控制台按 ~ 粘贴`, 'warn')
+            toast.push(`游戏未加 -vconsole 启动项无法自动注入，已复制闭麦指令 (${res.cmd})，可在控制台按 ~ 粘贴`, 'warn')
           } catch {
             /* ignore */
           }
@@ -164,7 +164,7 @@ export function DemoDetailPage({
     const cmd = `tv_listen_voice_indices ${mask.low}; tv_listen_voice_indices_h ${mask.high}`
     try {
       await navigator.clipboard.writeText(cmd)
-      toast.push(`已复制 CS2 原生消音指令: ${cmd}`)
+      toast.push(`已复制消音指令: ${cmd}（在控制台按 ~ 粘贴执行；该指令在音频底层消音，不改变计分板头像）`)
     } catch {
       toast.push('复制失败，请检查剪贴板权限', 'err')
     }

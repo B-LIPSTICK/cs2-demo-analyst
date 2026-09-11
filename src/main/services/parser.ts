@@ -891,30 +891,55 @@ export async function parseDemo(
         for (const c of controllers) {
           const name = str(c.getField('m_iszPlayerName'))
           if (!name || name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV' || name === '完美世界竞技平台CSTV') continue
-          const uid = c._index
+          const entIdx = c._index
           const teamN = int(c.getField('m_iTeamNum'))
           const team: TeamSide = teamN === 2 ? 'T' : teamN === 3 ? 'CT' : 'NONE'
-          idxNameNow.set(uid, name)
+          idxNameNow.set(entIdx, name)
           if (team !== 'NONE') {
-            teamNowByUid.set(uid, team)
+            teamNowByUid.set(entIdx, team)
             teamNowByName.set(name, team)
-            idxTeamNow.set(uid, team)
+            idxTeamNow.set(entIdx, team)
           }
-          const steamId = c.getField('m_steamID') ? String(c.getField('m_steamID')) : undefined
-          const entitySlot = uid >= 1 && uid <= 64 ? uid - 1 : undefined
+          const rawSteamId = c.getField('m_steamID')
+          const steamId = rawSteamId && rawSteamId !== 0n && rawSteamId !== '0' ? String(rawSteamId) : undefined
+          const entitySlot = entIdx >= 1 && entIdx <= 64 ? entIdx - 1 : undefined
           if (entitySlot !== undefined) {
             if (steamId && !slotBySteamId.has(steamId)) slotBySteamId.set(steamId, entitySlot)
             if (name && !slotByName.has(name)) slotByName.set(name, entitySlot)
           }
-          const slot = playersByUserid.get(uid)
+
+          // 匹配 playersByUserid：切勿用实体索引 c._index 作为 USER_INFO 的 userid 查询！
+          // 实体 _index 与 USER_INFO userid 存在偏移（如实体 4~13 对应 USER_INFO 3~12）。
+          // 正确匹配方式：优先按 steamId 匹配，其次按玩家名字（去首尾空格）匹配。
+          let slot: PlayerSlot | undefined
+          if (steamId && steamId.startsWith('7656119')) {
+            for (const s of playersByUserid.values()) {
+              if (s.steamId === steamId) {
+                slot = s
+                break
+              }
+            }
+          }
+          if (!slot && name) {
+            const trimmed = name.trim()
+            for (const s of playersByUserid.values()) {
+              if (s.name === name || s.name.trim() === trimmed) {
+                slot = s
+                break
+              }
+            }
+          }
+
           if (slot) {
             // 已有条目：不覆盖名字（USER_INFO/击杀名优先；实体名可能中途变化），只补 team/steamId/slot
             if (!slot.steamId && steamId) slot.steamId = steamId
             if (slot.team === 'NONE' && team !== 'NONE') slot.team = team
-            if (slot.slot === undefined && entitySlot !== undefined) slot.slot = entitySlot
-          } else {
-            playersByUserid.set(uid, {
-              userid: uid,
+            if (entitySlot !== undefined) slot.slot = entitySlot
+          } else if (steamId && steamId.startsWith('7656119')) {
+            // USER_INFO 中可能遗漏人类选手，赋予安全键存入
+            const safeKey = playersByUserid.has(entIdx) ? 1000 + entIdx : entIdx
+            playersByUserid.set(safeKey, {
+              userid: safeKey,
               name,
               steamId,
               slot: entitySlot,
@@ -1037,46 +1062,66 @@ export async function parseDemo(
     }[]
     for (const c of controllers) {
       const name = str(c.getField('m_iszPlayerName') ?? c.getField('m_szPlayerName'))
-      if (!name || name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV') continue
+      if (!name || name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV' || name === '完美世界竞技平台CSTV') continue
       const teamN = int(c.getField('m_iTeamNum'))
       const team: TeamSide = teamN === 2 ? 'T' : teamN === 3 ? 'CT' : 'NONE'
-      // 按名字匹配补 team（USER_INFO 表有该玩家时）
-      const slot = [...playersByUserid.values()].find((s) => s.name === name)
-      if (slot && slot.team === 'NONE' && team !== 'NONE') slot.team = team
+      const rawSteamId = c.getField('m_steamID')
+      const steamId = rawSteamId && rawSteamId !== 0n && rawSteamId !== '0' ? String(rawSteamId) : undefined
+      const entIdx = c._index
+      const entitySlot = entIdx >= 1 && entIdx <= 64 ? entIdx - 1 : undefined
+
+      // 按 steamId 或名字匹配补 team 与 slot（USER_INFO 表有该玩家时）
+      const trimmed = name.trim()
+      let slot = steamId && steamId.startsWith('7656119')
+        ? [...playersByUserid.values()].find((s) => s.steamId === steamId)
+        : undefined
+      if (!slot) {
+        slot = [...playersByUserid.values()].find((s) => s.name === name || s.name.trim() === trimmed)
+      }
+      if (slot) {
+        if (slot.team === 'NONE' && team !== 'NONE') slot.team = team
+        if (slot.slot === undefined && entitySlot !== undefined) slot.slot = entitySlot
+        if (!slot.steamId && steamId) slot.steamId = steamId
+      }
     }
   } catch {
     /* 实体缺失时跳过（官方 demo 走 USER_INFO 已足够） */
   }
 
-  // ★按名字合并玩家表（解决 5E 平台 uid 漂移/幽灵条目）：
-  //   同一玩家在实体采样与 USER_INFO 里可能 uid 不同（如"我也要打残局么"实体 uid=4、
-  //   击杀事件 uid=14），导致幽灵条目 team=NONE 且同名重复。合并规则：
-  //   同名条目取「有 steamId 且 team 非 NONE」的版本（实体采样优先），其余删除；
-  //   击杀统计/回填按 uid 查不到时按名字查。
-  const scoreSlot = (s: PlayerSlot): number => (s.steamId ? 2 : 0) + (s.team !== 'NONE' ? 1 : 0)
+  // ★按名字与 steamId 合并玩家表（解决 5E 平台 uid 漂移/幽灵条目）：
+  //   同一玩家在实体采样与 USER_INFO 里可能 uid 不同，导致幽灵条目重复。
+  //   合并规则：优先按 Steam64 ID 或名字（去空格）匹配并合并，保留最完整信息并重定向映射。
+  const scoreSlot = (s: PlayerSlot): number =>
+    (s.steamId && s.steamId.startsWith('7656119') ? 4 : s.steamId ? 2 : 0) +
+    (s.team !== 'NONE' ? 2 : 0) +
+    (s.slot !== undefined ? 1 : 0)
+  const steamToSlot = new Map<string, PlayerSlot>()
   const nameToSlot = new Map<string, PlayerSlot>()
-  for (const [, slot] of playersByUserid) {
-    const existing = nameToSlot.get(slot.name)
+  for (const [, slot] of [...playersByUserid.entries()]) {
+    const existing =
+      (slot.steamId && slot.steamId.startsWith('7656119') ? steamToSlot.get(slot.steamId) : undefined) ??
+      nameToSlot.get(slot.name) ??
+      nameToSlot.get(slot.name.trim())
     if (!existing) {
+      if (slot.steamId) steamToSlot.set(slot.steamId, slot)
       nameToSlot.set(slot.name, slot)
+      nameToSlot.set(slot.name.trim(), slot)
       continue
     }
-    // 合并：保留信息更全的（有 steamId + 有 team），删除另一个
+    // 合并：保留信息更全的（有 steamId + 有 team + 有 slot），删除另一个
     const keep = scoreSlot(existing) >= scoreSlot(slot) ? existing : slot
-    if (keep === slot) {
-      // 用 keep 替换 map 中的 existing：把 existing 的 uid 也指向 keep
-      for (const [uid2, s2] of playersByUserid) {
-        if (s2 === existing) playersByUserid.set(uid2, keep)
-      }
-    } else {
-      // 保留 existing：把 slot（幽灵）的击杀统计并入 existing
-      existing.kills += slot.kills
-      existing.deaths += slot.deaths
-      existing.assists += slot.assists
-      existing.headshots += slot.headshots
-      existing.flashAssists += slot.flashAssists
+    const discard = keep === existing ? slot : existing
+    if (keep.slot === undefined && discard.slot !== undefined) keep.slot = discard.slot
+    if ((!keep.steamId || !keep.steamId.startsWith('7656119')) && discard.steamId) keep.steamId = discard.steamId
+    if (keep.team === 'NONE' && discard.team !== 'NONE') keep.team = discard.team
+
+    // 将指向 discard 的所有 uid 统一重定向到 keep
+    for (const [uid2, s2] of playersByUserid) {
+      if (s2 === discard) playersByUserid.set(uid2, keep)
     }
-    nameToSlot.set(slot.name, keep)
+    if (keep.steamId) steamToSlot.set(keep.steamId, keep)
+    nameToSlot.set(keep.name, keep)
+    nameToSlot.set(keep.name.trim(), keep)
   }
 
   // 回填击杀 steamId（名字已在击杀时用实体快照 idxNameNow 填好，勿覆盖——USER_INFO
@@ -1207,9 +1252,18 @@ export async function parseDemo(
 
   await parser.dispose().catch(() => {})
 
-  const players: PlayerInfo[] = [...playersByUserid.values()]
+  const rawList = [...new Set(playersByUserid.values())]
+  const humanCount = rawList.filter((s) => s.steamId && s.steamId.startsWith('7656119')).length
+
+  const players: PlayerInfo[] = rawList
     .filter((s) => !['GOTV', '5EGOTV', 'SourceTV'].includes(s.name) && !s.name.includes('CSTV'))
-    .filter((s) => s.kills > 0 || s.deaths > 0 || s.assists > 0 || (s.steamId && s.team !== 'NONE'))
+    .filter((s) => {
+      // 若比赛中已识别到人类选手（>=5人），严格过滤假 SteamID（9007199...）或非 7656119 开头的机器人/占位符
+      if (humanCount >= 5 && (!s.steamId || !s.steamId.startsWith('7656119'))) {
+        return false
+      }
+      return s.kills > 0 || s.deaths > 0 || s.assists > 0 || (s.steamId && s.team !== 'NONE')
+    })
     .map((s, idx) => {
       const slot =
         (s.steamId ? slotBySteamId.get(s.steamId) : undefined) ??
@@ -1245,7 +1299,18 @@ export async function parseDemo(
         byKey.set(key, p)
       } else if (existing.team === 'NONE' && p.team !== 'NONE') {
         // 优先保留有阵营的（实体采样版本；幽灵条目 team=NONE 但有击杀统计）
-        byKey.set(key, { ...p, slot: p.slot ?? existing.slot, kills: existing.kills, deaths: existing.deaths, assists: existing.assists, headshots: existing.headshots, mvp: existing.mvp, score: existing.score, hsp: existing.hsp, flashAssists: existing.flashAssists })
+        byKey.set(key, {
+          ...p,
+          slot: p.slot ?? existing.slot,
+          kills: Math.max(p.kills, existing.kills),
+          deaths: Math.max(p.deaths, existing.deaths),
+          assists: Math.max(p.assists, existing.assists),
+          headshots: Math.max(p.headshots, existing.headshots),
+          mvp: Math.max(p.mvp, existing.mvp),
+          score: Math.max(p.score, existing.score),
+          hsp: p.hsp || existing.hsp,
+          flashAssists: Math.max(p.flashAssists ?? 0, existing.flashAssists ?? 0)
+        })
       } else if (p.team !== 'NONE' && existing.team === p.team && p.kills > existing.kills) {
         byKey.set(key, { ...p, slot: p.slot ?? existing.slot })
       }
