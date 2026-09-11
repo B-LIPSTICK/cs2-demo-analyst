@@ -1,5 +1,30 @@
 # progress.md — 会话日志
 
+## 本轮二十七（细节体验精修：麦克风按钮去除 S 标识、长 ID 击杀记录防穿模、语音列表去除[语音片段]填充、投掷伤害更名道具伤害）✅
+- **用户反馈与诊断**:
+  1. **按钮上的 S 是什么意思**: 用户询问开闭麦按钮上的 `S3`、`S4` 是否是时间，容易误导为秒数或造成疑惑；实际是游戏底层槽位编号 Slot，对普通玩家来说直接显示在按钮上显得多余且拥挤；
+  2. **击杀记录长 ID 穿模**: 用户截图显示，当受害者或击杀者 ID 较长时（如 `李宇轩老师 我还记得你`），文本直接穿出单元格，与右侧的 `R1` 回合胶囊重叠穿模；
+  3. **Demo 页面未转写语音不要填充 [语音片段]**: 用户在仅做了“语音分割”时，每一行都显示硬编码的 `[语音片段]` 文字，显得呆板、繁琐且多余；
+  4. **投掷伤害改名**: 依照玩家惯用术语，将“投掷伤害”全部统一更名为“道具伤害”。
+- **针对性改进措施**:
+  1. **开闭麦按钮文字纯净化 (`DemoDetailPage.tsx`)**:
+     - 彻底移除按钮文字中的 `S{p.slot}` 标签，恢复为原生的清爽按钮：`开麦` / `已静音`；
+     - 底层 Slot 信息仅保留在鼠标悬浮的详细提示 `title`（`点击静音 选手名 (底层槽位: Slot 6)`）与选手弹窗详情中，消除用户困惑；
+  2. **击杀记录防穿模彻底修复 (`hud.css`)**:
+     - 根因分析：原 CSS Grid 声明 `grid-template-columns: 56px 1fr auto 1fr ...`，`1fr` 默认下限为 `minmax(auto, 1fr)`；加之 `.nm` 设置了 `justify-self: start/end`，导致元素宽度变为 `max-content` 且无法触发 `text-overflow: ellipsis`，长文本直接突破网格溢出；
+     - 修复方案：列宽统一改为 `minmax(0, 1fr)`，移除 `justify-self: start/end`，`.nm` 显式声明 `min-width: 0; max-width: 100%; width: 100%; overflow: hidden; text-overflow: ellipsis; display: block;`，击杀者靠右对齐、受害者靠左对齐，名字过长时优雅省略号截断，无论多长 ID 均绝不穿模；
+  3. **去除未转写语音片段填充文字 (`DemoDetailPage.tsx`)**:
+     - 详情页队内语音列表去除 fallback `'[语音片段]'`，未转写文本直接为空，界面干净舒适；
+  4. **术语更名 (`zh.ts` & `DemoDetailPage.tsx`)**:
+     - `zh.ts` 中 `'detail.hud.ud'` 从 `'投掷伤害'` 更新为 `'道具伤害'`；
+     - 表格列头与详情弹窗卡片自动同步为「道具伤害」，Tooltip 也更正为「总道具伤害 / 局均道具伤害」；
+  5. **打包脚本抗运行冲突增强 (`make-zip.ps1`)**:
+     - `make-zip.ps1` 采用独立的 `.build-stage` 临时目录构建 electron-builder，即使用户正在打开运行旧版程序，打包依然能够 100% 成功生成 `dist/CS2-Demo-Analyst-1.0.0-win64-portable.zip`。
+- **验证与测试**:
+  - `npm run typecheck` ✓（0 报错）
+  - `npm run dist:zip` ✓（顺利完成打包，生成 149.7 MB 绿色便携 zip）
+  - 代码推送到 GitHub `main` 分支。
+
 ## 本轮二十六（深度根因修复：CS2 录像消音指令 tv_listen_voice_indices 槽位偏移导致静音失效与无感回填）✅
 - **用户问题诊断**:
   - 用户在详情页静音选手「黄昏过后爱你」，界面弹出 `已向 CS2 发送消音指令 (tv_listen_voice_indices -9)`，但在游戏内该选手依然有说话声音；

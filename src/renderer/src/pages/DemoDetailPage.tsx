@@ -191,8 +191,7 @@ export function DemoDetailPage({
       if (isAlready) {
         toast.push(`${p.name} 已解除静音`)
       } else {
-        const slotDesc = typeof (p as { slot?: number }).slot === 'number' ? ` (Slot ${(p as { slot?: number }).slot})` : ''
-        toast.push(`${p.name}${slotDesc} 已静音（游戏内与悬浮层同步生效）`, 'warn')
+        toast.push(`${p.name} 已静音（游戏内与悬浮层同步生效）`, 'warn')
       }
     },
     [settings, syncVoiceMaskToLive, toast]
@@ -651,8 +650,8 @@ export function DemoDetailPage({
                         onClick={() => togglePlayerMute(p)}
                         title={
                           muted
-                            ? `点击恢复 ${p.name}${typeof p.slot === 'number' ? ` (Slot ${p.slot})` : ''} 开麦`
-                            : `点击静音 ${p.name}${typeof p.slot === 'number' ? ` (Slot ${p.slot})` : ''}`
+                            ? `点击恢复 ${p.name} 开麦${typeof p.slot === 'number' ? ` (底层槽位: Slot ${p.slot})` : ''}`
+                            : `点击静音 ${p.name}${typeof p.slot === 'number' ? ` (底层槽位: Slot ${p.slot})` : ''}`
                         }
                         style={{
                           background: muted ? 'rgba(255, 69, 58, 0.15)' : 'rgba(255, 255, 255, 0.05)',
@@ -671,11 +670,6 @@ export function DemoDetailPage({
                       >
                         {muted ? <IcMicOff size={12} /> : <IcMic size={12} />}
                         <span>{muted ? '已静音' : '开麦'}</span>
-                        {typeof p.slot === 'number' && (
-                          <span style={{ opacity: 0.5, fontSize: 10, fontFamily: 'monospace' }}>
-                            S{p.slot}
-                          </span>
-                        )}
                       </button>
                     </td>
                     <td
@@ -692,7 +686,7 @@ export function DemoDetailPage({
                     <td className="num">{p.firstKills !== undefined ? `${p.firstKills}/${p.firstDeaths ?? 0}` : '—'}</td>
                     <td
                       className="num"
-                      title={`总投掷伤害: ${p.utilityDamage ?? 0} · 局均: ${p.utilityDamagePerRound ?? 0}`}
+                      title={`总道具伤害: ${p.utilityDamage ?? 0} · 局均: ${p.utilityDamagePerRound ?? 0}`}
                     >
                       {p.utilityDamage ?? 0}
                     </td>
@@ -927,7 +921,7 @@ export function DemoDetailPage({
                           )}
                         </span>
                         <span className={`txt ${vMuted ? 'muted' : ''}`} style={vMuted ? { opacity: 0.6 } : undefined}>
-                          {v.text || '[语音片段]'}
+                          {v.text || ''}
                         </span>
                         <VoicePlayButton
                           demoId={id}

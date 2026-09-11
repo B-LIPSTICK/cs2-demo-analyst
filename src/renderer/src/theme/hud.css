@@ -2373,7 +2373,7 @@ body {
 .kill-row {
   display: grid;
   /* 时间 | 击杀者(右对齐靠近武器) | 武器胶囊(居中) | 受害者(左对齐紧随武器) | 回合 | 跳转按钮 */
-  grid-template-columns: 56px 1fr auto 1fr 48px 28px;
+  grid-template-columns: 56px minmax(0, 1fr) auto minmax(0, 1fr) 48px 28px;
   align-items: center;
   gap: 12px;
   padding: 7px 14px;
@@ -2384,6 +2384,8 @@ body {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .kill-row:last-child {
@@ -2414,21 +2416,22 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  max-width: 100%;
+  width: 100%;
   letter-spacing: 0.2px;
+  display: block;
 }
 
 /* 击杀者右对齐向中间靠拢 */
 .kill-row .nm.atk,
 .kill-row .nm:first-of-type {
   text-align: right;
-  justify-self: end;
 }
 
 /* 受害者左对齐向中间靠拢 */
 .kill-row .nm.vic,
 .kill-row .nm:last-of-type {
   text-align: left;
-  justify-self: start;
 }
 
 .kill-row .nm.t {
@@ -2822,13 +2825,15 @@ body {
 
 .pm-kill {
   display: grid;
-  grid-template-columns: 64px 1fr 1fr 48px 28px;
+  grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr) 48px 28px;
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
   font-size: 13px;
   border-bottom: 1px solid var(--line-0);
   cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
   transition: background 0.1s;
 }
 
@@ -3430,7 +3435,7 @@ body {
   }
 
   .kill-row {
-    grid-template-columns: 60px 1fr auto 1fr 44px 28px;
+    grid-template-columns: 60px minmax(0, 1fr) auto minmax(0, 1fr) 44px 28px;
     gap: 8px;
     padding: 9px 12px;
   }

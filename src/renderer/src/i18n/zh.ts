@@ -130,7 +130,7 @@ export const zh = {
   'detail.hud.adr': 'ADR',
   'detail.hud.kast': 'KAST',
   'detail.hud.fkfd': '首杀/首死',
-  'detail.hud.ud': '投掷伤害',
+  'detail.hud.ud': '道具伤害',
   'detail.hud.fa': '闪光助攻',
   'detail.hud.blindEnemy': '敌方致盲',
   'detail.hud.blindTeam': '误闪队友',
