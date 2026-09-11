@@ -973,7 +973,7 @@ export async function parseDemo(
         case MessagePacketType.SVC_VOICE_DATA: {
           voiceCount++
           voiceTicks.add(tick)
-          const d = messagePacket.data as { entity?: number; clientDeprecated?: number; xuid?: string } | null
+          const d = messagePacket.data as { entity?: number; clientDeprecated?: number; xuid?: unknown } | null
           if (d) {
             const ent = Number.isInteger(d.entity) && (d.entity as number) >= 1 && (d.entity as number) <= 64
               ? (d.entity as number)
@@ -982,8 +982,9 @@ export async function parseDemo(
                 : 0
             if (ent > 0) {
               const voiceSlot = ent - 1
-              if (d.xuid && !slotBySteamId.has(d.xuid)) {
-                slotBySteamId.set(d.xuid, voiceSlot)
+              const xuidStr = d.xuid != null ? String(d.xuid) : ''
+              if (xuidStr && !slotBySteamId.has(xuidStr)) {
+                slotBySteamId.set(xuidStr, voiceSlot)
               }
             }
           }

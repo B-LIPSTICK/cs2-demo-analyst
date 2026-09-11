@@ -1,5 +1,31 @@
 # progress.md — 会话日志
 
+## 本轮二十六（深度根因修复：CS2 录像消音指令 tv_listen_voice_indices 槽位偏移导致静音失效与无感回填）✅
+- **用户问题诊断**:
+  - 用户在详情页静音选手「黄昏过后爱你」，界面弹出 `已向 CS2 发送消音指令 (tv_listen_voice_indices -9)`，但在游戏内该选手依然有说话声音；
+  - **核心根因定位**:
+    1. CS2 官方 GOTV 录像回放消音机制使用的是 32 位槽位掩码：`tv_listen_voice_indices <maskLow>` 与 `tv_listen_voice_indices_h <maskHigh>`，其中 `bit N = 0` 表示静音槽位 `N` 的语音；
+    2. 在该场比赛中，完美世界 (PWA) CSTV 占用实体 1（Slot 0），服务器内部实体占用 2~3，10 位玩家实际占用 Controller 实体 4~13（对应底层语音槽位 Slot 3~12）；
+    3. 「黄昏过后爱你」位于实体 7（`entity - 1` = **Slot 6**）；
+    4. 由于旧版缓存文件此前解析时 `PlayerInfo.slot` 字段为 `undefined`，渲染层 `computeVoiceMask` 错误回退为表格渲染下标 `idx = 3`，计算出 `~(1 << 3) = -9`（静音了 Slot 3 的「用户5041099」），导致消音指令发给了错误的选手！静音 Slot 6 的正确掩码必须是 `~(1 << 6) = -65` (`0xFFFFFFBF`)；
+    5. 此外，Protobuf 解包的 `xuid` 是 `Long` 对象，原先在 `voiceIndex.ts` 和 `parser.ts` 中未调用 `String(d.xuid)` 导致字符串哈希查找无法命中。
+- **修复措施**:
+  1. **解析器层修复 (`parser.ts` & `voiceIndex.ts`)**:
+     - `SVC_VOICE_DATA` 和 `CCSPlayerController` 采样中全面使用 `String(d.xuid)` / `String(m_steamID)` 确保 Long 对象转为规范字符串；
+     - 采样实体控制器绑定 `entitySlot = uid >= 1 && uid <= 64 ? uid - 1 : undefined`，并将 `slot` 准确写入 `PlayerInfo`；
+  2. **资料库版本升级与平滑回填 (`library.ts`)**:
+     - 依规范将 `PARSER_VERSION` 升级至 7；
+     - `library.detail(id)` 新增平滑自动回填：若检测到旧版缓存缺少 `slot`，优先轻量提取 `extractVoiceIndex`（<1s）自动补全并写回磁盘，无需用户苦等漫长重解析；
+     - 确保 `detail.meta.players` 与 `store.index[id].players` 槽位严格同步；
+  3. **渲染层精准消音 (`DemoDetailPage.tsx`)**:
+     - `computeVoiceMask` 彻底移除危险的 `idx` 回退，仅在 `p.slot` 为有效数字时才置零对应 bit，绝不串音误杀；
+     - 消音按钮与弹窗显式展示 `(Slot X)`，Toast 实时提示消音槽位，静音「黄昏过后爱你」时准确下发 `tv_listen_voice_indices -65`。
+- **验证与打包**:
+  - `npm run typecheck` ✓（0 报错）
+  - Node 纯数学与真实数据验证：Slot 6 对应 `-65`（0xFFFFFFBF），Slot 3 对应 `-9`（0xFFFFFFF7），掩码位完全精确无误；
+  - `npm run smoke` ✓（Electron 主进程与渲染层正常加载无报错）
+  - `npm run dist:zip` ✓（重新生成绿色便携版 `dist/CS2-Demo-Analyst-1.0.0-win64-portable.zip`）。
+
 ## 本轮二十五（UI 体验精细化：毛玻璃自定义下拉框、主页面副标题清理、离线模型安装与下载取消控制、作者 B 站与 GitHub 主页直达）✅
 - **用户需求与痛点诊断**:
   1. **下载控制与离线安装通道**: 梯子环境下外网下载可能速度较慢或卡顿，需要支持随时「取消下载」；同时支持用户手动在 GitHub Releases / 镜像源下载模型，并提供「打开模型目录」快捷按钮，放入即用；

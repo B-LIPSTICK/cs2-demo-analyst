@@ -14,6 +14,7 @@ import { parseDemo } from './parser'
 import { getMockDetail, getMockLibrary } from './mock'
 import { updateSettings } from './settings'
 import { extractVoice as asrExtract, splitVoice as asrSplit, transcribeDemo } from './asr'
+import { extractVoiceIndex } from './voiceIndex'
 
 export interface LibraryService {
   init(): Promise<void>
@@ -98,8 +99,8 @@ export function createLibraryService(
   }
 
   // 解析器版本：解析逻辑变更（如击杀阵营实时跟踪）时 +1，旧详情缓存自动失效重解析
-  // v6: 引入投掷物伤害 (UD)、闪光助攻 (FA) 与闪光致盲效率统计 (Enemies Blinded / Duration)
-  const PARSER_VERSION = 6
+  // v7: 提取精确 CSTV 实体槽位 (0~63)，支持 tv_listen_voice_indices 单人精准消音
+  const PARSER_VERSION = 7
 
   const libDir = () => join(app.getPath('userData'), 'library')
   const indexPath = () => join(libDir(), 'index.json')
@@ -711,10 +712,60 @@ export function createLibraryService(
       try {
         const raw = await fs.readFile(detailPath(id), 'utf-8')
         const detail = JSON.parse(raw) as DemoDetail
-        // 解析器版本不匹配（缓存是旧版解析结果）→ 视为无缓存，触发重新解析
-        if (detail.parserVersion !== PARSER_VERSION) return null
+        // 解析器版本不匹配（缓存是旧版解析结果）
+        if (detail.parserVersion !== PARSER_VERSION) {
+          const players = detail.meta?.players ?? (detail as any).players
+          // 若为旧版缓存 (v6) 且所有玩家已有合法 slot，直接平滑升级版本，避免无谓重解析
+          if (
+            detail.parserVersion === 6 &&
+            Array.isArray(players) &&
+            players.length > 0 &&
+            players.every((p) => typeof p.slot === 'number')
+          ) {
+            detail.parserVersion = PARSER_VERSION
+            if (detail.meta) detail.meta.players = players
+            if (store.index[id]) {
+              detail.meta = { ...store.index[id], players }
+              store.index[id].players = players
+            }
+            await safePersist(detailPath(id), detail).catch(() => {})
+            store.details.set(id, detail)
+            return detail
+          }
+          // 若为旧版缓存 (v6) 但部分玩家缺失 slot，尝试从 demo 文件轻量提取 voice slot 补充
+          if (detail.parserVersion === 6 && Array.isArray(players) && players.length > 0) {
+            const meta = store.index[id]
+            if (meta?.path && players.some((p) => typeof p.slot !== 'number')) {
+              try {
+                const vi = await extractVoiceIndex(meta.path)
+                for (const p of players) {
+                  if (typeof p.slot !== 'number' && p.steamId && vi.slotByXuid[p.steamId] !== undefined) {
+                    p.slot = vi.slotByXuid[p.steamId]
+                  }
+                }
+                if (players.every((p) => typeof p.slot === 'number')) {
+                  detail.parserVersion = PARSER_VERSION
+                  if (detail.meta) detail.meta.players = players
+                  if (store.index[id]) {
+                    detail.meta = { ...store.index[id], players }
+                    store.index[id].players = players
+                  }
+                  await safePersist(detailPath(id), detail).catch(() => {})
+                  store.details.set(id, detail)
+                  return detail
+                }
+              } catch {
+                /* 轻量提取失败则回退为重解析 */
+              }
+            }
+          }
+          return null
+        }
         if (store.index[id]) {
           detail.meta = { ...store.index[id] }
+          if (detail.meta.players) {
+            store.index[id].players = detail.meta.players
+          }
         }
         store.details.set(id, detail)
         return detail

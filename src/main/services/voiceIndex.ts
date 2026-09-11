@@ -71,7 +71,8 @@ export async function extractVoiceIndex(
       pulses.set(slot, list)
     }
     list.push(tick)
-    if (d.xuid && !slotByXuid.has(d.xuid)) slotByXuid.set(d.xuid, slot)
+    const xuidStr = d.xuid != null ? String(d.xuid) : ''
+    if (xuidStr && !slotByXuid.has(xuidStr)) slotByXuid.set(xuidStr, slot)
   })
 
   const stream = createReadStream(demoPath)

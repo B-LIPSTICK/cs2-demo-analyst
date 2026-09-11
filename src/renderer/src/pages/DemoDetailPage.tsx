@@ -40,10 +40,10 @@ export function computeVoiceMask(
   let low = 0xffffffff
   let high = 0xffffffff
 
-  players.forEach((p, idx) => {
+  players.forEach((p) => {
     const isMuted = (p.steamId && muted.has(p.steamId)) || (p.name && muted.has(p.name))
-    if (isMuted) {
-      const slot = typeof p.slot === 'number' ? p.slot : idx
+    if (isMuted && typeof p.slot === 'number') {
+      const slot = p.slot
       if (slot >= 0 && slot < 32) {
         low = (low & ~(1 << slot)) >>> 0
       } else if (slot >= 32 && slot < 64) {
@@ -191,7 +191,8 @@ export function DemoDetailPage({
       if (isAlready) {
         toast.push(`${p.name} 已解除静音`)
       } else {
-        toast.push(`${p.name} 已静音（悬浮层将显示闭麦标或屏蔽）`, 'warn')
+        const slotDesc = typeof (p as { slot?: number }).slot === 'number' ? ` (Slot ${(p as { slot?: number }).slot})` : ''
+        toast.push(`${p.name}${slotDesc} 已静音（游戏内与悬浮层同步生效）`, 'warn')
       }
     },
     [settings, syncVoiceMaskToLive, toast]
@@ -648,7 +649,11 @@ export function DemoDetailPage({
                         type="button"
                         className={`btn-mic-toggle ${muted ? 'muted' : 'active'}`}
                         onClick={() => togglePlayerMute(p)}
-                        title={muted ? `点击恢复 ${p.name} 开麦` : `点击静音 ${p.name}`}
+                        title={
+                          muted
+                            ? `点击恢复 ${p.name}${typeof p.slot === 'number' ? ` (Slot ${p.slot})` : ''} 开麦`
+                            : `点击静音 ${p.name}${typeof p.slot === 'number' ? ` (Slot ${p.slot})` : ''}`
+                        }
                         style={{
                           background: muted ? 'rgba(255, 69, 58, 0.15)' : 'rgba(255, 255, 255, 0.05)',
                           border: `1px solid ${muted ? 'rgba(255, 69, 58, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
@@ -666,6 +671,11 @@ export function DemoDetailPage({
                       >
                         {muted ? <IcMicOff size={12} /> : <IcMic size={12} />}
                         <span>{muted ? '已静音' : '开麦'}</span>
+                        {typeof p.slot === 'number' && (
+                          <span style={{ opacity: 0.5, fontSize: 10, fontFamily: 'monospace' }}>
+                            S{p.slot}
+                          </span>
+                        )}
                       </button>
                     </td>
                     <td
@@ -1550,8 +1560,13 @@ function PlayerModal({
                 </span>
               )}
             </div>
-            <div className="pm-sub">
-              {player.team === 'T' ? 'T 队' : player.team === 'CT' ? 'CT 队' : '—'}
+            <div className="pm-sub" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>{player.team === 'T' ? 'T 队' : player.team === 'CT' ? 'CT 队' : '—'}</span>
+              {typeof player.slot === 'number' && (
+                <span style={{ opacity: 0.55, fontSize: 11, fontFamily: 'monospace' }}>
+                  CS2 Slot: {player.slot}
+                </span>
+              )}
             </div>
           </div>
           <div className="grow" />
@@ -1560,7 +1575,11 @@ function PlayerModal({
               variant={isMuted ? 'danger' : 'secondary'}
               size="sm"
               onClick={onToggleMute}
-              title={isMuted ? '点击取消静音该选手' : '点击静音该选手麦克风'}
+              title={
+                isMuted
+                  ? `点击取消静音该选手${typeof player.slot === 'number' ? ` (Slot ${player.slot})` : ''}`
+                  : `点击静音该选手麦克风${typeof player.slot === 'number' ? ` (Slot ${player.slot})` : ''}`
+              }
               style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginRight: 6 }}
             >
               {isMuted ? <IcMicOff size={13} /> : <IcMic size={13} />}
