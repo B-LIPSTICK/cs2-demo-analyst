@@ -294,15 +294,17 @@ export function Tag({
   tone,
   dot,
   children,
-  className = ''
+  className = '',
+  style
 }: {
   tone?: 't' | 'ct' | 'voice' | 'alert' | 'ghost' | ''
   dot?: boolean
   children: ReactNode
   className?: string
+  style?: CSSProperties
 }) {
   return (
-    <span className={`tag ${tone ?? ''} ${className}`}>
+    <span className={`tag ${tone ?? ''} ${className}`} style={style}>
       {dot && <span className="dot" />}
       {children}
     </span>
