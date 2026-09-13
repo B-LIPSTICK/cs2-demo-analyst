@@ -105,7 +105,11 @@ export default function App() {
   }, [])
 
   const navigate = useCallback((page: Page, demoId?: string) => {
-    setRoute({ page, demoId })
+    setRoute((prev) => {
+      const nextDemoId =
+        demoId !== undefined ? (demoId || undefined) : page === 'transcript' ? prev.demoId : undefined
+      return { page, demoId: nextDemoId }
+    })
     // 导航序号：同一 demo 重复导航时也递增，让目标页能感知「再次跳转」并重新同步选中
     setNavSeq((s) => s + 1)
   }, [])

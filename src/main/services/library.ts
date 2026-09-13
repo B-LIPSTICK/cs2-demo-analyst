@@ -914,62 +914,76 @@ export function createLibraryService(
     async extractVoice(id: string) {
       const detail = await this.waitDetail(id)
       if (!detail) throw new Error(notReadyMsg(id))
-      const items = await asrExtract(
-        detail,
-        {
-          progress: (stage, done, total) =>
-            emit('asr:progress', { demoId: id, stage, done, total }),
-          segment: () => {}
-        },
-        transcribeSignal?.signal
-      )
-      return items.length
+      try {
+        const items = await asrExtract(
+          detail,
+          {
+            progress: (stage, done, total) =>
+              emit('asr:progress', { demoId: id, stage, done, total }),
+            segment: () => {}
+          },
+          transcribeSignal?.signal
+        )
+        emit('asr:progress', { demoId: id, stage: 'done', done: items.length, total: items.length })
+        return items.length
+      } catch (err) {
+        emit('asr:progress', { demoId: id, stage: 'done', done: 0, total: 0 })
+        throw err
+      }
     },
 
     async splitVoice(id: string) {
       const detail = await this.waitDetail(id)
       if (!detail) throw new Error(notReadyMsg(id))
-      const segments = await asrSplit(
-        detail,
-        {
-          progress: (stage, done, total, message) =>
-            emit('asr:progress', { demoId: id, stage, done, total, message }),
-          segment: () => {}
-        },
-        transcribeSignal?.signal
-      )
-      // 分割结果暂存到 detail.voice（无文字；若已有转写结果则合并去重）
-      const cached = store.details.get(id)
-      const existing = new Set(
-        (cached?.voice ?? detail.voice ?? []).map((v) => `${v.playerName}|${v.timeSec}`)
-      )
-      const merged = [...(cached?.voice ?? detail.voice ?? [])]
-      for (const s of segments) {
-        const key = `${s.playerName}|${s.startSec}`
-        if (existing.has(key)) continue
-        merged.push({
-          tick: s.tick,
-          endTick: s.endTick,
-          timeSec: s.startSec,
-          endSec: s.endSec,
-          playerName: s.playerName,
-          steamId: s.steamId,
-          team: s.team,
-          text: '',
-          roundNum: undefined,
-          engine: 'local'
-        })
-        existing.add(key)
+      try {
+        const segments = await asrSplit(
+          detail,
+          {
+            progress: (stage, done, total, message) =>
+              emit('asr:progress', { demoId: id, stage, done, total, message }),
+            segment: () => {}
+          },
+          transcribeSignal?.signal
+        )
+        // 分割结果暂存到 detail.voice（无文字；若已有转写结果则合并去重）
+        const cached = store.details.get(id)
+        const existing = new Set(
+          (cached?.voice ?? detail.voice ?? []).map((v) => `${v.playerName}|${v.timeSec}`)
+        )
+        const merged = [...(cached?.voice ?? detail.voice ?? [])]
+        const rounds = detail.rounds ?? []
+        for (const s of segments) {
+          const key = `${s.playerName}|${s.startSec}`
+          if (existing.has(key)) continue
+          const roundNum = rounds.find((r) => s.tick >= r.startTick && s.tick <= r.endTick)?.roundNum
+          merged.push({
+            tick: s.tick,
+            endTick: s.endTick,
+            timeSec: s.startSec,
+            endSec: s.endSec,
+            playerName: s.playerName,
+            steamId: s.steamId,
+            team: s.team,
+            text: '',
+            roundNum,
+            engine: 'local'
+          })
+          existing.add(key)
+        }
+        merged.sort((a, b) => a.tick - b.tick)
+        const target = cached ?? detail
+        target.voice = merged
+        await persistDetail(target).catch(() => {})
+
+        emit('asr:progress', { demoId: id, stage: 'done', done: segments.length, total: segments.length, message: '完成' })
+        emit('asr:done', { demoId: id, segmentsCount: segments.length })
+        emit('library:detail', { id, detail: target })
+
+        return segments.length
+      } catch (err) {
+        emit('asr:progress', { demoId: id, stage: 'done', done: 0, total: 0, message: '' })
+        throw err
       }
-      merged.sort((a, b) => a.tick - b.tick)
-      if (cached) {
-        cached.voice = merged
-        await persistDetail(cached).catch(() => {})
-      } else {
-        detail.voice = merged
-        await persistDetail(detail).catch(() => {})
-      }
-      return segments.length
     },
 
     async transcribe(id: string, opts?: { players?: string[] }) {
@@ -977,38 +991,45 @@ export function createLibraryService(
       if (!detail) throw new Error(notReadyMsg(id))
       transcribeSignal = new AbortController()
       const settings = await getSettings()
-      const segments = await transcribeDemo(
-        detail,
-        {
-          engine: settings.asr.engine,
-          localModel: settings.asr.localModel,
-          cloudBaseUrl: settings.asr.cloudBaseUrl,
-          cloudApiKey: settings.asr.cloudApiKey,
-          cloudModel: settings.asr.cloudModel,
-          language: settings.asr.language,
-          players: opts?.players
-        },
-        {
-          progress: (stage, done, total, message) =>
-            emit('asr:progress', { demoId: id, stage, done, total, message }),
-          segment: (segment) => emit('asr:segment', { demoId: id, segment })
-        },
-        transcribeSignal?.signal
-      )
-      // 持久化转写结果
-      const cached = store.details.get(id)
-      if (cached) {
-        cached.voice = segments
-        await persistDetail(cached).catch(() => {})
-      } else {
-        detail.voice = segments
-        await persistDetail(detail).catch(() => {})
+      try {
+        const segments = await transcribeDemo(
+          detail,
+          {
+            engine: settings.asr.engine,
+            localModel: settings.asr.localModel,
+            cloudBaseUrl: settings.asr.cloudBaseUrl,
+            cloudApiKey: settings.asr.cloudApiKey,
+            cloudModel: settings.asr.cloudModel,
+            language: settings.asr.language,
+            players: opts?.players
+          },
+          {
+            progress: (stage, done, total, message) =>
+              emit('asr:progress', { demoId: id, stage, done, total, message }),
+            segment: (segment) => emit('asr:segment', { demoId: id, segment })
+          },
+          transcribeSignal?.signal
+        )
+        // 持久化转写结果
+        const cached = store.details.get(id)
+        const target = cached ?? detail
+        target.voice = segments
+        await persistDetail(target).catch(() => {})
+
+        emit('asr:progress', { demoId: id, stage: 'done', done: segments.length, total: segments.length, message: '完成' })
+        emit('asr:done', { demoId: id, segmentsCount: segments.length })
+        emit('library:detail', { id, detail: target })
+      } catch (err) {
+        emit('asr:progress', { demoId: id, stage: 'done', done: 0, total: 0, message: '' })
+        throw err
+      } finally {
+        transcribeSignal = null
       }
-      transcribeSignal = null
     },
 
     cancelTranscribe() {
       cancelTranscribe()
+      emit('asr:progress', { demoId: '', stage: 'done', done: 0, total: 0, message: '已取消' })
     },
 
     /** 自动探测本地常见对战平台 Demo 目录（完美世界、5E 对战平台、Steam 官方） */

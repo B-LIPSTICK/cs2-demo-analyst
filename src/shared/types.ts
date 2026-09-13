@@ -479,7 +479,7 @@ export type MainEvent =
   | { type: 'library:item'; id: string; meta: DemoMeta }
   | { type: 'library:progress'; id: string; stage: string; progress: number }
   | { type: 'library:detail'; id: string; detail: DemoDetail | null }
-  | { type: 'library:detail'; id: string; detail: DemoDetail | null }
+  | { type: 'asr:done'; demoId: string; segmentsCount: number }
   | { type: 'live:status'; status: LiveStatus }
   | { type: 'live:console'; channel: string; text: string }
   | { type: 'gsi:state'; state: GsiGameState }

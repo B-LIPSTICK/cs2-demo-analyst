@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Avatar,
   Btn,
@@ -45,11 +45,35 @@ export function TranscriptPage({
 
   const [settings, setSettings] = useState<Settings | null>(null)
 
+  const loadDetail = useCallback(async (id: string) => {
+    if (!id) {
+      setDetail(null)
+      setLiveSegs([])
+      return
+    }
+    try {
+      const d = await window.api.library.detail(id)
+      setDetail(d)
+    } catch {
+      // ignore
+    }
+  }, [])
+
   // 页面常驻（App 只切换 display）后，从详情页跳转带入新的 demoId 时同步切换；
-  // navSeq 变化（即使 demoId 相同）也强制重新选中，保证「点转写必打开对应 demo」
   useEffect(() => {
     if (initialDemoId) setDemoId(initialDemoId)
-  }, [initialDemoId, navSeq])
+  }, [initialDemoId])
+
+  // 外部导航（navSeq 变化，例如点击“转写页 ->”或侧栏切换）时，主动拉取最新 detail 并清空陈旧的进度条
+  useEffect(() => {
+    const idToLoad = initialDemoId || demoId
+    if (idToLoad) {
+      if (initialDemoId && initialDemoId !== demoId) {
+        setDemoId(initialDemoId)
+      }
+      loadDetail(idToLoad)
+    }
+  }, [navSeq, initialDemoId, demoId, loadDetail])
 
   useEffect(() => {
     window.api.settings.get().then((s) => {
@@ -91,20 +115,54 @@ export function TranscriptPage({
     }
   }, [demoId])
 
-  // 转写事件
+  // 转写 / 分割事件
   useEffect(() => {
+    let timer: NodeJS.Timeout | null = null
     const offSeg = window.api.onEvent('asr:segment', (e) => {
       if (e.demoId === demoId) setLiveSegs((s) => [...s, e.segment])
     })
     const offProg = window.api.onEvent('asr:progress', (e) => {
-      if (e.demoId === demoId)
-        setProgress({ stage: e.stage, done: e.done, total: e.total, message: e.message })
+      if (e.demoId === demoId) {
+        if (e.stage === 'done') {
+          setProgress(null)
+          loadDetail(demoId)
+        } else {
+          setProgress({ stage: e.stage, done: e.done, total: e.total, message: e.message })
+          // 兜底：若已达 100%（例如分割完成 8/8），在短暂延迟后若无新事件自动清除并拉取最新详情
+          if (e.total > 0 && e.done >= e.total) {
+            if (timer) clearTimeout(timer)
+            timer = setTimeout(() => {
+              setProgress((p) => (p && p.total > 0 && p.done >= p.total ? null : p))
+              loadDetail(demoId)
+            }, 1200)
+          }
+        }
+      }
+    })
+    const offDone = window.api.onEvent('asr:done', (e) => {
+      if (e.demoId === demoId) {
+        if (timer) clearTimeout(timer)
+        setProgress(null)
+        setLiveSegs([])
+        loadDetail(demoId)
+      }
+    })
+    const offDetail = window.api.onEvent('library:detail', (e) => {
+      if (e.id === demoId && e.detail) {
+        if (timer) clearTimeout(timer)
+        setDetail(e.detail)
+        setProgress(null)
+        setLiveSegs([])
+      }
     })
     return () => {
+      if (timer) clearTimeout(timer)
       offSeg()
       offProg()
+      offDone()
+      offDetail()
     }
-  }, [demoId])
+  }, [demoId, loadDetail])
 
   const runTranscribe = async () => {
     if (!demoId) return
@@ -157,11 +215,16 @@ export function TranscriptPage({
     // 去重兜底（防 liveSegs 与 detail.voice 偶发重叠）
     const seen = new Set<string>()
     const out: VoiceSegment[] = []
+    const rounds = detail?.rounds ?? []
     for (const v of [...base, ...liveSegs]) {
       const key = `${v.playerName}|${v.timeSec}`
       if (seen.has(key)) continue
       seen.add(key)
-      out.push(v)
+      const rNum =
+        v.roundNum !== undefined
+          ? v.roundNum
+          : rounds.find((r) => v.tick >= r.startTick && v.tick <= r.endTick)?.roundNum
+      out.push(rNum !== v.roundNum ? { ...v, roundNum: rNum } : v)
     }
     return out
   }, [detail, liveSegs])
@@ -505,7 +568,7 @@ function VoiceRow({
         {seg.roundNum !== undefined && <Tag tone="ghost">R{seg.roundNum}</Tag>}
       </span>
       <span className={`txt ${seg.text ? '' : 'no-text'}`} style={muted ? { opacity: 0.6 } : undefined}>
-        {seg.text || t('transcript.noText')}
+        {seg.text || ''}
       </span>
       <VoicePlayButton
         demoId={demoId}

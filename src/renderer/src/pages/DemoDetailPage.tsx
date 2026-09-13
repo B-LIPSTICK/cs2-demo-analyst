@@ -75,12 +75,44 @@ export function DemoDetailPage({
   const [progress, setProgress] = useState<{ stage: string; done: number; total: number; message?: string } | null>(null)
 
   useEffect(() => {
+    let timer: NodeJS.Timeout | null = null
     const offProg = window.api.onEvent('asr:progress', (e) => {
       if (e.demoId === id) {
-        setProgress({ stage: e.stage, done: e.done, total: e.total, message: e.message })
+        if (e.stage === 'done') {
+          setProgress(null)
+        } else {
+          setProgress({ stage: e.stage, done: e.done, total: e.total, message: e.message })
+          if (e.total > 0 && e.done >= e.total) {
+            if (timer) clearTimeout(timer)
+            timer = setTimeout(() => {
+              setProgress((p) => (p && p.total > 0 && p.done >= p.total ? null : p))
+            }, 1200)
+          }
+        }
       }
     })
-    return () => offProg()
+    const offDone = window.api.onEvent('asr:done', (e) => {
+      if (e.demoId === id) {
+        if (timer) clearTimeout(timer)
+        setProgress(null)
+        window.api.library.detail(id).then((d) => {
+          if (d) setDetail(d)
+        })
+      }
+    })
+    const offDetail = window.api.onEvent('library:detail', (e) => {
+      if (e.id === id && e.detail) {
+        if (timer) clearTimeout(timer)
+        setDetail(e.detail)
+        setProgress(null)
+      }
+    })
+    return () => {
+      if (timer) clearTimeout(timer)
+      offProg()
+      offDone()
+      offDetail()
+    }
   }, [id])
 
   const runSplit = async () => {
