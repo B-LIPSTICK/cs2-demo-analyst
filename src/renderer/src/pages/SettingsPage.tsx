@@ -68,8 +68,8 @@ const AI_PROVIDERS: AiProviderDef[] = [
     labelKey: 'settings.aiProviderZhipu',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     defaultModel: 'glm-4-flash',
-    keyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
-    keyUrlText: 'open.bigmodel.cn/usercenter/apikeys',
+    keyUrl: 'https://open.bigmodel.cn/apikey/platform',
+    keyUrlText: 'open.bigmodel.cn/apikey/platform',
     presetModels: ['glm-4-flash', 'glm-4-flashx', 'glm-4-plus', 'glm-4-air', 'glm-4-long'],
     badge: '国内免翻 · GLM-4-Flash 免费',
     descKey: 'settings.aiZhipuHint'
