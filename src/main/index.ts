@@ -212,6 +212,7 @@ function registerIpc(): void {
   )
   ipcMain.handle('live:installGsi', () => Promise.resolve(null))
   ipcMain.handle('live:locateInstall', () => live.locateInstall())
+  ipcMain.handle('live:restoreCleanFiles', () => live.restoreCleanFiles())
 
   // Overlay 悬浮层
   ipcMain.handle('overlay:setEnabled', async (_e, enabled: boolean, demoId?: string) => {

@@ -1049,8 +1049,36 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           </div>
           <Toggle
             on={!!draft.cs2.voiceHud}
-            onChange={(v) => setCs2({ voiceHud: v })}
+            onChange={(v) => {
+              setCs2({ voiceHud: v })
+              if (!v) {
+                window.api.live.restoreCleanFiles().catch(() => {})
+              }
+            }}
           />
+        </div>
+
+        <div className="set-row" style={{ alignItems: 'center' }}>
+          <div className="info">
+            <div className="t">VAC 官匹纯净安全 / 一键文件还原</div>
+            <div className="d">
+              一键清除所有录像回放注入配置与临时文件，将 CS2 核心配置彻底还原为 Valve 官方签名状态，确保正常加入 VAC 官匹安全服务器。
+            </div>
+          </div>
+          <Btn
+            variant="secondary"
+            size="sm"
+            onClick={async () => {
+              const res = await window.api.live.restoreCleanFiles()
+              if (res.ok) {
+                toast.push(res.message, 'ok')
+              } else {
+                toast.push(res.message, 'err')
+              }
+            }}
+          >
+            一键还原官方纯净文件
+          </Btn>
         </div>
 
         {draft.cs2.voiceHud && (

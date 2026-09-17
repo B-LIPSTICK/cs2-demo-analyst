@@ -446,6 +446,7 @@ export interface Api {
     setVoiceMask: (mask: { low: number; high: number }) => Promise<{ sent: boolean; cmd: string }>
     installGsi: () => Promise<string | null>
     locateInstall: () => Promise<string | null>
+    restoreCleanFiles: () => Promise<{ ok: boolean; message: string }>
   }
   overlay: {
     setEnabled: (enabled: boolean, demoId?: string) => Promise<void>

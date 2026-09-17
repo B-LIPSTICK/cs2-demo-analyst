@@ -76,7 +76,8 @@ const api: ApiWithEvents = {
     setVoiceMask: (mask: { low: number; high: number }) =>
       ipcRenderer.invoke('live:setVoiceMask', mask),
     installGsi: () => ipcRenderer.invoke('live:installGsi'),
-    locateInstall: () => ipcRenderer.invoke('live:locateInstall')
+    locateInstall: () => ipcRenderer.invoke('live:locateInstall'),
+    restoreCleanFiles: () => ipcRenderer.invoke('live:restoreCleanFiles')
   },
   overlay: {
     setEnabled: (enabled: boolean, demoId?: string) =>

@@ -317,7 +317,7 @@ export class LiveService {
       void isCs2Running().then((running) => {
         if (!running) {
           void fs.unlink(cfgFile).catch(() => {})
-          if (voiceHud) void demoInjector.uninstall(install).catch(() => {})
+          if (voiceHud) void demoInjector.cleanAll(install).catch(() => {})
         } else {
           this.playCfgCleanupTimer = setTimeout(check, 5000)
         }
@@ -570,6 +570,21 @@ export class LiveService {
   /** 定位 CS2 安装目录 */
   async locateInstall(): Promise<string | null> {
     return locateCs2Install(this.installPath)
+  }
+
+  /** 一键清理所有注入与临时文件，将 CS2 游戏文件恢复官方纯净状态（保障 VAC 官匹安全） */
+  async restoreCleanFiles(): Promise<{ ok: boolean; message: string }> {
+    const install = await locateCs2Install(this.installPath)
+    if (!install) {
+      return { ok: false, message: '未找到 CS2 安装目录，请在设置中指定有效路径。' }
+    }
+    const running = await isCs2Running()
+    if (running) {
+      return { ok: false, message: 'CS2 正在运行中，请先退出游戏后再执行还原。' }
+    }
+    const err = await demoInjector.cleanAll(install)
+    if (err) return { ok: false, message: err }
+    return { ok: true, message: '游戏文件已彻底还原为 Valve 官方纯净状态，可安全进行官匹。' }
   }
 
   getStatus(): LiveStatus {

@@ -154,20 +154,51 @@ export class DemoInjector {
     return null
   }
 
-  /** 移除自己的 SearchPath + 删除 VPK（CS2 未运行时调用，由调用方保证） */
-  async uninstall(installPath: string): Promise<void> {
-    const csgo = join(installPath, 'game', 'csgo')
-    const gameInfo = join(csgo, 'gameinfo.gi')
-    const tf = await readTextPreserving(gameInfo)
-    if (tf) {
-      const { text, changed } = removeSearchPaths(tf.text)
-      if (changed) {
-        await writeTextPreserving(gameInfo, tf, text).catch(() => {})
+  /** 彻底清理所有注入文件，并将 gameinfo.gi 从官方备份完全还原（保证 VAC 官匹安全） */
+  async cleanAll(installPath: string): Promise<string | null> {
+    try {
+      const csgo = join(installPath, 'game', 'csgo')
+      const win64 = join(installPath, 'game', 'bin', 'win64')
+      const gameInfo = join(csgo, 'gameinfo.gi')
+      const backup = join(csgo, INJECT_BACKUP)
+
+      // ① 恢复 gameinfo.gi（优先从官方原始备份覆盖恢复，并删除备份）
+      try {
+        await fs.access(backup)
+        await fs.copyFile(backup, gameInfo)
+        await fs.unlink(backup).catch(() => {})
+      } catch {
+        // 无备份时兜底：从现有文件中剔除非官方 overrides 项
+        const tf = await readTextPreserving(gameInfo)
+        if (tf) {
+          const { text, changed } = removeSearchPaths(tf.text)
+          if (changed) {
+            await writeTextPreserving(gameInfo, tf, text).catch(() => {})
+          }
+        }
       }
+
+      // ② 清除 overrides 目录
+      const overrides = join(csgo, 'overrides')
+      await fs.rm(overrides, { recursive: true, force: true }).catch(() => {})
+
+      // ③ 清除 steam_appid.txt（彻底防止 VAC 误判为离线/开发模式）
+      const appid = join(win64, 'steam_appid.txt')
+      await fs.unlink(appid).catch(() => {})
+
+      // ④ 清理临时播放 cfg 和 log
+      await fs.unlink(join(csgo, 'cfg', 'dsh-play.cfg')).catch(() => {})
+      await fs.unlink(join(csgo, 'dsh_hud.log')).catch(() => {})
+
+      return null
+    } catch (err) {
+      return `清理失败：${err instanceof Error ? err.message : String(err)}`
     }
-    for (const name of [STATIC_VPK, SESSION_VPK]) {
-      await fs.unlink(join(csgo, 'overrides', name)).catch(() => {})
-    }
+  }
+
+  /** 移除自己的 SearchPath + 删除 VPK */
+  async uninstall(installPath: string): Promise<void> {
+    await this.cleanAll(installPath)
   }
 
   /** 当前是否已注入（用于启动前检查/状态展示） */
