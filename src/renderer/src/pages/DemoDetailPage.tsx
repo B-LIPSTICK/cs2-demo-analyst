@@ -355,7 +355,7 @@ export function DemoDetailPage({
         return
       }
     }
-    const cmd = typeof tick === 'number' && tick > 0 ? `demo_gototick ${tick}` : ''
+    const cmd = typeof tick === 'number' && tick > 0 ? `demo_gototick ${tick}` : `playdemo "${detail.meta.path}"`
     if (cmd) {
       try {
         await navigator.clipboard.writeText(cmd)
@@ -365,11 +365,7 @@ export function DemoDetailPage({
     }
     const status = await window.api.live.getStatus().catch(() => null)
     if (status?.cs2Running) {
-      if (cmd) {
-        toast.push(t('common.jumpCopiedRunning').replace('{cmd}', cmd), 'warn')
-      } else {
-        toast.push('CS2 正在运行中：请在游戏内按 ~ 打开控制台', 'warn')
-      }
+      toast.push(t('common.jumpCopiedRunning').replace('{cmd}', cmd), 'warn')
       return
     }
     const s = await window.api.settings.get()

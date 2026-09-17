@@ -312,47 +312,31 @@ export class LiveService {
   /** CS2 退出后自动清理会话残留（dsh-play.cfg + 注入恢复 + steam_appid.txt 及 tool 缓存） */
   private scheduleSessionCleanup(install: string): void {
     if (this.playCfgCleanupTimer) clearTimeout(this.playCfgCleanupTimer)
+    let seenRunning = false
+    let attempts = 0
+    const maxWaitAttempts = 30 // 最多等待约 90 秒供 CS2 启动加载
+
     const check = () => {
+      attempts++
       void isCs2Running().then((running) => {
-        if (!running) {
-          void demoInjector.cleanAll(install).catch(() => {})
-        } else {
+        if (running) {
+          seenRunning = true
           this.playCfgCleanupTimer = setTimeout(check, 3000)
+        } else if (seenRunning) {
+          // CS2 曾运行过，现在已完全退出：彻底清理残留并还原官方纯净文件
+          void demoInjector.cleanAll(install).catch(() => {})
+        } else if (attempts < maxWaitAttempts) {
+          // CS2 仍在启动初始化过程中，继续等待，绝不在启动阶段过早删除 dsh-play.cfg
+          this.playCfgCleanupTimer = setTimeout(check, 3000)
+        } else {
+          // 超时（用户取消启动或启动失败），执行保护性清理
+          void demoInjector.cleanAll(install).catch(() => {})
         }
       })
     }
-    this.playCfgCleanupTimer = setTimeout(check, 4000)
-  }
 
-  /** 定位 steam.exe（注册表 SteamPath；找不到返回 null） */
-  private async locateSteamExe(): Promise<string | null> {
-    try {
-      const { execFile } = await import('node:child_process')
-      const reg = await new Promise<string>((resolve) => {
-        execFile('reg', ['query', 'HKCU\\Software\\Valve\\Steam', '/v', 'SteamPath'], { windowsHide: true }, (_e, out) => resolve(out))
-      })
-      const m = reg.match(/SteamPath\s+REG_SZ\s+(.+)/i)
-      if (m) {
-        const exe = join(m[1].trim(), 'steam.exe')
-        await fs.access(exe)
-        return exe
-      }
-    } catch {
-      /* noop */
-    }
-    for (const p of [
-      'C:\\Program Files (x86)\\Steam\\steam.exe',
-      'D:\\11-Steam\\steam.exe',
-      'D:\\Steam\\steam.exe'
-    ]) {
-      try {
-        await fs.access(p)
-        return p
-      } catch {
-        /* next */
-      }
-    }
-    return null
+    // 启动 5 秒后开始首次轮询
+    this.playCfgCleanupTimer = setTimeout(check, 5000)
   }
 
   /** 一键启动/原生回放 */
@@ -484,45 +468,10 @@ export class LiveService {
 
           const tickArgs = startTick ? ['+demo_gototick', String(startTick)] : []
 
-          // voiceHud 走 Steam -applaunch 避免 Steam 本地验证干扰
-          if (voiceHud) {
-            const steamExe = await this.locateSteamExe()
-            if (!steamExe) {
-              return {
-                ok: false,
-                url: '',
-                error: '未找到 Steam（语音 HUD 需经 Steam 启动 CS2）。请确认 Steam 已安装且登录。'
-              }
-            }
-            const args = ['-applaunch', '730', '-insecure', '-novid', '-console', '-consolelog', 'dsh_hud.log', '+exec', 'dsh-play.cfg', ...tickArgs, ...extra]
-            const child = spawn(steamExe, args, {
-              cwd: dirname(steamExe),
-              detached: true,
-              stdio: 'ignore',
-              windowsHide: false
-            })
-            child.on('error', () => {})
-            child.unref()
-            this.scheduleSessionCleanup(install)
-            return { ok: true, url: '', direct: true, exe: steamExe, demoFile: staged }
-          }
-
-          // 原生回放模式：优先通过 steam.exe -applaunch 730 原生拉起（安全无损，不触碰任何 SDK 工具）
-          const playArgs: string[] = ['+exec', 'dsh-play.cfg', '+cl_demo_predict', '0', '-novid', ...tickArgs, ...extra]
-          const steamExe = await this.locateSteamExe()
-          if (steamExe) {
-            const steamArgs = ['-applaunch', '730', ...playArgs]
-            const child = spawn(steamExe, steamArgs, {
-              cwd: dirname(steamExe),
-              detached: true,
-              stdio: 'ignore',
-              windowsHide: false
-            })
-            child.on('error', () => {})
-            child.unref()
-            this.scheduleSessionCleanup(install)
-            return { ok: true, url: '', direct: true, exe: steamExe, demoFile: staged }
-          }
+          // 直接启动 cs2.exe 传参（完美/5E同款：cs2.exe 原生接收 +exec 启动参数秒进 Demo，不走 steam.exe 避免参数被吞）
+          const playArgs: string[] = voiceHud
+            ? ['-insecure', '+exec', 'dsh-play.cfg', '+cl_demo_predict', '0', '-novid', '-consolelog', 'dsh_hud.log', ...tickArgs, ...extra]
+            : ['+exec', 'dsh-play.cfg', '+cl_demo_predict', '0', '-novid', ...tickArgs, ...extra]
 
           const child = spawn(exe, playArgs, {
             cwd: dirname(exe),
@@ -576,22 +525,7 @@ export class LiveService {
         }
 
         await demoInjector.cleanAll(install).catch(() => {})
-        const steamExe = await this.locateSteamExe()
         const args: string[] = ['-novid', ...extra]
-        if (steamExe) {
-          const steamArgs = ['-applaunch', '730', ...args]
-          const child = spawn(steamExe, steamArgs, {
-            cwd: dirname(steamExe),
-            detached: true,
-            stdio: 'ignore',
-            windowsHide: false
-          })
-          child.on('error', () => {})
-          child.unref()
-          this.scheduleSessionCleanup(install)
-          return { ok: true, url: '', direct: true, exe: steamExe }
-        }
-
         const child = spawn(exe, args, {
           cwd: dirname(exe),
           detached: true,
