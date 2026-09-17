@@ -183,12 +183,19 @@ export class DemoInjector {
       await fs.rm(overrides, { recursive: true, force: true }).catch(() => {})
 
       // ③ 清除 steam_appid.txt（彻底防止 VAC 误判为离线/开发模式）
-      const appid = join(win64, 'steam_appid.txt')
-      await fs.unlink(appid).catch(() => {})
+      await fs.unlink(join(win64, 'steam_appid.txt')).catch(() => {})
+      await fs.unlink(join(installPath, 'steam_appid.txt')).catch(() => {})
 
-      // ④ 清理临时播放 cfg 和 log
+      // ④ 清除 tools 遗留目录和缓存
+      const toolsettings = join(installPath, 'game', '_toolsettings')
+      await fs.rm(toolsettings, { recursive: true, force: true }).catch(() => {})
+      const toolCache = join(csgo, 'tools_thumbnail_cache.sqlite3')
+      await fs.unlink(toolCache).catch(() => {})
+
+      // ⑤ 清理临时播放 cfg、log 和备份残留
       await fs.unlink(join(csgo, 'cfg', 'dsh-play.cfg')).catch(() => {})
       await fs.unlink(join(csgo, 'dsh_hud.log')).catch(() => {})
+      await fs.unlink(join(csgo, INJECT_BACKUP)).catch(() => {})
 
       return null
     } catch (err) {

@@ -609,7 +609,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
 
   const launchCs2 = async () => {
     const r = await window.api.live.launch({
-      toolsMode: (draft.cs2.playMode ?? 'tools') !== 'native'
+      toolsMode: (draft.cs2.playMode ?? 'native') === 'tools'
     })
     if (r.ok) toast.push(t.t('settings.cs2Launched'))
     else toast.push(r.error ?? t.t('common.error'), 'warn')
@@ -982,16 +982,19 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           </div>
           <div className="seg">
             <span
-              className={`seg-item ${(draft.cs2.playMode ?? 'tools') === 'tools' ? 'on' : ''}`}
+              className={`seg-item ${(draft.cs2.playMode ?? 'native') === 'native' ? 'on' : ''}`}
+              onClick={() => {
+                setCs2({ playMode: 'native' })
+                window.api.live.restoreCleanFiles().catch(() => {})
+              }}
+            >
+              {t.t('settings.cs2PlayModeNative')}
+            </span>
+            <span
+              className={`seg-item ${(draft.cs2.playMode ?? 'native') === 'tools' ? 'on' : ''}`}
               onClick={() => setCs2({ playMode: 'tools' })}
             >
               {t.t('settings.cs2PlayModeTools')}
-            </span>
-            <span
-              className={`seg-item ${(draft.cs2.playMode ?? 'tools') === 'native' ? 'on' : ''}`}
-              onClick={() => setCs2({ playMode: 'native' })}
-            >
-              {t.t('settings.cs2PlayModeNative')}
             </span>
           </div>
         </div>

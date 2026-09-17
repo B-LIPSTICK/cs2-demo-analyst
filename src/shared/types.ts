@@ -355,7 +355,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   cs2: {
     launchArgs: '',
-    playMode: 'tools',
+    playMode: 'native',
     voiceHud: false
   },
   overlay: {

@@ -309,24 +309,22 @@ export class LiveService {
     }
   }
 
-  /** CS2 退出后自动清理会话残留（dsh-play.cfg + 注入恢复） */
-  private scheduleSessionCleanup(install: string, voiceHud: boolean): void {
+  /** CS2 退出后自动清理会话残留（dsh-play.cfg + 注入恢复 + steam_appid.txt 及 tool 缓存） */
+  private scheduleSessionCleanup(install: string): void {
     if (this.playCfgCleanupTimer) clearTimeout(this.playCfgCleanupTimer)
-    const cfgFile = join(install, 'game', 'csgo', 'cfg', 'dsh-play.cfg')
     const check = () => {
       void isCs2Running().then((running) => {
         if (!running) {
-          void fs.unlink(cfgFile).catch(() => {})
-          if (voiceHud) void demoInjector.cleanAll(install).catch(() => {})
+          void demoInjector.cleanAll(install).catch(() => {})
         } else {
-          this.playCfgCleanupTimer = setTimeout(check, 5000)
+          this.playCfgCleanupTimer = setTimeout(check, 3000)
         }
       })
     }
-    this.playCfgCleanupTimer = setTimeout(check, 15000)
+    this.playCfgCleanupTimer = setTimeout(check, 4000)
   }
 
-  /** 定位 steam.exe（注册表 SteamPath；找不到返回 null）——voiceHud 注入模式经 Steam 启动 */
+  /** 定位 steam.exe（注册表 SteamPath；找不到返回 null） */
   private async locateSteamExe(): Promise<string | null> {
     try {
       const { execFile } = await import('node:child_process')
@@ -370,7 +368,7 @@ export class LiveService {
     installPath?: string,
     _display?: { mode?: string; resolution?: string }
   ): Promise<LaunchResult> {
-    const toolsMode = opts?.toolsMode ?? true
+    const toolsMode = opts?.toolsMode ?? false
     const demoPath = opts?.playDemoPath
     const voiceHud = !!opts?.voiceHud
     const startTick = typeof opts?.startTick === 'number' && opts.startTick > 0 ? opts.startTick : undefined
@@ -417,6 +415,7 @@ export class LiveService {
 
           // 2.1 直连跳转模式 (toolsMode)：原生分辨率 + -tools -noassetbrowser，VConsole 远程控制
           if (toolsMode && !voiceHud) {
+            await demoInjector.cleanAll(install).catch(() => {})
             const name = await this.stageDemoForPlay(demoPath, install)
             if (!name) {
               return {
@@ -439,11 +438,17 @@ export class LiveService {
             child.on('error', () => {})
             child.unref()
 
+            // 针对 -tools 引擎自动写入的 steam_appid.txt 及时防守清理
+            setTimeout(() => {
+              void fs.unlink(join(install, 'game', 'bin', 'win64', 'steam_appid.txt')).catch(() => {})
+            }, 3000)
+
             setTimeout(() => void this.connect(), 1500)
+            this.scheduleSessionCleanup(install)
             return { ok: true, url: '', direct: true, exe, demoFile: name, starting: true }
           }
 
-          // 2.2 普通原生模式或带 voiceHud：+exec dsh-play.cfg 秒播
+          // 2.2 普通原生模式或带 voiceHud：+exec dsh-play.cfg 秒播（完美/5E同款原生安全回放）
           const staged = await this.stageDemoForPlayNoSpace(demoPath, install)
           if (!staged) {
             return {
@@ -456,6 +461,9 @@ export class LiveService {
           if (voiceHud) {
             const err = await this.prepareVoiceHud(demoPath, install)
             if (err) return { ok: false, url: '', error: err }
+          } else {
+            // 原生模式：启动前确保游戏目录处于纯净官方状态
+            await demoInjector.cleanAll(install).catch(() => {})
           }
           // 写播放 cfg（完美平台同款原生机制；退出后自动清理）
           const cfgFile = join(install, 'game', 'csgo', 'cfg', 'dsh-play.cfg')
@@ -495,12 +503,28 @@ export class LiveService {
             })
             child.on('error', () => {})
             child.unref()
-            this.scheduleSessionCleanup(install, voiceHud)
+            this.scheduleSessionCleanup(install)
             return { ok: true, url: '', direct: true, exe: steamExe, demoFile: staged }
           }
 
-          const args: string[] = ['+exec', 'dsh-play.cfg', '+cl_demo_predict', '0', '-novid', ...tickArgs, ...extra]
-          const child = spawn(exe, args, {
+          // 原生回放模式：优先通过 steam.exe -applaunch 730 原生拉起（安全无损，不触碰任何 SDK 工具）
+          const playArgs: string[] = ['+exec', 'dsh-play.cfg', '+cl_demo_predict', '0', '-novid', ...tickArgs, ...extra]
+          const steamExe = await this.locateSteamExe()
+          if (steamExe) {
+            const steamArgs = ['-applaunch', '730', ...playArgs]
+            const child = spawn(steamExe, steamArgs, {
+              cwd: dirname(steamExe),
+              detached: true,
+              stdio: 'ignore',
+              windowsHide: false
+            })
+            child.on('error', () => {})
+            child.unref()
+            this.scheduleSessionCleanup(install)
+            return { ok: true, url: '', direct: true, exe: steamExe, demoFile: staged }
+          }
+
+          const child = spawn(exe, playArgs, {
             cwd: dirname(exe),
             detached: true,
             stdio: 'ignore',
@@ -508,7 +532,7 @@ export class LiveService {
           })
           child.on('error', () => {})
           child.unref()
-          this.scheduleSessionCleanup(install, voiceHud)
+          this.scheduleSessionCleanup(install)
           return { ok: true, url: '', direct: true, exe, demoFile: staged }
         } catch {
           /* 回退 steam:// */
@@ -532,9 +556,42 @@ export class LiveService {
       const exe = join(install, 'game', 'bin', 'win64', 'cs2.exe')
       try {
         await fs.access(exe)
-        const args: string[] = toolsMode
-          ? ['-tools', '-noassetbrowser', '-novid', ...extra]
-          : ['-novid', ...extra]
+        if (toolsMode) {
+          await demoInjector.cleanAll(install).catch(() => {})
+          const args: string[] = ['-tools', '-noassetbrowser', '-novid', ...extra]
+          const child = spawn(exe, args, {
+            cwd: dirname(exe),
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: false
+          })
+          child.on('error', () => {})
+          child.unref()
+          setTimeout(() => {
+            void fs.unlink(join(install, 'game', 'bin', 'win64', 'steam_appid.txt')).catch(() => {})
+          }, 3000)
+          setTimeout(() => void this.connect(), 1500)
+          this.scheduleSessionCleanup(install)
+          return { ok: true, url: '', direct: true, exe }
+        }
+
+        await demoInjector.cleanAll(install).catch(() => {})
+        const steamExe = await this.locateSteamExe()
+        const args: string[] = ['-novid', ...extra]
+        if (steamExe) {
+          const steamArgs = ['-applaunch', '730', ...args]
+          const child = spawn(steamExe, steamArgs, {
+            cwd: dirname(steamExe),
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: false
+          })
+          child.on('error', () => {})
+          child.unref()
+          this.scheduleSessionCleanup(install)
+          return { ok: true, url: '', direct: true, exe: steamExe }
+        }
+
         const child = spawn(exe, args, {
           cwd: dirname(exe),
           detached: true,
@@ -543,9 +600,7 @@ export class LiveService {
         })
         child.on('error', () => {})
         child.unref()
-        if (toolsMode) {
-          setTimeout(() => void this.connect(), 1500)
-        }
+        this.scheduleSessionCleanup(install)
         return { ok: true, url: '', direct: true, exe }
       } catch {
         /* noop */

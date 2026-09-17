@@ -12,7 +12,7 @@ app.setName('CS2 Demo Analyst')
 
 let mainWindow: BrowserWindow | null = null
 const library = createLibraryService(() => mainWindow, getSettings)
-import { LiveService } from './services/live'
+import { LiveService, isCs2Running } from './services/live'
 const live = new LiveService({
   status: (s) => mainWindow?.webContents.send('live:status', { status: s }),
   consoleLine: (channel, text) =>
@@ -199,7 +199,7 @@ function registerIpc(): void {
       return live.launch(
         {
           ...opts,
-          toolsMode: opts?.toolsMode ?? s.cs2.playMode !== 'native',
+          toolsMode: opts?.toolsMode ?? (s.cs2.playMode === 'tools'),
           voiceHud: opts?.voiceHud ?? s.cs2.voiceHud
         },
         s.cs2.launchArgs ?? '',
@@ -362,6 +362,12 @@ if (!gotLock) {
     void getSettings().then((s) => {
       live.setInstallPath(s.cs2.installPath)
       live.start()
+      // 启动时自动检查并清理历史遗留未签名文件（steam_appid.txt 等），确保 VAC 纯净
+      if (s.cs2.installPath) {
+        void isCs2Running().then((running) => {
+          if (!running) void live.restoreCleanFiles().catch(() => {})
+        })
+      }
       // 开发模式: --ai-mock 本地生成 AI 回答（无需 Key/网络）
       if (process.argv.includes('--ai-mock')) {
         ai.setMock(true)
