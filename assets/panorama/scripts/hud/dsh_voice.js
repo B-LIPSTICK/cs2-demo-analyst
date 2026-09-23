@@ -76,6 +76,19 @@ var DshVoiceHud = (function () {
 		return result;
 	}
 
+	function _CleanPlayerName(name) {
+		if (!name) return "";
+		return String(name)
+			.replace(/<[^>]*>/g, "")
+			.replace(/&lt;/g, "<")
+			.replace(/&gt;/g, ">")
+			.replace(/&quot;/g, '"')
+			.replace(/&apos;/g, "'")
+			.replace(/&#39;/g, "'")
+			.replace(/&amp;/g, "&")
+			.trim();
+	}
+
 	function _ReadPlayers() {
 		var result = [];
 		var data = null;
@@ -95,9 +108,9 @@ var DshVoiceHud = (function () {
 			seen[slot] = true;
 			var name = "";
 			var team = "";
-			try { name = GameStateAPI.GetPlayerName(xuid) || ""; } catch (e) {}
+			try { name = _CleanPlayerName(GameStateAPI.GetPlayerName(xuid) || ""); } catch (e) {}
 			try { team = GameStateAPI.GetPlayerTeamName(xuid) || ""; } catch (e) {}
-			if (!name && src.name) name = String(src.name);
+			if (!name && src.name) name = _CleanPlayerName(src.name);
 			result.push({ slot: slot, xuid: xuid, name: name, team: team });
 		}
 		result.sort(function (a, b) { return a.slot - b.slot; });
@@ -221,7 +234,8 @@ var DshVoiceHud = (function () {
 		if (!row) return;
 		var wasHidden = row.slot < 0;
 		row.slot = slot;
-		var displayName = player && player.name ? player.name : "Player " + (slot + 1);
+		var rawName = player && player.name ? player.name : "Player " + (slot + 1);
+		var displayName = _CleanPlayerName(rawName) || ("Player " + (slot + 1));
 		if (row.name && row.name.text !== displayName) row.name.text = displayName;
 		var team = player ? player.team : "";
 		row.panel.RemoveClass("team-t");

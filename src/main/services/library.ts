@@ -10,7 +10,7 @@ import { basename, dirname, join, extname } from 'node:path'
 import { createHash } from 'node:crypto'
 import AdmZip from 'adm-zip'
 import type { DemoDetail, DemoMeta, DetectedPlatformRoot, Settings } from '@shared/types'
-import { parseDemo } from './parser'
+import { parseDemo, cleanPlayerName } from './parser'
 import { getMockDetail, getMockLibrary } from './mock'
 import { updateSettings } from './settings'
 import { extractVoice as asrExtract, splitVoice as asrSplit, transcribeDemo } from './asr'
@@ -112,6 +112,38 @@ export function createLibraryService(
     path: string
     mtimeMs?: number
     ignoredAt: number
+  }
+
+  function sanitizeDetailPlayerNames(detail: DemoDetail): void {
+    if (detail.meta?.players) {
+      for (const p of detail.meta.players) {
+        if (p.name) p.name = cleanPlayerName(p.name)
+      }
+    }
+    if (detail.chat) {
+      for (const c of detail.chat) {
+        if (c.playerName) c.playerName = cleanPlayerName(c.playerName)
+      }
+    }
+    if (detail.voice) {
+      for (const v of detail.voice) {
+        if (v.playerName) v.playerName = cleanPlayerName(v.playerName)
+      }
+    }
+    if (detail.rounds) {
+      for (const r of detail.rounds) {
+        if (r.kills) {
+          for (const k of r.kills) {
+            if (k.attackerName) k.attackerName = cleanPlayerName(k.attackerName)
+            if (k.victimName) k.victimName = cleanPlayerName(k.victimName)
+          }
+        }
+        if (r.firstKill) {
+          if (r.firstKill.attackerName) r.firstKill.attackerName = cleanPlayerName(r.firstKill.attackerName)
+          if (r.firstKill.victimName) r.firstKill.victimName = cleanPlayerName(r.firstKill.victimName)
+        }
+      }
+    }
   }
   const ignoredMap = new Map<string, IgnoredEntry>()
   let ignoredFileMtime = 0
@@ -604,6 +636,14 @@ export function createLibraryService(
         try {
           const raw = await fs.readFile(indexPath(), 'utf-8')
           store.index = JSON.parse(raw)
+          for (const id of Object.keys(store.index)) {
+            const meta = store.index[id]
+            if (Array.isArray(meta?.players)) {
+              for (const p of meta.players) {
+                if (p.name) p.name = cleanPlayerName(p.name)
+              }
+            }
+          }
         } catch {
           store.index = {}
         }
@@ -761,6 +801,7 @@ export function createLibraryService(
           }
           return null
         }
+        sanitizeDetailPlayerNames(detail)
         if (store.index[id]) {
           detail.meta = { ...store.index[id] }
           if (detail.meta.players) {

@@ -238,6 +238,25 @@ function zipEvent(descriptor: { keys: { name: string }[] }, keys: (EventKey | nu
 const int = (v: unknown): number => (typeof v === 'number' ? v : typeof v === 'bigint' ? Number(v) : 0)
 const str = (v: unknown): string => (typeof v === 'string' ? v : v === null || v === undefined ? '' : String(v))
 
+/**
+ * 清理玩家名称：
+ * CS2 更新后引入修饰名称（decorated player name），可能包含 HTML 标签（如 <span class='decorated-player-name'>）、
+ * 转义实体（&lt;, &gt;, &quot;, &apos;, &amp;）以及多余首尾空格，统一清洗为纯净玩家名。
+ */
+export function cleanPlayerName(raw: unknown): string {
+  const s = str(raw)
+  if (!s) return ''
+  return s
+    .replace(/<[^>]*>/g, '') // 去除 HTML/XML 标签
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .trim()
+}
+
 function normalizeTeamName(name: string): string | undefined {
   if (!name) return undefined
   if (name === 'TERRORIST') return 'T'
@@ -372,7 +391,7 @@ export async function parseDemo(
       let tSpent = 0, tStart = 0
       let ctSpent = 0, ctStart = 0
       for (const c of controllers) {
-        const name = str(c.getField('m_iszPlayerName'))
+        const name = cleanPlayerName(c.getField('m_iszPlayerName'))
         if (!name || name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV' || name === '完美世界竞技平台CSTV') continue
         const uid = c._index
         const team = roundTeamByName.get(name) ?? roundTeamByUid.get(uid) ?? (int(c.getField('m_iTeamNum')) === 2 ? 'T' : int(c.getField('m_iTeamNum')) === 3 ? 'CT' : 'NONE')
@@ -525,7 +544,7 @@ export async function parseDemo(
           }[]
           const sampled = new Map<number, TeamSide>()
           for (const c of controllers) {
-            const name = str(c.getField('m_iszPlayerName'))
+            const name = cleanPlayerName(c.getField('m_iszPlayerName'))
             if (!name || name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV' || name === '完美世界竞技平台CSTV') continue
             const uid = c._index
             const teamN = int(c.getField('m_iTeamNum'))
@@ -552,7 +571,7 @@ export async function parseDemo(
             // 名字映射（R1 采样）
             if (firstHalfNames.size === 0) {
               for (const c of controllers) {
-                const name = str(c.getField('m_iszPlayerName'))
+                const name = cleanPlayerName(c.getField('m_iszPlayerName'))
                 if (!name) continue
                 firstHalfNames.set(c._index, name)
               }
@@ -803,8 +822,8 @@ export async function parseDemo(
           const value = entry.value as { userid?: number; name?: string; steamid?: unknown }
           if (value && Number.isInteger(value.userid)) {
             const uid = value.userid as number
-            const name = typeof value.name === 'string' ? value.name : `player${uid}`
-            if (name === 'SourceTV' || name === 'GOTV') continue
+            const name = cleanPlayerName(typeof value.name === 'string' ? value.name : `player${uid}`)
+            if (!name || name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV' || name === '完美世界竞技平台CSTV') continue
             playersByUserid.set(uid, {
               userid: uid,
               name,
@@ -834,8 +853,8 @@ export async function parseDemo(
           const value = entry.value as { userid?: number; name?: string; steamid?: unknown }
           if (!value || !Number.isInteger(value.userid)) continue
           const uid = value.userid as number
-          const name = typeof value.name === 'string' ? value.name : `player${uid}`
-          if (name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV' || name === '完美世界竞技平台CSTV') continue
+          const name = cleanPlayerName(typeof value.name === 'string' ? value.name : `player${uid}`)
+          if (!name || name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV' || name === '完美世界竞技平台CSTV') continue
           const slot = playersByUserid.get(uid)
           if (slot) {
             // 已有条目（首个包创建）：名字/steamId 以最新 USER_INFO 为准
@@ -889,7 +908,7 @@ export async function parseDemo(
           /* pawn 实体可选 */
         }
         for (const c of controllers) {
-          const name = str(c.getField('m_iszPlayerName'))
+          const name = cleanPlayerName(c.getField('m_iszPlayerName'))
           if (!name || name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV' || name === '完美世界竞技平台CSTV') continue
           const entIdx = c._index
           const teamN = int(c.getField('m_iTeamNum'))
@@ -989,7 +1008,7 @@ export async function parseDemo(
             tick,
             timeSec: tick / TICK_RATE,
             channel: CHAT_CHANNELS[str(data.messagename)] ?? 'ALLCHAT',
-            playerName: str(data.param1),
+            playerName: cleanPlayerName(data.param1),
             text: str(data.param2),
             roundNum: currentRound.roundNum
           })
@@ -1061,7 +1080,7 @@ export async function parseDemo(
       getField(name: string): unknown
     }[]
     for (const c of controllers) {
-      const name = str(c.getField('m_iszPlayerName') ?? c.getField('m_szPlayerName'))
+      const name = cleanPlayerName(c.getField('m_iszPlayerName') ?? c.getField('m_szPlayerName'))
       if (!name || name === 'SourceTV' || name === 'GOTV' || name === '5EGOTV' || name === '完美世界竞技平台CSTV') continue
       const teamN = int(c.getField('m_iTeamNum'))
       const team: TeamSide = teamN === 2 ? 'T' : teamN === 3 ? 'CT' : 'NONE'
