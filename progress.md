@@ -1,5 +1,12 @@
 # progress.md — 会话日志
 
+## 本轮三十五（冻结可用版 + 前端重设计分支）✅
+- **可用版冻结**：分支 `working-hud-fix-2026-10-21`，commit `efbe7db`，tag `working-2026-10-21`。
+- **备份目录**：`D:\00-projects\Github\cs2-demo-analyst-backups\2026-10-21-working\`，含便携包、源码快照、`RESTORE.md`；便携包 SHA256 `8CE5D617F3E0C2F98AAC1C8C112B7254BB773285C1AEA2F5FD1C7CFC26538686`。
+- **前端重设计 worktree**：`D:\00-projects\Github\cs2-demo-analyst-frontend`，分支 `frontend-redesign`，从 `working-2026-10-21` 创建；原工作区保持不变。
+- **新聊天**：`CS2 Demo Analyst 前端重设计`（thread `01a15dfa-f8f2-7a32-accf-bd1c053e1615`），使用 impeccable / apple-design / review-frontend-production / GSAP skills。
+- 回滚：在原始工作区 `git checkout working-2026-10-21` 即可回到可用版。
+
 ## 本轮三十四（修复 Shift+F2 原生 Demo UI 打不开：用当前 Valve 布局重建 HUD 覆盖层）✅
 - **根因**：项目 `huddemocontroller.xml` 基于 2026-08-24 的旧 Valve 布局，缺少当前 CS2（2026-10-16 build）脚本引用的 `PlayerList`、`RoundMenu`、`PlayerControls`、`CameraButton`、`message_arrow` 等节点；原生 `HudDemoController` 初始化失败，Shift+F2 进度条无法打开。这正是审查 F-01。
 - **修复**：用自写 VPK 解析器从当前 `game/csgo/pak01_dir.vpk` 提取 `huddemocontroller.vxml_c`/`.vts_c`/`.vcss_c`，用 Source2Viewer 20.1 反编译成 XML；以当前 Valve 布局为基准，仅追加 `dsh_voice` 样式/脚本、`DshSpeakingRow` snippet 和 `DshVoiceDock`/`DshVoiceList`，保留全部原生节点。
