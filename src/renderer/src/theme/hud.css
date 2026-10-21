@@ -26,20 +26,20 @@
 
   /* 强调色：iOS 蓝（暗色模式） */
   --accent: #0a84ff;
-  --accent-strong: #3f9cff;
+  --accent-strong: #409cff;
   --accent-dim: rgba(10, 132, 255, 0.16);
 
   /* 阵营与状态：高辨识竞技色（暗色模式：T 琥珀金 / CT 冰霜蓝） */
   --t: #f5a623;
-  --t-dim: rgba(245, 166, 35, 0.16);
-  --ct: #5dade2;
-  --ct-dim: rgba(93, 173, 226, 0.16);
+  --t-dim: rgba(242, 166, 90, 0.16);
+  --ct: #c9ced6;
+  --ct-dim: rgba(201, 206, 214, 0.16);
   --red: #ff453a;
-  --red-dim: rgba(255, 69, 58, 0.14);
-  --green: #30d158;
-  --green-dim: rgba(48, 209, 88, 0.14);
+  --red-dim: rgba(255, 93, 93, 0.14);
+  --green: #5ac8fa;
+  --green-dim: rgba(90, 200, 250, 0.14);
   --amber: #ffd60a;
-  --amber-dim: rgba(255, 214, 10, 0.14);
+  --amber-dim: rgba(90, 200, 250, 0.14);
 
   /* 字体：SF 系系统栈（无网络字体依赖） */
   --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
@@ -112,7 +112,7 @@
   --ct-dim: rgba(47, 111, 184, 0.12);
   --red: #ff3b30;
   --red-dim: rgba(255, 59, 48, 0.1);
-  --green: #34c759;
+  --green: #8a6a12;
   --green-dim: rgba(52, 199, 89, 0.12);
   --amber: #ff9500;
   --amber-dim: rgba(255, 149, 0, 0.12);
@@ -219,7 +219,7 @@ body {
   /* 氛围背景跟随滚动内容移动 */
   background:
     radial-gradient(1100px 560px at 84% -12%, rgba(10, 132, 255, 0.14), transparent 60%),
-    radial-gradient(900px 520px at -8% 110%, rgba(94, 92, 230, 0.13), transparent 62%),
+    radial-gradient(900px 520px at -8% 110%, rgba(184, 106, 90, 0.13), transparent 62%),
     radial-gradient(700px 380px at 50% 120%, rgba(10, 132, 255, 0.07), transparent 65%),
     var(--bg-0);
   animation: aurora 26s ease-in-out infinite;
@@ -232,7 +232,7 @@ body {
 :root[data-theme='light'] .page-scroll {
   background:
     radial-gradient(1100px 560px at 84% -12%, rgba(0, 122, 255, 0.12), transparent 60%),
-    radial-gradient(900px 520px at -8% 110%, rgba(94, 92, 230, 0.08), transparent 62%),
+    radial-gradient(900px 520px at -8% 110%, rgba(184, 106, 90, 0.08), transparent 62%),
     radial-gradient(700px 380px at 50% 120%, rgba(0, 122, 255, 0.05), transparent 65%),
     var(--bg-0);
 }
@@ -539,7 +539,7 @@ a:focus-visible,
 
 .led.on::before {
   background: var(--green);
-  box-shadow: 0 0 6px rgba(48, 209, 88, 0.6);
+  box-shadow: 0 0 6px rgba(90, 200, 250, 0.6);
 }
 
 .led.warn::before {
@@ -925,7 +925,7 @@ a:focus-visible,
 
 .btn.danger {
   background: var(--red-dim);
-  border-color: rgba(255, 69, 58, 0.4);
+  border-color: rgba(255, 93, 93, 0.4);
   color: #ff6961;
 }
 
@@ -1077,7 +1077,7 @@ a:focus-visible,
 
 .tag.alert {
   color: #ff6961;
-  border-color: rgba(255, 69, 58, 0.4);
+  border-color: rgba(255, 93, 93, 0.4);
   background: var(--red-dim);
 }
 
@@ -1649,12 +1649,12 @@ a:focus-visible,
 
 .s-bar.alive.t {
   background: var(--t);
-  box-shadow: 0 0 4px rgba(245, 166, 35, 0.45);
+  box-shadow: 0 0 4px rgba(242, 166, 90, 0.45);
 }
 
 .s-bar.alive.ct {
   background: var(--ct);
-  box-shadow: 0 0 4px rgba(93, 173, 226, 0.45);
+  box-shadow: 0 0 4px rgba(201, 206, 214, 0.45);
 }
 
 /* 胜利事件图标 */
@@ -2241,7 +2241,7 @@ a:focus-visible,
 }
 
 .modal-choice.danger:hover {
-  border-color: rgba(255, 69, 58, 0.5);
+  border-color: rgba(255, 93, 93, 0.5);
   background: var(--red-dim);
 }
 
@@ -3388,11 +3388,11 @@ a:focus-visible,
 }
 
 .toast.warn {
-  border-color: rgba(255, 214, 10, 0.4);
+  border-color: rgba(90, 200, 250, 0.4);
 }
 
 .toast.err {
-  border-color: rgba(255, 69, 58, 0.4);
+  border-color: rgba(255, 93, 93, 0.4);
 }
 
 @keyframes toastIn {
@@ -3479,7 +3479,7 @@ a:focus-visible,
 
 .phase-pill.live {
   color: var(--green);
-  border-color: rgba(48, 209, 88, 0.5);
+  border-color: rgba(90, 200, 250, 0.5);
   background: var(--green-dim);
 }
 
@@ -4218,7 +4218,7 @@ body {
 
 /* ─── 电竞指标高亮 (Rating / ADR / Economy) ────────────────────────── */
 .win-rating {
-  color: #34c759 !important; /* 绿色 / 高 Rating */
+  color: var(--green) !important; /* 高 Rating */
 }
 .low-rating {
   color: #ff453a !important; /* 红色 / 低 Rating */

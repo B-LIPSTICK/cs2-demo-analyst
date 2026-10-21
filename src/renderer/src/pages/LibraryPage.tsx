@@ -370,12 +370,11 @@ function LibraryPageInner({
   }, [demos, query, rootFilter, sortMode])
 
   return (
-    <div className="page" style={{ position: 'relative' }}>
+    <div className="page library-page" style={{ position: 'relative' }}>
       <div className="page-head">
-        <div>
-          <div className="title">
-            {t('library.title')}
-          </div>
+        <div className="library-page-heading">
+          <div className="title">{t('library.title')}</div>
+          <div className="library-page-subtitle">{t('library.subtitle')}</div>
         </div>
         <div className="actions">
           {selectedIds.size > 0 ? (
@@ -536,11 +535,10 @@ function LibraryPageInner({
                   </div>
                 )}
               </div>
-              <div className="row">
+              <div className="row library-search">
                 <IcSearch size={15} />
                 <input
-                  className="input"
-                  style={{ width: 160 }}
+                  className="input library-search-input"
                   placeholder={t('common.search')}
                   aria-label={t('common.search')}
                   value={query}
@@ -676,7 +674,7 @@ function LibraryPageInner({
       )}
 
       <div style={{ marginTop: 18 }}>
-        <span className="muted" style={{ fontSize: 11.5 }}>
+        <span className="muted library-footnote">
           {t('library.mmNoVoice')}
         </span>
       </div>
@@ -860,7 +858,7 @@ function DemoCard({
 
   return (
     <article
-      className={`card ${selected ? 'selected' : ''}`}
+      className={`card ${selected ? 'selected' : ''} ${selectMode ? 'is-selecting' : ''} ${demo.status === 'error' ? 'has-error' : ''}`}
       style={{ ['--i' as string]: index } as React.CSSProperties}
       role="button"
       tabIndex={0}

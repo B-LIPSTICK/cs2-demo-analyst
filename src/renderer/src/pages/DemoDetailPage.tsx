@@ -552,7 +552,7 @@ export function DemoDetailPage({
     voice.length > 0 ? voice.reduce((s, v) => s + (v.endSec - v.timeSec), 0) : (meta.voiceSec ?? 0)
 
   return (
-    <div className="page">
+    <div className="page detail-page">
       {unsupportedMode && (
         <div
           style={{
@@ -573,16 +573,16 @@ export function DemoDetailPage({
         </div>
       )}
       {/* HUD 头部 */}
-      <Panel className="hud-accent" raised>
-        <div className="panel-bd" style={{ padding: 18 }}>
-          <div className="flex between" style={{ alignItems: 'flex-start' }}>
+      <Panel className="hud-accent detail-hero" raised>
+        <div className="detail-hero-body">
+          <div className="flex between detail-hero-head" style={{ alignItems: 'flex-start' }}>
             <div>
               <div className="flex gap-8" style={{ alignItems: 'center' }}>
                 <Btn variant="ghost" size="sm" onClick={onBack}>
                   <IcBack size={12} />
                   {t('common.back')}
                 </Btn>
-                <span className="map" style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-0.01em' }}>
+                <span className="map detail-map">
                   {formatMapName(meta.mapName) || '—'}
                 </span>
                 {meta.hasVoice === true && (
@@ -591,11 +591,11 @@ export function DemoDetailPage({
                   </Tag>
                 )}
               </div>
-              <div className="file muted" style={{ marginTop: 6, fontSize: 11.5 }} title={meta.path}>
+              <div className="file muted detail-file" title={meta.path}>
                 {meta.fileName} · {fmtBytes(meta.sizeBytes)}
               </div>
             </div>
-            <div className="flex gap-8" style={{ alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <div className="flex gap-8 detail-hero-actions" style={{ alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <Btn
                 size="sm"
                 variant="accent"
@@ -614,32 +614,28 @@ export function DemoDetailPage({
                 <IcTranscript size={12} />
                 {t('detail.goTranscript')} →
               </Btn>
-              <Btn size="sm" variant="ghost" onClick={() => window.api.app.revealInFolder(meta.path)} title="在文件夹中定位 Demo">
+              <Btn size="sm" variant="ghost" className="detail-icon-btn" onClick={() => window.api.app.revealInFolder(meta.path)} title="在文件夹中定位 Demo">
                 <IcFolder size={12} />
               </Btn>
             </div>
           </div>
 
           {/* 比分条 */}
-          <div className="flex" style={{ marginTop: 18, gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 34, lineHeight: 1, color: 'var(--t)' }}>
-              {meta.scoreT}
-            </span>
-            <span style={{ color: 'var(--text-2)', fontSize: 18, fontFamily: 'var(--font-display)' }}>:</span>
-            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 34, lineHeight: 1, color: 'var(--ct)' }}>
-              {meta.scoreCT}
-            </span>
+          <div className="detail-score-row">
+            <span className="detail-score t">{meta.scoreT}</span>
+            <span className="detail-score-sep">:</span>
+            <span className="detail-score ct">{meta.scoreCT}</span>
             <div className="grow" />
-            <div className="flex" style={{ gap: 26 }}>
+            <div className="detail-meta">
               {[
                 [t('library.duration'), fmtTime(meta.durationSec ?? 0)],
                 [t('library.rounds'), String(meta.roundCount ?? 0)],
                 [t('detail.voice'), `${voice.length} · ${Math.round(voiceSecs)}s`],
                 [t('detail.chat'), String(chat.length)]
               ].map(([k, v]) => (
-                <div key={k} style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--text-2)' }}>{k}</div>
-                  <div className="mono" style={{ fontSize: 15, fontWeight: 600, marginTop: 2 }}>{v}</div>
+                <div key={k} className="detail-meta-item">
+                  <div className="detail-meta-label">{k}</div>
+                  <div className="mono detail-meta-value">{v}</div>
                 </div>
               ))}
             </div>
@@ -647,7 +643,7 @@ export function DemoDetailPage({
 
           {/* 回合胜负走势图（CS:GO / CS2 官方比赛计分板风格） */}
           {!unsupportedMode && (
-            <div style={{ marginTop: 16 }}>
+            <div className="detail-timeline">
               <MatchTimelineBar
                 rounds={rounds}
                 selectedRound={selectedRound === 'all' ? undefined : selectedRound}
@@ -661,11 +657,11 @@ export function DemoDetailPage({
       {/* 选手数据计分板（全宽展示，空间宽敞清晰） */}
       <Panel
         raised
-        style={{ marginTop: 16 }}
+        className="detail-players"
         hd={
           <div className="flex between" style={{ alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: 8 }}>
-            <div className="flex" style={{ alignItems: 'center', gap: 8 }}>
-              <span>{t('detail.players')}</span>
+            <div className="flex detail-players-title" style={{ alignItems: 'center', gap: 8 }}>
+              <span className="detail-panel-title">{t('detail.players')}</span>
               {mutedPlayerCount > 0 ? (
                 <span
                   className="tag alert"
@@ -689,11 +685,11 @@ export function DemoDetailPage({
             </div>
             <div className="flex" style={{ alignItems: 'center', gap: 6 }}>
               {mutedPlayerCount > 0 ? (
-                <Btn size="sm" variant="ghost" onClick={unmuteAll} style={{ fontSize: 11.5, height: 26, padding: '0 8px' }}>
+                <Btn size="sm" variant="ghost" onClick={unmuteAll}>
                   全员恢复
                 </Btn>
               ) : (
-                <Btn size="sm" variant="ghost" onClick={muteAll} style={{ fontSize: 11.5, height: 26, padding: '0 8px' }}>
+                <Btn size="sm" variant="ghost" onClick={muteAll}>
                   一键全员静音
                 </Btn>
               )}
@@ -701,7 +697,7 @@ export function DemoDetailPage({
                 size="sm"
                 variant={isTeamMuted('T') ? 'secondary' : 'ghost'}
                 onClick={() => toggleTeamMute('T')}
-                style={{ fontSize: 11.5, height: 26, padding: '0 8px' }}
+               
                 title={isTeamMuted('T') ? '恢复进攻方 (T) 全体选手语音' : '静音进攻方 (T) 全体选手'}
               >
                 {isTeamMuted('T') ? '恢复 T' : '静音 T'}
@@ -710,7 +706,7 @@ export function DemoDetailPage({
                 size="sm"
                 variant={isTeamMuted('CT') ? 'secondary' : 'ghost'}
                 onClick={() => toggleTeamMute('CT')}
-                style={{ fontSize: 11.5, height: 26, padding: '0 8px' }}
+               
                 title={isTeamMuted('CT') ? '恢复防守方 (CT) 全体选手语音' : '静音防守方 (CT) 全体选手'}
               >
                 {isTeamMuted('CT') ? '恢复 CT' : '静音 CT'}
@@ -719,7 +715,7 @@ export function DemoDetailPage({
                 size="sm"
                 variant="ghost"
                 onClick={copyVoiceMaskCommand}
-                style={{ fontSize: 11.5, height: 26, padding: '0 8px' }}
+               
                 title="复制当前设置对应的 CS2 原生控制台消音指令 (tv_listen_voice_indices)"
               >
                 复制 CS2 闭麦指令
@@ -729,14 +725,14 @@ export function DemoDetailPage({
         }
       >
         {unsupportedMode ? (
-          <div className="muted" style={{ padding: '28px 16px', textAlign: 'center', fontSize: 12, lineHeight: 1.7 }}>
+          <div className="muted detail-empty">
             该模式暂不支持完整分析（检测到 {playerCount} 人阵容，可能为 Rush 等非 5v5 模式）。
             <br />
             已隐藏 5v5/MR12 专属的选手统计与回合时间轴。
           </div>
         ) : (
-          <div className="tbl-wrap" style={{ padding: '6px 0' }}>
-            <table className="tbl">
+          <div className="tbl-wrap detail-table-wrap">
+            <table className="tbl detail-table">
             <thead>
               <tr>
                 <th>#</th>
@@ -776,19 +772,21 @@ export function DemoDetailPage({
                           setPlayer(p)
                         }}
                       >
-                        <Avatar name={p.name} team={p.team} size={20} avatar={p.avatar} muted={muted} />
+                        <Avatar name={p.name} team={p.team} size={24} avatar={p.avatar} muted={muted} />
                         <span
-                          className={`nm ${p.team === 'T' ? 't' : p.team === 'CT' ? 'ct' : ''}`}
-                          style={muted ? { opacity: 0.65 } : undefined}
+                          className={`nm detail-player-name ${p.team === 'T' ? 't' : p.team === 'CT' ? 'ct' : ''}${muted ? ' is-muted' : ''}`}
                         >
                           {p.name}
                         </span>
+                        {(p.team === 'T' || p.team === 'CT') && (
+                          <span className={`detail-team-chip ${p.team === 'T' ? 't' : 'ct'}`}>{p.team}</span>
+                        )}
                       </button>
                     </td>
                     <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
                       <button
                         type="button"
-                        className={`btn-mic-toggle ${muted ? 'muted' : 'active'}`}
+                        className={`btn-mic-toggle ${!slotKnown ? 'unknown' : muted ? 'muted' : 'active'}`}
                         onClick={() => togglePlayerMute(p)}
                         disabled={!slotKnown && !muted}
                         title={
@@ -798,37 +796,12 @@ export function DemoDetailPage({
                               ? `点击恢复 ${p.name} 开麦${typeof p.slot === 'number' ? ` (底层槽位: Slot ${p.slot})` : ''}`
                               : `点击静音 ${p.name}${typeof p.slot === 'number' ? ` (底层槽位: Slot ${p.slot})` : ''}`
                         }
-                        style={{
-                          background: !slotKnown
-                            ? 'rgba(255, 159, 10, 0.12)'
-                            : muted
-                              ? 'rgba(255, 69, 58, 0.15)'
-                              : 'rgba(255, 255, 255, 0.05)',
-                          border: `1px solid ${
-                            !slotKnown
-                              ? 'rgba(255, 159, 10, 0.4)'
-                              : muted
-                                ? 'rgba(255, 69, 58, 0.4)'
-                                : 'rgba(255, 255, 255, 0.1)'
-                          }`,
-                          color: !slotKnown ? '#ff9f0a' : muted ? '#ff453a' : 'var(--text-muted, #999)',
-                          borderRadius: 6,
-                          padding: '3px 8px',
-                          fontSize: 11.5,
-                          cursor: !slotKnown && !muted ? 'not-allowed' : 'pointer',
-                          opacity: !slotKnown && !muted ? 0.7 : 1,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                          lineHeight: 1,
-                          transition: 'all 0.15s ease'
-                        }}
                       >
                         {muted ? <IcMicOff size={12} /> : <IcMic size={12} />}
                         <span>{!slotKnown ? '槽位未知' : muted ? '已静音' : '开麦'}</span>
                       </button>
                       {!slotKnown && (
-                        <div style={{ marginTop: 2, fontSize: 11.5, lineHeight: 1.3, color: '#ff9f0a', whiteSpace: 'nowrap' }}>
+                        <div className="detail-slot-warn">
                           槽位未知，无法自动闭麦
                         </div>
                       )}
@@ -866,9 +839,10 @@ export function DemoDetailPage({
       {round && <RoundStrip round={round} tickRate={meta.tickRate ?? 64} onJump={jump} />}
 
       {/* 底部两栏：击杀战报 + 局内通信（语音 & 聊天，随选定回合联动） */}
-      <div className="grid-2 demo-bottom-grid" style={{ marginTop: 16 }}>
+      <div className="grid-2 demo-bottom-grid detail-bottom">
         {/* 左栏：击杀战报 */}
         <Panel
+          className="detail-kill-panel"
           hd={
             <div className="flex" style={{ alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
               <span>{`${t('detail.killfeed')} · ${selectedRound === 'all' ? t('common.all') : `第 ${selectedRound} 回合`}`}</span>
@@ -921,7 +895,7 @@ export function DemoDetailPage({
               onSelectRound={setSelectedRound}
               allLabel={t('common.all')}
             />
-            <div className="kill-list" style={{ maxHeight: 440, overflowY: 'auto' }}>
+            <div className="kill-list detail-kill-list" style={{ maxHeight: 440, overflowY: 'auto' }}>
               {sortedKills.map((k, i) => {
                 const roundObj = rounds.find((r) => r.roundNum === k.roundNum)
                 return (
@@ -935,7 +909,7 @@ export function DemoDetailPage({
                 )
               })}
               {sortedKills.length === 0 && (
-                <div className="muted" style={{ padding: '36px 12px', textAlign: 'center', fontSize: 12 }}>
+                <div className="muted detail-empty">
                   {selectedRound === 'all' ? '暂无击杀记录' : `第 ${selectedRound} 回合暂无击杀`}
                 </div>
               )}
@@ -945,6 +919,7 @@ export function DemoDetailPage({
 
         {/* 右栏：局内通信与语音（随选定回合变动联动展示） */}
         <Panel
+          className="detail-comm-panel"
           hd={
             <div className="flex between" style={{ alignItems: 'center', width: '100%', gap: 8 }}>
               <div className="seg" role="tablist" aria-label="局内通信">
@@ -960,7 +935,7 @@ export function DemoDetailPage({
                 >
                   <IcMic size={12} />
                   <span>队内语音</span>
-                  <span style={{ opacity: 0.7, fontSize: 11.5 }}>({filteredVoice.length})</span>
+                  <span className="detail-tab-count">({filteredVoice.length})</span>
                 </button>
                 <button
                   type="button"
@@ -974,7 +949,7 @@ export function DemoDetailPage({
                 >
                   <IcChat size={12} />
                   <span>局内聊天</span>
-                  <span style={{ opacity: 0.7, fontSize: 11.5 }}>({filteredChat.length})</span>
+                  <span className="detail-tab-count">({filteredChat.length})</span>
                 </button>
               </div>
               <Btn
@@ -982,7 +957,7 @@ export function DemoDetailPage({
                 variant="ghost"
                 onClick={onGoTranscript}
                 title="前往完整转写页查看全部语音并支持搜索"
-                style={{ fontSize: 11.5, height: 26, padding: '0 8px' }}
+               
               >
                 <span>转写页</span>
                 <span>→</span>
@@ -1071,7 +1046,7 @@ export function DemoDetailPage({
                   )}
                 </div>
               ) : filteredVoice.length === 0 ? (
-                <div className="muted" style={{ padding: '36px 16px', textAlign: 'center', fontSize: 12 }}>
+                <div className="muted detail-empty">
                   {selectedRound === 'all' ? '暂无语音记录' : `第 ${selectedRound} 回合暂无说话记录`}
                 </div>
               ) : (
@@ -1136,7 +1111,7 @@ export function DemoDetailPage({
             ) : (
               /* Chat tab */
               filteredChat.length === 0 ? (
-                <div className="muted" style={{ padding: '36px 16px', textAlign: 'center', fontSize: 12 }}>
+                <div className="muted detail-empty">
                   {selectedRound === 'all' ? '暂无聊天记录' : `第 ${selectedRound} 回合暂无文字聊天`}
                 </div>
               ) : (
@@ -2020,21 +1995,21 @@ function RoundStrip({
   }
 
   return (
-    <Panel raised style={{ marginTop: 16 }}>
-      <div className="panel-bd flex" style={{ alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+    <Panel raised className="detail-round-strip">
+      <div className="panel-bd flex detail-round-strip-body" style={{ alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         <Tag tone={round.winner === 'T' ? 't' : 'ct'} dot>
           R{round.roundNum} · {round.winner === 'T' ? 'T' : round.winner === 'CT' ? 'CT' : '—'}
         </Tag>
-        <span className="muted" style={{ fontSize: 12 }}>
+        <span className="muted detail-round-end">
           {endLabel} · {round.kills.length} kills
         </span>
-        <span className="mono muted" style={{ fontSize: 11.5 }}>
+        <span className="mono muted detail-round-time">
           {fmtTick(round.startTick, tickRate)} → {fmtTick(round.endTick, tickRate)}
         </span>
 
         {/* 首杀 */}
         {round.firstKill && (
-          <span className="flex gap-4" style={{ alignItems: 'center', fontSize: 12 }}>
+          <span className="flex gap-4 detail-round-firstkill">
             <span className="muted">{t('detail.firstKill')}:</span>
             <span className={round.firstKill.attackerTeam === 'T' ? 't' : 'ct'} style={{ fontWeight: 600 }}>
               {round.firstKill.attackerName}
@@ -2045,7 +2020,7 @@ function RoundStrip({
 
         {/* 经济与买枪 */}
         {round.economy && (
-          <span className="flex gap-8" style={{ alignItems: 'center', fontSize: 12, marginLeft: 'auto' }}>
+          <span className="flex gap-8 detail-round-economy">
             <span className="tag t" title={`T 消费 $${round.economy.t.spentCash} / 初始 $${round.economy.t.startCash}`}>
               T: {buyTypeLabel(round.economy.t.buyType)} (${round.economy.t.spentCash})
             </span>

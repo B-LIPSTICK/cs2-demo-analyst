@@ -20,6 +20,12 @@ import { formatMapName } from '@/utils/format'
 import { computeVoiceMask } from './DemoDetailPage'
 import type { ChatMessage, DemoDetail, DemoMeta, Settings, VoiceSegment } from '@shared/types'
 
+/** 空状态主按钮：把焦点和点击交给顶部的 Demo 选择器，不引入新的选择逻辑。 */
+function openDemoPicker() {
+  const trigger = document.querySelector<HTMLButtonElement>('.transcript-toolbar .cs-trigger')
+  trigger?.focus()
+  trigger?.click()
+}
 export function TranscriptPage({
   initialDemoId,
   navSeq,
@@ -329,14 +335,14 @@ export function TranscriptPage({
   const mapLabel = detail ? formatMapName(detail.meta.mapName) || '—' : '—'
 
   return (
-    <div className="page">
+    <div className="page transcript-page">
       <div className="page-head">
         <div>
           <div className="title">
             {t('transcript.title')}
           </div>
         </div>
-        <div className="actions">
+        <div className="actions transcript-toolbar">
           <CustomSelect
             width={240}
             value={demoId ?? ''}
@@ -390,9 +396,7 @@ export function TranscriptPage({
             {transcribing ? t('library.transcribing') : t('library.transcribe')}
           </Btn>
           {!hasCloudKey && (
-            <span className="muted" style={{ fontSize: 11, maxWidth: 260, lineHeight: 1.5 }}>
-              {t('transcript.localSlowHint')}
-            </span>
+            <span className="muted transcript-hint">{t('transcript.localSlowHint')}</span>
           )}
           <Btn variant="ghost" onClick={exportText} disabled={filteredVoice.length === 0}>
             <IcDownload size={13} />
@@ -402,14 +406,19 @@ export function TranscriptPage({
       </div>
 
       {!demoId || !detail ? (
-        <Empty ghost="TRANSCRIPT" hint={t('transcript.noSegmentsHint')} />
+        <Empty ghost="TRANSCRIPT" hint={t('transcript.noSegmentsHint')}>
+          <Btn variant="secondary" className="transcript-empty-action" onClick={openDemoPicker}>
+            {t('transcript.selectDemo')}
+          </Btn>
+        </Empty>
       ) : (
         <>
           {/* 进度条 + 阶段说明 */}
           {progress && (
-            <div style={{ marginBottom: 14, padding: '10px 14px', background: 'var(--bg-2)', border: '1px solid var(--line-1)', borderRadius: 8 }}>
-              <div className="flex" style={{ alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-1)' }}>
+            <div className="transcript-progress" role="status" aria-live="polite">
+              <div className="transcript-progress-head">
+                <span className="transcript-progress-label">
+                  <span className="transcript-progress-pulse" aria-hidden="true" />
                   {progress.message
                     ? progress.message
                     : progress.stage === 'voice-extract'
@@ -418,7 +427,7 @@ export function TranscriptPage({
                         ? t('transcript.stage.split')
                         : t('transcript.stage.asr')}
                 </span>
-                <span className="mono muted" style={{ fontSize: 11 }}>
+                <span className="transcript-progress-value mono">
                   {progress.total > 0
                     ? progress.stage === 'download-engine'
                       ? `${Math.round((progress.done / progress.total) * 100)}%`
@@ -426,14 +435,11 @@ export function TranscriptPage({
                     : '…'}
                 </span>
               </div>
-              <div className="grow" style={{ height: 4, background: 'var(--bg-3)', position: 'relative', overflow: 'hidden', borderRadius: 2 }}>
+              <div className="transcript-progress-track">
                 <div
+                  className="transcript-progress-fill"
                   style={{
-                    position: 'absolute',
-                    inset: 0,
-                    width: `${progress.total ? Math.min(100, Math.max(0, (progress.done / progress.total) * 100)) : 0}%`,
-                    background: 'linear-gradient(90deg, var(--accent), var(--ct))',
-                    transition: 'width .2s var(--ease-out)'
+                    width: `${progress.total ? Math.min(100, Math.max(0, (progress.done / progress.total) * 100)) : 0}%`
                   }}
                 />
               </div>
@@ -441,43 +447,38 @@ export function TranscriptPage({
           )}
 
           {/* 筛选栏 */}
-          <div className="flex" style={{ gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-            <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+          <div className="transcript-filters">
+            <div className="transcript-chips">
               {voicePlayers.map((p) => {
                 const on = players.has(p)
                 const playerInfo = (detail?.meta.players ?? []).find((x) => x.name === p)
                 const muted = isPlayerMuted(p, playerInfo?.steamId)
                 return (
-                  <span
+                  <button
                     key={p}
-                    className={`tag ${on ? 'voice' : 'ghost'} ${muted ? 'player-muted-tag' : ''}`}
-                    style={{
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      borderColor: muted ? 'rgba(255, 69, 58, 0.45)' : undefined,
-                      color: muted && !on ? '#ff6961' : undefined
-                    }}
+                    type="button"
+                    className={`tag filter-chip ${on ? 'is-on' : 'ghost'} ${muted ? 'is-muted' : ''}`}
                     onClick={() => togglePlayer(p)}
                     title={muted ? `${p} ${t('common.mutedSuffix')}` : p}
+                    aria-pressed={on}
                   >
-                    {muted && <IcMicOff size={11} style={{ color: '#ff453a' }} />}
-                    <span>{p}</span>
-                    {muted && <span style={{ fontSize: 9, color: '#ff453a', opacity: 0.85 }}>{t('common.mutedTag')}</span>}
-                  </span>
+                    {muted && <IcMicOff size={12} />}
+                    <span className="filter-chip-name">{p}</span>
+                    {muted && <span className="filter-chip-muted">{t('common.mutedTag')}</span>}
+                  </button>
                 )
               })}
               {players.size > 0 && (
-                <span className="tag ghost" style={{ cursor: 'pointer' }} onClick={() => setPlayers(new Set())}>
+                <button type="button" className="tag ghost filter-chip filter-chip-all" onClick={() => setPlayers(new Set())}>
                   {t('common.all')}
-                </span>
+                </button>
               )}
             </div>
             <div className="grow" />
-            <CustomSelect
-              width={140}
-              value={String(round)}
+            <div className="transcript-round">
+              <CustomSelect
+                width={140}
+                value={String(round)}
               options={[
                 { value: 'all', label: `${t('common.round')} · ${t('common.all')}` },
                 ...rounds.map((r) => ({
@@ -485,19 +486,20 @@ export function TranscriptPage({
                   label: `R${r.roundNum}`
                 }))
               ]}
-              onChange={(v) => setRound(v === 'all' ? 'all' : Number(v))}
-            />
-            <div className="row">
-              <IcSearch size={14} />
+                onChange={(v) => setRound(v === 'all' ? 'all' : Number(v))}
+              />
+            </div>
+            <label className="transcript-search">
+              <IcSearch size={15} />
               <input
                 className="input"
-                style={{ width: 190 }}
                 placeholder={t('transcript.search')}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                aria-label={t('transcript.search')}
               />
-            </div>
-            <div className="seg">
+            </label>
+            <div className="seg transcript-tabs">
               <span className={`seg-item ${tab === 'voice' ? 'on' : ''}`} onClick={() => setTab('voice')}>
                 <IcMic size={12} />
                 {t('transcript.voice')} · {filteredVoice.length}
@@ -508,12 +510,14 @@ export function TranscriptPage({
             </div>
           </div>
 
-          <Panel hd={`${tab === 'voice' ? t('transcript.voice') : t('transcript.chat')} · ${mapLabel}`}>
+          <Panel className="transcript-panel" dot hd={`${tab === 'voice' ? t('transcript.voice') : t('transcript.chat')} · ${mapLabel}`}>
             {tab === 'voice' ? (
               filteredVoice.length === 0 ? (
-                <Empty ghost={t('transcript.emptyVoice')} hint={t('transcript.noSegmentsHint')} />
+                <div className="transcript-empty">
+                  <Empty ghost={t('transcript.emptyVoice')} hint={t('transcript.noSegmentsHint')} />
+                </div>
               ) : (
-                <div style={{ maxHeight: 560, overflowY: 'auto', padding: '8px 0' }}>
+                <div className="transcript-list">
                   {filteredVoice.map((v, i) => {
                     const muted = isPlayerMuted(v.playerName, v.steamId)
                     return (
@@ -531,9 +535,11 @@ export function TranscriptPage({
                 </div>
               )
             ) : filteredChat.length === 0 ? (
-              <Empty ghost={t('transcript.emptyChat')} hint="—" />
+              <div className="transcript-empty">
+                <Empty ghost={t('transcript.emptyChat')} hint="—" />
+              </div>
             ) : (
-              <div style={{ maxHeight: 560, overflowY: 'auto', padding: '8px 0' }}>
+              <div className="transcript-list">
                 {filteredChat.map((c, i) => (
                   <ChatRow key={i} msg={c} tickRate={detail.meta.tickRate ?? 64} onJump={jump} avatar={(detail.meta.players ?? []).find((p) => p.name === c.playerName)?.avatar} />
                 ))}
@@ -563,7 +569,7 @@ function VoiceRow({
 }) {
   const t = useTKey()
   return (
-    <div className={`tline ${muted ? 'muted-line' : ''}`}>
+    <div className={`tline voice-line ${muted ? 'is-muted' : ''}`}>
       <span className="tm">
         {fmtTick(seg.tick, tickRate)}
         <span className="eng" style={{ marginLeft: 6 }}>
@@ -571,14 +577,14 @@ function VoiceRow({
         </span>
       </span>
       <span className="who">
-        <Avatar name={seg.playerName} team={seg.team} size={18} avatar={avatar} muted={muted} />
+        <Avatar name={seg.playerName} team={seg.team} size={22} avatar={avatar} muted={muted} />
         <span className={`nm ${seg.team === 'T' ? 't' : seg.team === 'CT' ? 'ct' : ''}`}>
           {seg.playerName}
           {muted && <span style={{ fontSize: 10, color: '#ff453a', marginLeft: 4 }}>{t('common.mutedSuffix')}</span>}
         </span>
         {seg.roundNum !== undefined && <Tag tone="ghost">R{seg.roundNum}</Tag>}
       </span>
-      <span className={`txt ${seg.text ? '' : 'no-text'}`} style={muted ? { opacity: 0.6 } : undefined}>
+      <span className={`txt ${seg.text ? '' : 'no-text'} ${muted ? 'is-muted' : ''}`}>
         {seg.text || ''}
       </span>
       <VoicePlayButton
@@ -605,17 +611,17 @@ function ChatRow({
 }) {
   const t = useTKey()
   return (
-    <div className="tline">
+    <div className="tline chat-line">
       <span className="tm">{fmtTick(msg.tick, tickRate)}</span>
       <span className="who">
-        <Avatar name={msg.playerName} team="NONE" size={18} avatar={avatar} />
+        <Avatar name={msg.playerName} team="NONE" size={22} avatar={avatar} />
         <span className="nm">{msg.playerName}</span>
         <Tag tone={msg.channel === 'T' ? 't' : msg.channel === 'CT' ? 'ct' : 'ghost'}>
           {msg.channel}
         </Tag>
       </span>
       <span className="txt">{msg.text}</span>
-      <button className="icon-btn jump" onClick={() => onJump(msg.tick)} title={t('transcript.jump')}>
+      <button className="icon-btn jump" onClick={() => onJump(msg.tick)} title={t('transcript.jump')} aria-label={t('transcript.jump')}>
         <IcJump size={13} />
       </button>
     </div>

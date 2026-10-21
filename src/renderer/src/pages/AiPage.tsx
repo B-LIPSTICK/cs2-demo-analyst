@@ -70,42 +70,49 @@ function renderBlock(
   text: string,
   onJump: (tick: number) => void,
   rounds: RoundInfo[],
-  rate: number
+  rate: number,
+  showCursor = false
 ): ReactNode {
   const lines = text.split('\n')
+  const inlineWithCursor = (value: string, atEnd: boolean) => {
+    const nodes = renderInline(value, onJump, rounds, rate)
+    if (atEnd) nodes.push(<span key="stream-cursor" className="ai-cursor" />)
+    return nodes
+  }
   return (
     <>
       {lines.map((line, idx) => {
         const trimmed = line.trim()
-        if (!trimmed) return <div key={idx} style={{ height: 8 }} />
+        const atEnd = showCursor && idx === lines.length - 1
+        if (!trimmed) return <div key={idx} style={{ height: 8 }}>{atEnd && <span className="ai-cursor" />}</div>
         if (trimmed.startsWith('## '))
           return (
             <div key={idx} className="ai-h2">
-              {renderInline(trimmed.slice(3), onJump, rounds, rate)}
+              {inlineWithCursor(trimmed.slice(3), atEnd)}
             </div>
           )
         if (trimmed.startsWith('### '))
           return (
             <div key={idx} className="ai-h3">
-              {renderInline(trimmed.slice(4), onJump, rounds, rate)}
+              {inlineWithCursor(trimmed.slice(4), atEnd)}
             </div>
           )
         if (trimmed.startsWith('- '))
           return (
             <div key={idx} className="ai-li">
               <span className="ai-dot" />
-              <span>{renderInline(trimmed.slice(2), onJump, rounds, rate)}</span>
+              <span>{inlineWithCursor(trimmed.slice(2), atEnd)}</span>
             </div>
           )
         if (trimmed.startsWith('_') && trimmed.endsWith('_') && trimmed.length > 2)
           return (
             <div key={idx} className="ai-note">
-              {renderInline(trimmed.slice(1, -1), onJump, rounds, rate)}
+              {inlineWithCursor(trimmed.slice(1, -1), atEnd)}
             </div>
           )
         return (
           <div key={idx} className="ai-p">
-            {renderInline(trimmed, onJump, rounds, rate)}
+            {inlineWithCursor(trimmed, atEnd)}
           </div>
         )
       })}
@@ -454,10 +461,9 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
   return (
     <div className="page ai-page">
       <div className="page-head">
-        <div>
-          <div className="title">
-            {t('ai.title')}
-          </div>
+        <div className="ai-page-heading">
+          <div className="title">{t('ai.title')}</div>
+          <div className="ai-page-subtitle">{t('ai.subtitle')}</div>
         </div>
         <div className="actions ai-actions">
           {/* 会话组 */}
@@ -516,25 +522,40 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
       <Panel className="ai-panel grow" raised>
         {messages.length === 0 ? (
           <div className="ai-empty">
+            <div className="ai-empty-hero">
+              <span className="ai-empty-mark" aria-hidden="true">
+                <IcSpark size={22} />
+              </span>
+              <h2 className="ai-empty-title">{t('ai.emptyTitle')}</h2>
+              <p className="ai-empty-sub">{t('ai.emptySub')}</p>
+            </div>
             <div className="ai-prompt-grid">
               {PROMPT_CARDS.map((card, i) => {
                 const question = t(card.qKey as never)
                 return (
-                  <div key={i} className="ai-prompt-card" onClick={() => ask(question)}>
+                  <button
+                    key={i}
+                    type="button"
+                    className="ai-prompt-card"
+                    onClick={() => ask(question)}
+                    aria-label={question}
+                  >
                     <div className="ai-prompt-card-head">
                       <span className="ai-prompt-card-title">{t(card.titleKey as never)}</span>
-                      <span className="ai-prompt-card-arrow">→</span>
+                      <span className="ai-prompt-card-arrow" aria-hidden="true">
+                        →
+                      </span>
                     </div>
                     <div className="ai-prompt-card-desc">{t(card.descKey as never)}</div>
                     <div className="ai-prompt-card-q">{question}</div>
-                  </div>
+                  </button>
                 )
               })}
             </div>
             {!hasKey && (
-              <div className="ai-key-hint" onClick={onGoSettings}>
-                {t('ai.keyHint')} →
-              </div>
+              <button type="button" className="ai-key-hint" onClick={onGoSettings}>
+                {t('ai.keyHint')} <span aria-hidden="true">→</span>
+              </button>
             )}
           </div>
         ) : (
@@ -549,9 +570,19 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
                     m.text
                   ) : (
                     <>
-                      {renderBlock(m.text, jump, rounds, rate)}
-                      {askingCurrent && m.id === messages.length - 1 && m.text.length > 0 && (
-                        <span className="ai-cursor" />
+                      {renderBlock(
+                        m.text,
+                        jump,
+                        rounds,
+                        rate,
+                        askingCurrent && m.id === messages.length - 1
+                      )}
+                      {askingCurrent && m.id === messages.length - 1 && m.text.length === 0 && (
+                        <span className="ai-thinking" aria-hidden="true">
+                          <i />
+                          <i />
+                          <i />
+                        </span>
                       )}
                     </>
                   )}

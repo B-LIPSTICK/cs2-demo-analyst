@@ -195,20 +195,20 @@ export default function App() {
               <main className={`page-scroll ${route.page === 'ai' ? 'no-scroll' : ''}`}>
                 {/* 页面常驻（display 显隐而非卸载）：切换页面后保留原页面状态
                     （选中的 demo、筛选、转写进度等不再丢失） */}
-                <div style={{ display: route.page === 'library' ? undefined : 'none' }}>
+                <div className={`page-stage ${route.page === 'library' ? 'active' : ''}`}>
                   <LibraryPage
                     demoId={route.demoId}
                     onOpenDemo={(id) => navigate('library', id)}
                     onGoTranscript={(id) => navigate('transcript', id)}
                   />
                 </div>
-                <div style={{ display: route.page === 'transcript' ? undefined : 'none' }}>
+                <div className={`page-stage ${route.page === 'transcript' ? 'active' : ''}`}>
                   <TranscriptPage initialDemoId={route.demoId} navSeq={navSeq} onOpenDemo={(id) => navigate('transcript', id)} />
                 </div>
-                <div style={{ display: route.page === 'ai' ? 'flex' : 'none', flexDirection: 'column', height: '100%', minHeight: 0, flex: 1 }}>
+                <div className={`page-stage page-stage-ai ${route.page === 'ai' ? 'active' : ''}`}>
                   <AiPage onGoSettings={() => navigate('settings')} />
                 </div>
-                <div style={{ display: route.page === 'settings' ? undefined : 'none' }}>
+                <div className={`page-stage ${route.page === 'settings' ? 'active' : ''}`}>
                   <SettingsPage settings={settings} version={version} />
                 </div>
               </main>

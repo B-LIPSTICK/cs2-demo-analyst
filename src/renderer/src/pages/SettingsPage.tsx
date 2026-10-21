@@ -867,7 +867,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
   const muteHudMode = draft.overlay?.muteHudMode ?? 'badge'
 
   return (
-    <div className="page" ref={pageRef} style={{ width: '100%', maxWidth: 960, margin: '0 auto' }}>
+    <div className="page settings-page" ref={pageRef} style={{ width: '100%', maxWidth: 960, margin: '0 auto' }}>
       <div className="page-head">
         <div>
           <div className="title">
@@ -932,7 +932,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           </div>
         </div>
         {draft.libraryRoots.length > 0 && (
-          <div className="set-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+          <div className="set-row settings-stack-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
             {draft.libraryRoots.map((r) => {
               const info = formatRootLabel(r, t.lang)
               return (
@@ -1124,6 +1124,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
         {/* 快捷 Key 获取与说明卡片 */}
         {currentAiProvider.keyUrl && (
           <div
+            className="settings-provider-card"
             style={{
               margin: '6px 0 14px',
               padding: '10px 14px',
@@ -1138,15 +1139,16 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           >
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                <span style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text-0)' }}>
+                <span className="settings-provider-name" style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text-0)' }}>
                   {t.t(currentAiProvider.nameKey as never)}
                 </span>
                 <Tag tone="voice">{t.t(currentAiProvider.badgeKey as never)}</Tag>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 2 }}>
+              <div className="settings-provider-desc" style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 2 }}>
                 {t.t(currentAiProvider.descKey as never)}
               </div>
               <div
+                className="settings-provider-url"
                 style={{
                   fontSize: 11,
                   color: 'var(--accent)',
@@ -1378,6 +1380,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             <div className="d">{t.t('settings.steamSafetyHint')}</div>
             {steamSafety && (
               <div
+                className="settings-safety-grid"
                 style={{
                   marginTop: 10,
                   display: 'grid',
@@ -1472,14 +1475,14 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
         {hudMode !== 'off' && (
           <>
 
-            <div className="set-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+            <div className="set-row settings-stack-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
               <div className="flex between" style={{ alignItems: 'center' }}>
                 <div className="info">
                   <div className="t">{t.t('settings.overlayMutedPlayers')}</div>
                   <div className="d">{t.t('settings.overlayMutedPlayersHint')}</div>
                 </div>
                 {(draft.overlay?.mutedPlayers?.length ?? 0) > 0 && (
-                  <Btn variant="ghost" size="sm" onClick={clearAllMutedPlayers} style={{ color: '#ff453a' }}>
+                  <Btn variant="ghost" size="sm" className="settings-danger-link" onClick={clearAllMutedPlayers} style={{ color: '#ff453a' }}>
                     {t.t('settings.overlayClearMuted')}
                   </Btn>
                 )}
@@ -1509,7 +1512,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                   {(draft.overlay?.mutedPlayers ?? []).map((p) => (
                     <span
                       key={p}
-                      className="tag"
+                      className="tag settings-muted-tag"
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -1649,7 +1652,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
       </Panel>
 
       <SectionHead idx={7}>{t.t('settings.about')}</SectionHead>
-      <Panel>
+      <Panel className="settings-about">
         <div className="panel-bd">
           <div className="muted" style={{ fontSize: 12, lineHeight: 1.7 }}>
             {t.t('settings.aboutText')}
