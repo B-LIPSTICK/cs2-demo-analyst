@@ -6,11 +6,13 @@ export function TitleBar({
   status,
   version,
   theme,
+  maximized,
   onToggleTheme
 }: {
   status: LiveStatus
   version: string
   theme: 'dark' | 'light'
+  maximized: boolean
   onToggleTheme: () => void
 }) {
   const t = useTKey()
@@ -53,7 +55,12 @@ export function TitleBar({
       </div>
       {/* 窗口控制（右上角） */}
       <div className="win-btns">
-        <button className="win-btn min" onClick={() => window.api.window.minimize()} title="最小化 (Minimize)">
+        <button
+          className="win-btn min"
+          onClick={() => window.api.window.minimize()}
+          title={t('titlebar.minimize')}
+          aria-label={t('titlebar.minimize')}
+        >
           <span className="dot">
             <svg viewBox="0 0 12 12">
               <path d="M2 6h8" />
@@ -63,15 +70,28 @@ export function TitleBar({
         <button
           className="win-btn max"
           onClick={() => window.api.window.toggleMaximize()}
-          title="最大化 / 还原 (Maximize)"
+          title={maximized ? t('titlebar.restore') : t('titlebar.maximize')}
+          aria-label={maximized ? t('titlebar.restore') : t('titlebar.maximize')}
         >
           <span className="dot">
-            <svg viewBox="0 0 12 12">
-              <path d="M4 4l4 4M5 4h3v3" />
-            </svg>
+            {maximized ? (
+              <svg viewBox="0 0 12 12">
+                <rect x="3.2" y="2.4" width="6.2" height="6.2" rx="0.6" />
+                <path d="M2.6 4.6v4.6h4.6" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 12 12">
+                <rect x="2.6" y="2.6" width="6.8" height="6.8" rx="0.6" />
+              </svg>
+            )}
           </span>
         </button>
-        <button className="win-btn close" onClick={() => window.api.window.close()} title="关闭 (Close)">
+        <button
+          className="win-btn close"
+          onClick={() => window.api.window.close()}
+          title={t('titlebar.close')}
+          aria-label={t('titlebar.close')}
+        >
           <span className="dot">
             <svg viewBox="0 0 12 12">
               <path d="M3 3l6 6M9 3L3 9" />

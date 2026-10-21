@@ -185,6 +185,8 @@ function genPlayers(rng: () => number): PlayerInfo[] {
     players.push({
       steamId: `7656119${String(Math.floor(rng() * 1e9)).padStart(9, '0')}`,
       name: handles[i],
+      // mock 选手给稳定槽位（0~9），避免预览数据被 B1 的“槽位未知”提示误伤。
+      slot: i,
       team,
       kills: 0,
       deaths: range(rng, 8, 20),
@@ -205,12 +207,18 @@ function genKill(rng: () => number, tick: number, roundNum: number, players: Pla
   const attacker = pick(rng, fromT ? t : ct)
   const victim = pick(rng, fromT ? ct : t)
   const weapon = pick(rng, WEAPONS)
+  // ★稳定递增 UID：同一玩家在同一份 mock 数据中始终得到相同 UID。
+  //   两个 UID 都有值，避免 undefined === undefined 被误判为自杀。
+  const attackerUid = players.indexOf(attacker) + 1
+  const victimUid = players.indexOf(victim) + 1
   return {
     tick,
     timeSec: tick / TICK_RATE,
+    attackerUid,
     attackerSteamId: attacker.steamId,
     attackerName: attacker.name,
     attackerTeam: attacker.team,
+    victimUid,
     victimSteamId: victim.steamId,
     victimName: victim.name,
     victimTeam: victim.team,

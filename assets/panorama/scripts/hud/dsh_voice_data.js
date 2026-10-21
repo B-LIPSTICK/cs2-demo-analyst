@@ -8,5 +8,8 @@ var DshVoiceData = {
 	voicePacketCount: 0,
 	malformedPacketCount: 0,
 	pulsesBySlot: {},
-	players: {}
+	players: {},
+	// 静音 HUD 默认 badge：静音选手显示头像与禁言标志；hide 则完全隐藏说话者。
+	mutedSlots: [],
+	muteMode: "badge"
 };

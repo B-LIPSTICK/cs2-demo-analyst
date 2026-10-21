@@ -1,29 +1,29 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Btn, CustomSelect, IcFolder, IcMicOff, IcPlus, IcRadar, IcRefresh, Panel, SectionHead, Tag, Toggle, useFloatingPosition, useToast } from '@/components/ui'
+import { Btn, CustomSelect, IcFolder, IcMicOff, IcPlus, IcRadar, IcRefresh, Led, Panel, SectionHead, Tag, useFloatingPosition, useToast } from '@/components/ui'
 import { useT, type Lang } from '@/i18n'
-import type { Settings } from '@shared/types'
+import type { Settings, SteamSafetyReport } from '@shared/types'
 import { formatRootLabel } from './LibraryPage'
 
 const OFFLINE_SOURCES = [
   {
-    title: 'whisper.cpp 模型仓库（HuggingFace）',
-    desc: '官方模型源：下载 ggml-base.bin / small.bin / medium.bin',
+    titleKey: 'settings.offlineSourceWhisperTitle',
+    descKey: 'settings.offlineSourceWhisperDesc',
     url: 'https://huggingface.co/ggerganov/whisper.cpp/tree/main'
   },
   {
-    title: 'HF-Mirror 国内镜像加速',
-    desc: '国内直连免翻墙镜像：高速下载 whisper 语音模型',
+    titleKey: 'settings.offlineSourceMirrorTitle',
+    descKey: 'settings.offlineSourceMirrorDesc',
     url: 'https://hf-mirror.com/ggerganov/whisper.cpp/tree/main'
   },
   {
-    title: 'whisper.cpp Releases',
-    desc: '官方程序包：下载 whisper-cli.exe（解压放入 whisper/ 根目录）',
+    titleKey: 'settings.offlineSourceWhisperCliTitle',
+    descKey: 'settings.offlineSourceWhisperCliDesc',
     url: 'https://github.com/ggml-org/whisper.cpp/releases'
   },
   {
-    title: 'csgove Releases',
-    desc: '官方提取器：下载 csgove.exe（解压放入 csgove/ 根目录）',
+    titleKey: 'settings.offlineSourceCsgoveTitle',
+    descKey: 'settings.offlineSourceCsgoveDesc',
     url: 'https://github.com/akiver/csgo-voice-extractor/releases'
   }
 ]
@@ -32,21 +32,21 @@ type AiProviderKey = 'siliconflow' | 'zhipu' | 'groq' | 'custom'
 
 interface AiProviderDef {
   key: AiProviderKey
-  name: string
+  nameKey: string
   labelKey: string
   baseUrl: string
   defaultModel: string
   keyUrl: string
   keyUrlText: string
   presetModels: string[]
-  badge: string
+  badgeKey: string
   descKey: string
 }
 
 const AI_PROVIDERS: AiProviderDef[] = [
   {
     key: 'siliconflow',
-    name: '硅基流动',
+    nameKey: 'settings.aiProviderSiliconFlowShort',
     labelKey: 'settings.aiProviderSiliconFlow',
     baseUrl: 'https://api.siliconflow.cn/v1',
     defaultModel: 'Qwen/Qwen2.5-7B-Instruct',
@@ -59,46 +59,76 @@ const AI_PROVIDERS: AiProviderDef[] = [
       'THUDM/glm-4-9b-chat',
       'internlm/internlm2_5-7b-chat'
     ],
-    badge: '国内免翻 · 永久免费模型',
+    badgeKey: 'settings.aiBadgeSiliconFlow',
     descKey: 'settings.aiSiliconFlowHint'
   },
   {
     key: 'zhipu',
-    name: '智谱 AI',
+    nameKey: 'settings.aiProviderZhipuShort',
     labelKey: 'settings.aiProviderZhipu',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     defaultModel: 'glm-4-flash',
     keyUrl: 'https://open.bigmodel.cn/apikey/platform',
     keyUrlText: 'open.bigmodel.cn/apikey/platform',
     presetModels: ['glm-4-flash', 'glm-4-flashx', 'glm-4-plus', 'glm-4-air', 'glm-4-long'],
-    badge: '国内免翻 · GLM-4-Flash 免费',
+    badgeKey: 'settings.aiBadgeZhipu',
     descKey: 'settings.aiZhipuHint'
   },
   {
     key: 'groq',
-    name: 'Groq',
+    nameKey: 'settings.aiProviderGroqShort',
     labelKey: 'settings.aiProviderGroq',
     baseUrl: 'https://api.groq.com/openai/v1',
     defaultModel: 'llama-3.1-8b-instant',
     keyUrl: 'https://console.groq.com/keys',
     keyUrlText: 'console.groq.com/keys',
     presetModels: ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'],
-    badge: '海外高速 · 需梯子/代理',
+    badgeKey: 'settings.aiBadgeGroq',
     descKey: 'settings.aiGroqHint'
   },
   {
     key: 'custom',
-    name: '自定义 API',
+    nameKey: 'settings.aiProviderCustomShort',
     labelKey: 'settings.aiProviderCustom',
     baseUrl: '',
     defaultModel: '',
     keyUrl: '',
     keyUrlText: '',
     presetModels: [],
-    badge: '兼容 OpenAI 规范',
+    badgeKey: 'settings.aiBadgeCustom',
     descKey: 'settings.aiBaseUrlHint'
   }
 ]
+
+const SETTINGS_SAVE_DEBOUNCE_MS = 300
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+/** 合并设置补丁：普通对象递归合并，数组整体替换 */
+function mergeRecord(
+  base: Record<string, unknown>,
+  patch: Record<string, unknown>
+): Record<string, unknown> {
+  const out = { ...base }
+  for (const [key, value] of Object.entries(patch)) {
+    const cur = out[key]
+    if (isPlainObject(cur) && isPlainObject(value)) {
+      out[key] = mergeRecord(cur, value)
+    } else {
+      out[key] = value
+    }
+  }
+  return out
+}
+
+function mergeSettingsPatch(base: Partial<Settings>, patch: Partial<Settings>): Partial<Settings> {
+  return mergeRecord(
+    base as Record<string, unknown>,
+    patch as Record<string, unknown>
+  ) as Partial<Settings>
+}
 
 /** 弹窗：createPortal 到 body，fixed 相对视口居中（避免被 .page 的 transform 动画干扰） */
 function Modal({
@@ -204,6 +234,9 @@ const ENGINE_ROWS: { kind: string; label: string }[] = [
 function ModelCombobox({
   value,
   onChange,
+  onSelect,
+  onFocus,
+  onBlur,
   presets,
   pulledModels,
   loading,
@@ -212,6 +245,9 @@ function ModelCombobox({
 }: {
   value: string
   onChange: (val: string) => void
+  onSelect?: (val: string) => void
+  onFocus?: () => void
+  onBlur?: () => void
   presets: string[]
   pulledModels: string[] | null
   loading: boolean
@@ -262,15 +298,15 @@ function ModelCombobox({
     const set = new Set<string>()
     const groups: { title: string; items: string[] }[] = []
     if (pulledModels && pulledModels.length > 0) {
-      groups.push({ title: `在线拉取模型 (${pulledModels.length})`, items: pulledModels })
+      groups.push({ title: t('settings.aiGroupPulled').replace('{n}', String(pulledModels.length)), items: pulledModels })
       for (const m of pulledModels) set.add(m)
     }
     const filteredPresets = presets.filter((p) => !set.has(p))
     if (filteredPresets.length > 0) {
-      groups.push({ title: '推荐预设模型', items: filteredPresets })
+      groups.push({ title: t('settings.aiGroupPreset'), items: filteredPresets })
     }
     return groups
-  }, [pulledModels, presets])
+  }, [pulledModels, presets, t])
 
   const hasOptions = modelGroups.length > 0
 
@@ -280,12 +316,14 @@ function ModelCombobox({
         <input
           className="input"
           style={{ width: '100%', paddingRight: hasOptions ? 30 : 10 }}
-          placeholder="例如: Qwen/Qwen2.5-7B-Instruct"
+          placeholder={t('settings.aiModelPlaceholder')}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => {
+            onFocus?.()
             if (hasOptions) setOpen(true)
           }}
+          onBlur={onBlur}
         />
         {hasOptions && (
           <button
@@ -305,7 +343,7 @@ function ModelCombobox({
               cursor: 'pointer'
             }}
             onClick={() => setOpen((v) => !v)}
-            title="展开候选模型列表"
+            title={t('settings.aiModelExpand')}
           >
             <svg
               className={`cs-arrow ${open ? 'open' : ''}`}
@@ -361,7 +399,8 @@ function ModelCombobox({
                         key={m}
                         className={`cs-item ${isSelected ? 'selected' : ''}`}
                         onClick={() => {
-                          onChange(m)
+                          if (onSelect) onSelect(m)
+                          else onChange(m)
                           setOpen(false)
                         }}
                         title={m}
@@ -383,7 +422,7 @@ function ModelCombobox({
             document.body
           )}
       </div>
-      <Btn variant="ghost" size="sm" disabled={loading} onClick={onPull} title="从服务商在线拉取模型列表">
+      <Btn variant="ghost" size="sm" disabled={loading} onClick={onPull} title={t('settings.aiPullHint')}>
         <IcRefresh size={13} className={loading ? 'spin' : ''} />
         <span style={{ marginLeft: 4 }}>
           {loading ? t('settings.aiModelsFetching') : pulledModels ? t('common.refresh') : t('settings.aiPullModels')}
@@ -397,19 +436,173 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
   const t = useT()
   const toast = useToast()
   const [draft, setDraft] = useState<Settings>(settings)
+  const draftRef = useRef<Settings>(settings)
+  const settingsRef = useRef<Settings>(settings)
+  const pendingPatchRef = useRef<Partial<Settings> | null>(null)
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isEditingRef = useRef(false)
+  const saveInFlightRef = useRef(false)
+  const saveAgainRef = useRef(false)
+  const saveFailedRef = useRef(false)
+  const saveWaitersRef = useRef<Array<() => void>>([])
+  const mountedRef = useRef(true)
+  const pageRef = useRef<HTMLDivElement>(null)
   const [engStatus, setEngStatus] = useState<Record<string, boolean>>({})
   const [engProgress, setEngProgress] = useState<{ what: string; received: number; total: number } | null>(null)
   const [downloadingKind, setDownloadingKind] = useState<string | null>(null)
   const [aiModels, setAiModels] = useState<string[] | null>(null)
   const [aiModelsLoading, setAiModelsLoading] = useState(false)
+  const [dataDir, setDataDir] = useState('')
+  const [steamSafety, setSteamSafety] = useState<SteamSafetyReport | null>(null)
+  const [safetyLoading, setSafetyLoading] = useState(false)
+  const [showInjectConfirm, setShowInjectConfirm] = useState(false)
+
+  // 外部 settings 变化：仅在非编辑、无待保存/在途请求时同步 draft，
+  // 避免自己保存后的 settings:changed 覆盖正在输入的内容。
+  useEffect(() => {
+    settingsRef.current = settings
+    // 条件渲染可能让输入框直接卸载而不触发 blur，这里以真实焦点兜底。
+    const active = document.activeElement
+    const editingText =
+      isEditingRef.current &&
+      (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) &&
+      pageRef.current?.contains(active) === true
+    if (editingText || pendingPatchRef.current || saveInFlightRef.current) return
+    draftRef.current = settings
+    setDraft(settings)
+  }, [settings])
 
   useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    window.api.app.dataDir().then(setDataDir).catch(() => {})
     window.api.engines.status().then(setEngStatus).catch(() => {})
+    // 设置页打开时做一次只读自检，不修改游戏文件。
+    window.api.live.steamSafety().then(setSteamSafety).catch(() => {})
     const off = window.api.onEvent('engine:progress', (e) => {
       setEngProgress({ what: e.what, received: e.received, total: e.total })
     })
     return off
   }, [])
+
+  // 本地 draft 同步更新 ref，保证连续快速输入时合并的是最新值而不是旧闭包。
+  const applyDraft = (next: Settings): Settings => {
+    draftRef.current = next
+    setDraft(next)
+    return next
+  }
+
+  // 待保存补丁：同一轮防抖内的多个字段修改会合并成一次 settings:set。
+  const enqueuePending = (patch: Partial<Settings>) => {
+    pendingPatchRef.current = mergeSettingsPatch(pendingPatchRef.current ?? {}, patch)
+  }
+
+  // 保存队列空闲时唤醒等待者；失败且补丁已回填时也唤醒，由调用方判断结果。
+  const notifySaveIdle = () => {
+    if (saveInFlightRef.current) return
+    if (pendingPatchRef.current && !saveFailedRef.current) return
+    const waiters = saveWaitersRef.current
+    saveWaitersRef.current = []
+    for (const resolve of waiters) resolve()
+  }
+
+  // 真正发送保存请求；同一时刻只允许一个在途请求，期间的新修改合并后再发。
+  async function flushPending(): Promise<void> {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+      debounceTimerRef.current = null
+    }
+    if (saveInFlightRef.current) {
+      saveAgainRef.current = true
+      return
+    }
+    const patch = pendingPatchRef.current
+    if (!patch) {
+      notifySaveIdle()
+      return
+    }
+    pendingPatchRef.current = null
+    saveInFlightRef.current = true
+    saveAgainRef.current = false
+    try {
+      const saved = await window.api.settings.set(patch)
+      settingsRef.current = saved
+      saveFailedRef.current = false
+      if (mountedRef.current) toast.push(t.t('settings.save'))
+    } catch (err) {
+      // 写失败：把补丁合并回待保存区（较新的输入优先），本地 draft 保持不变。
+      pendingPatchRef.current = mergeSettingsPatch(patch, pendingPatchRef.current ?? {})
+      saveFailedRef.current = true
+      if (mountedRef.current) {
+        const msg = err instanceof Error ? err.message : String(err)
+        toast.push(`${t.t('common.error')}: ${msg}`, 'err')
+      }
+    } finally {
+      saveInFlightRef.current = false
+      const shouldRetry = saveAgainRef.current && !saveFailedRef.current && pendingPatchRef.current
+      saveAgainRef.current = false
+      if (shouldRetry) void flushPending()
+      notifySaveIdle()
+    }
+  }
+
+  // 动作前等待待保存内容真正落盘（例如启动 CS2、拉取模型都由主进程读 settings.json）。
+  const waitForPendingSave = async (): Promise<boolean> => {
+    if (!pendingPatchRef.current && !saveInFlightRef.current) return !saveFailedRef.current
+    await new Promise<void>((resolve) => {
+      saveWaitersRef.current.push(resolve)
+      void flushPending()
+    })
+    if (pendingPatchRef.current && !saveFailedRef.current) {
+      return waitForPendingSave()
+    }
+    return !saveFailedRef.current && !pendingPatchRef.current
+  }
+
+  // 文本输入：本地立即更新，300ms 防抖后保存；失焦时立即 flush。
+  const queueTextPatch = (patch: Partial<Settings>) => {
+    enqueuePending(patch)
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    debounceTimerRef.current = setTimeout(() => {
+      debounceTimerRef.current = null
+      void flushPending()
+    }, SETTINGS_SAVE_DEBOUNCE_MS)
+  }
+
+  // 开关/选择：立即保存；若此时还有文本防抖待保存，合并成一次写入。
+  const saveImmediate = (patch: Partial<Settings>) => {
+    enqueuePending(patch)
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+      debounceTimerRef.current = null
+    }
+    void flushPending()
+  }
+
+  const beginTextEdit = () => {
+    isEditingRef.current = true
+  }
+
+  const endTextEdit = () => {
+    isEditingRef.current = false
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+      debounceTimerRef.current = null
+    }
+    if (pendingPatchRef.current) {
+      void flushPending()
+    } else if (!saveInFlightRef.current) {
+      // 聚焦期间可能跳过了外部 settings:changed，失焦后补一次同步。
+      draftRef.current = settingsRef.current
+      setDraft(settingsRef.current)
+    }
+  }
 
   const refreshEngines = () => {
     window.api.engines.status().then(setEngStatus).catch(() => {})
@@ -456,31 +649,38 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
 
   const copyUrl = (url: string) => {
     navigator.clipboard.writeText(url).then(
-      () => toast.push('已复制链接到剪贴板', 'ok'),
-      () => toast.push('复制失败，请手动选择复制', 'warn')
+      () => toast.push(t.t('settings.copyOk'), 'ok'),
+      () => toast.push(t.t('settings.copyFail'), 'warn')
     )
   }
 
-  const save = async (patch: Partial<Settings>) => {
-    const next = await window.api.settings.set(patch)
-    setDraft(next)
-    toast.push(t.t('settings.save'))
+  const set = (patch: Partial<Settings>) => {
+    applyDraft(mergeSettingsPatch(draftRef.current, patch) as Settings)
+    saveImmediate(patch)
   }
 
-  const set = (patch: Partial<Settings>) => {
-    const merged = { ...draft, ...patch } as Settings
-    setDraft(merged)
-    save(patch)
+  const setUi = (patch: Partial<Settings['ui']>) => {
+    const nextUi: Settings['ui'] = { ...draftRef.current.ui, ...patch }
+    applyDraft({ ...draftRef.current, ui: nextUi })
+    saveImmediate({ ui: nextUi })
   }
 
   const setAsr = (patch: Partial<Settings['asr']>) => {
-    set({ asr: { ...draft.asr, ...patch } })
+    const nextAsr: Settings['asr'] = { ...draftRef.current.asr, ...patch }
+    applyDraft({ ...draftRef.current, asr: nextAsr })
+    saveImmediate({ asr: nextAsr })
+  }
+
+  const setAsrText = (field: 'cloudApiKey' | 'cloudBaseUrl' | 'cloudModel', value: string) => {
+    const nextAsr: Settings['asr'] = { ...draftRef.current.asr, [field]: value }
+    applyDraft({ ...draftRef.current, asr: nextAsr })
+    queueTextPatch({ asr: nextAsr })
   }
 
   // 推荐免费（Groq）声明弹窗
   const [showRecModal, setShowRecModal] = useState(false)
   const pickRecommended = () => {
-    if (draft.asr.engine === 'cloud' && draft.asr.cloudBaseUrl.includes('groq.com')) {
+    if (draftRef.current.asr.engine === 'cloud' && draftRef.current.asr.cloudBaseUrl.includes('groq.com')) {
       // 已选推荐：直接确认（弹窗已展示过）
       return
     }
@@ -497,7 +697,15 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
   }
 
   const setAi = (patch: Partial<Settings['ai']>) => {
-    set({ ai: { ...draft.ai, ...patch } })
+    const nextAi: Settings['ai'] = { ...draftRef.current.ai, ...patch }
+    applyDraft({ ...draftRef.current, ai: nextAi })
+    saveImmediate({ ai: nextAi })
+  }
+
+  const setAiText = (field: 'apiKey' | 'baseUrl' | 'model', value: string) => {
+    const nextAi: Settings['ai'] = { ...draftRef.current.ai, [field]: value }
+    applyDraft({ ...draftRef.current, ai: nextAi })
+    queueTextPatch({ ai: nextAi })
   }
 
   const currentAiProviderKey: AiProviderKey = useMemo(() => {
@@ -514,23 +722,25 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
     const target = AI_PROVIDERS.find((p) => p.key === key)
     if (!target) return
     if (target.key === 'custom') {
-      setAi({ baseUrl: draft.ai.baseUrl || 'https://api.openai.com/v1' })
+      setAi({ baseUrl: draftRef.current.ai.baseUrl || 'https://api.openai.com/v1' })
     } else {
       setAi({
         baseUrl: target.baseUrl,
         model: target.defaultModel
       })
     }
-    toast.push(t.tf('settings.aiProviderSwitched', { name: target.name }))
+    toast.push(t.tf('settings.aiProviderSwitched', { name: t.t(target.nameKey as never) }))
   }
 
   const pullModels = async () => {
-    if (!draft.ai.apiKey) {
+    if (!draftRef.current.ai.apiKey) {
       toast.push(t.t('settings.aiKeyFirst'), 'warn')
       return
     }
     setAiModelsLoading(true)
     try {
+      // 主进程按已落盘配置拉取模型，先确保防抖中的输入已经保存。
+      if (!(await waitForPendingSave())) return
       const list = await window.api.ai.listModels()
       setAiModels(list)
       toast.push(t.tf('settings.aiModelsFetched', { n: list.length }))
@@ -543,11 +753,21 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
   }
 
   const setCs2 = (patch: Partial<Settings['cs2']>) => {
-    set({ cs2: { ...draft.cs2, ...patch } })
+    const nextCs2: Settings['cs2'] = { ...draftRef.current.cs2, ...patch }
+    applyDraft({ ...draftRef.current, cs2: nextCs2 })
+    saveImmediate({ cs2: nextCs2 })
+  }
+
+  const setCs2Text = (field: 'installPath' | 'launchArgs', value: string | undefined) => {
+    const nextCs2: Settings['cs2'] = { ...draftRef.current.cs2, [field]: value }
+    applyDraft({ ...draftRef.current, cs2: nextCs2 })
+    queueTextPatch({ cs2: nextCs2 })
   }
 
   const setOverlay = (patch: Partial<NonNullable<Settings['overlay']>>) => {
-    set({ overlay: { ...(draft.overlay ?? {}), ...patch } })
+    const nextOverlay: NonNullable<Settings['overlay']> = { ...draftRef.current.overlay, ...patch }
+    applyDraft({ ...draftRef.current, overlay: nextOverlay })
+    saveImmediate({ overlay: nextOverlay })
   }
 
   const [newMutedInput, setNewMutedInput] = useState('')
@@ -555,31 +775,31 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
   const addMutedPlayer = () => {
     const val = newMutedInput.trim()
     if (!val) return
-    const cur = draft.overlay?.mutedPlayers ?? []
+    const cur = draftRef.current.overlay?.mutedPlayers ?? []
     if (cur.includes(val)) {
-      toast.push('该选手已在静音名单中', 'warn')
+      toast.push(t.t('settings.mutedExists'), 'warn')
       return
     }
     setOverlay({ mutedPlayers: [...cur, val] })
     setNewMutedInput('')
-    toast.push(`已将 ${val} 加入静音名单`)
+    toast.push(t.tf('settings.mutedAdded', { name: val }))
   }
 
   const removeMutedPlayer = (nameOrId: string) => {
-    const cur = draft.overlay?.mutedPlayers ?? []
+    const cur = draftRef.current.overlay?.mutedPlayers ?? []
     setOverlay({ mutedPlayers: cur.filter((x) => x !== nameOrId) })
-    toast.push(`已解除 ${nameOrId} 的静音`)
+    toast.push(t.tf('settings.mutedRemoved', { name: nameOrId }))
   }
 
   const clearAllMutedPlayers = () => {
     setOverlay({ mutedPlayers: [] })
-    toast.push('已清空静音名单')
+    toast.push(t.t('settings.mutedCleared'))
   }
 
   const addRoot = async () => {
     const roots = await window.api.library.addRoot()
     if (roots && roots.length) {
-      set({ libraryRoots: [...new Set([...draft.libraryRoots, ...roots])] })
+      set({ libraryRoots: [...new Set([...draftRef.current.libraryRoots, ...roots])] })
     }
   }
 
@@ -608,15 +828,46 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
   }
 
   const launchCs2 = async () => {
+    // 主进程从 settings.json 读取安装路径/启动项，先确保防抖中的输入已经保存。
+    if (!(await waitForPendingSave())) return
     const r = await window.api.live.launch({
-      toolsMode: (draft.cs2.playMode ?? 'native') === 'tools'
+      toolsMode: (draftRef.current.cs2.playMode ?? 'native') === 'tools'
     })
     if (r.ok) toast.push(t.t('settings.cs2Launched'))
     else toast.push(r.error ?? t.t('common.error'), 'warn')
   }
 
+  const refreshSteamSafety = async () => {
+    setSafetyLoading(true)
+    try {
+      const report = await window.api.live.steamSafety()
+      setSteamSafety(report)
+    } catch (err) {
+      toast.push(err instanceof Error ? err.message : String(err), 'err')
+    } finally {
+      setSafetyLoading(false)
+    }
+  }
+
+  const cleanSteamSafety = async () => {
+    setSafetyLoading(true)
+    try {
+      const res = await window.api.live.restoreCleanFiles()
+      toast.push(res.message, res.ok ? 'ok' : 'err')
+      const report = await window.api.live.steamSafety()
+      setSteamSafety(report)
+    } catch (err) {
+      toast.push(err instanceof Error ? err.message : String(err), 'err')
+    } finally {
+      setSafetyLoading(false)
+    }
+  }
+
+  const hudMode = draft.cs2.hudMode ?? 'addon'
+  const muteHudMode = draft.overlay?.muteHudMode ?? 'badge'
+
   return (
-    <div className="page" style={{ maxWidth: 860 }}>
+    <div className="page" ref={pageRef} style={{ width: '100%', maxWidth: 960, margin: '0 auto' }}>
       <div className="page-head">
         <div>
           <div className="title">
@@ -637,7 +888,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
               <span
                 key={th}
                 className={`seg-item ${(draft.ui?.theme ?? 'dark') === th ? 'on' : ''}`}
-                onClick={() => set({ ui: { ...(draft.ui ?? { theme: 'dark' }), theme: th } })}
+                onClick={() => setUi({ theme: th })}
               >
                 {t.t(`settings.theme${th === 'dark' ? 'Dark' : 'Light'}` as never)}
               </span>
@@ -655,7 +906,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                 className={`seg-item ${draft.language === l ? 'on' : ''}`}
                 onClick={() => set({ language: l })}
               >
-                {l === 'zh' ? '中文' : 'EN'}
+                {l === 'zh' ? t.t('settings.langZhCN') : 'EN'}
               </span>
             ))}
           </div>
@@ -683,7 +934,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
         {draft.libraryRoots.length > 0 && (
           <div className="set-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
             {draft.libraryRoots.map((r) => {
-              const info = formatRootLabel(r)
+              const info = formatRootLabel(r, t.lang)
               return (
                 <div key={r} className="flex between" style={{ gap: 10, alignItems: 'center' }}>
                   <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -698,9 +949,9 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                   <Btn
                     variant="ghost"
                     size="sm"
-                    onClick={() => set({ libraryRoots: draft.libraryRoots.filter((x) => x !== r) })}
+                    onClick={() => set({ libraryRoots: draftRef.current.libraryRoots.filter((x) => x !== r) })}
                   >
-                    移除
+                    {t.t('common.remove')}
                   </Btn>
                 </div>
               )
@@ -749,7 +1000,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             value={draft.asr.language ?? 'auto'}
             options={[
               { value: 'auto', label: t.t('settings.langAuto'), sublabel: 'Auto' },
-              { value: 'zh', label: '简体中文', sublabel: 'zh' },
+              { value: 'zh', label: t.t('settings.langZhCN'), sublabel: 'zh' },
               { value: 'en', label: 'English', sublabel: 'en' },
               { value: 'ja', label: '日本語', sublabel: 'ja' },
               { value: 'ko', label: '한국어', sublabel: 'ko' },
@@ -799,20 +1050,22 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                 type="password"
                 placeholder="sk-…"
                 value={draft.asr.cloudApiKey}
-                onChange={(e) => setAsr({ cloudApiKey: e.target.value })}
+                onChange={(e) => setAsrText('cloudApiKey', e.target.value)}
+                onFocus={beginTextEdit}
+                onBlur={endTextEdit}
               />
             </div>
             {draft.asr.cloudBaseUrl.includes('groq.com') && (
               <div className="set-row">
                 <div className="info">
-                  <a
-                    href="https://console.groq.com/keys"
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ color: 'var(--accent)', fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => window.api.app.openUrl('https://console.groq.com/keys')}
+                    style={{ color: 'var(--accent)', padding: 0, height: 'auto' }}
                   >
                     {t.t('settings.getKey')} → console.groq.com/keys
-                  </a>
+                  </Btn>
                 </div>
               </div>
             )}
@@ -826,7 +1079,9 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                     className="input"
                     style={{ width: 300 }}
                     value={draft.asr.cloudBaseUrl}
-                    onChange={(e) => setAsr({ cloudBaseUrl: e.target.value })}
+                    onChange={(e) => setAsrText('cloudBaseUrl', e.target.value)}
+                    onFocus={beginTextEdit}
+                    onBlur={endTextEdit}
                   />
                 </div>
                 <div className="set-row">
@@ -837,7 +1092,9 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                     className="input"
                     style={{ width: 300 }}
                     value={draft.asr.cloudModel}
-                    onChange={(e) => setAsr({ cloudModel: e.target.value })}
+                    onChange={(e) => setAsrText('cloudModel', e.target.value)}
+                    onFocus={beginTextEdit}
+                    onBlur={endTextEdit}
                   />
                 </div>
               </>
@@ -882,9 +1139,9 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
                 <span style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text-0)' }}>
-                  {currentAiProvider.name}
+                  {t.t(currentAiProvider.nameKey as never)}
                 </span>
-                <Tag tone="voice">{currentAiProvider.badge}</Tag>
+                <Tag tone="voice">{t.t(currentAiProvider.badgeKey as never)}</Tag>
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 2 }}>
                 {t.t(currentAiProvider.descKey as never)}
@@ -904,14 +1161,14 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             </div>
             <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
               <Btn variant="ghost" size="sm" onClick={() => copyUrl(currentAiProvider.keyUrl)}>
-                复制
+                {t.t('common.copy')}
               </Btn>
               <Btn
                 variant="primary"
                 size="sm"
                 onClick={() => window.api.app.openUrl(currentAiProvider.keyUrl)}
               >
-                前往获取 Key
+                {t.t('settings.aiGetKey')}
               </Btn>
             </div>
           </div>
@@ -922,10 +1179,10 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             <div className="t">{t.t('settings.aiApiKey')}</div>
             <div className="d">
               {currentAiProvider.key === 'siliconflow'
-                ? '填入以 sk- 开头的硅基流动 API Key'
+                ? t.t('settings.aiKeyHintSiliconFlow')
                 : currentAiProvider.key === 'groq'
-                  ? '填入以 gsk_ 开头的 Groq API Key'
-                  : '填入对应服务商的 API 密钥'}
+                  ? t.t('settings.aiKeyHintGroq')
+                  : t.t('settings.aiKeyHintGeneric')}
             </div>
           </div>
           <input
@@ -934,7 +1191,9 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             type="password"
             placeholder="sk-…"
             value={draft.ai.apiKey}
-            onChange={(e) => setAi({ apiKey: e.target.value })}
+            onChange={(e) => setAiText('apiKey', e.target.value)}
+            onFocus={beginTextEdit}
+            onBlur={endTextEdit}
           />
         </div>
 
@@ -949,7 +1208,9 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
               className="input"
               style={{ width: 300 }}
               value={draft.ai.baseUrl}
-              onChange={(e) => setAi({ baseUrl: e.target.value })}
+              onChange={(e) => setAiText('baseUrl', e.target.value)}
+              onFocus={beginTextEdit}
+              onBlur={endTextEdit}
             />
           </div>
         )}
@@ -962,7 +1223,10 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           </div>
           <ModelCombobox
             value={draft.ai.model}
-            onChange={(m) => setAi({ model: m })}
+            onChange={(m) => setAiText('model', m)}
+            onSelect={(m) => setAi({ model: m })}
+            onFocus={beginTextEdit}
+            onBlur={endTextEdit}
             presets={currentAiProvider.presetModels}
             pulledModels={aiModels}
             loading={aiModelsLoading}
@@ -983,10 +1247,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           <div className="seg">
             <span
               className={`seg-item ${(draft.cs2.playMode ?? 'native') === 'native' ? 'on' : ''}`}
-              onClick={() => {
-                setCs2({ playMode: 'native' })
-                window.api.live.restoreCleanFiles().catch(() => {})
-              }}
+              onClick={() => setCs2({ playMode: 'native' })}
             >
               {t.t('settings.cs2PlayModeNative')}
             </span>
@@ -1010,7 +1271,9 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
               style={{ width: 300 }}
               placeholder="…\steamapps\common\Counter-Strike Global Offensive"
               value={draft.cs2.installPath ?? ''}
-              onChange={(e) => setCs2({ installPath: e.target.value || undefined })}
+              onChange={(e) => setCs2Text('installPath', e.target.value || undefined)}
+              onFocus={beginTextEdit}
+              onBlur={endTextEdit}
             />
             <Btn
               variant="ghost"
@@ -1042,49 +1305,171 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             style={{ width: 260 }}
             placeholder="-novid"
             value={draft.cs2.launchArgs ?? ''}
-            onChange={(e) => setCs2({ launchArgs: e.target.value })}
+            onChange={(e) => setCs2Text('launchArgs', e.target.value)}
+            onFocus={beginTextEdit}
+            onBlur={endTextEdit}
           />
         </div>
-        <div className="set-row">
+        <div className="set-row" style={{ alignItems: 'flex-start' }}>
           <div className="info">
-            <div className="t">{t.t('settings.voiceHud')}</div>
-            <div className="d">{t.t('settings.voiceHudHint')}</div>
+            <div className="t">{t.t('settings.hudMode')}</div>
+            <div className="d">{t.t('settings.hudModeHint')}</div>
+            {hudMode === 'inject' && (
+              <div className="d" style={{ color: '#ff9f0a', marginTop: 6 }}>
+                {t.t('settings.hudModeInjectWarning')}
+              </div>
+            )}
+            {hudMode === 'addon' && (
+              <div className="d" style={{ marginTop: 6 }}>
+                {t.t('settings.hudModeAddonHint')}
+              </div>
+            )}
           </div>
-          <Toggle
-            on={!!draft.cs2.voiceHud}
-            onChange={(v) => {
-              setCs2({ voiceHud: v })
-              if (!v) {
-                window.api.live.restoreCleanFiles().catch(() => {})
-              }
-            }}
-          />
+          <div className="seg">
+            <span
+              className={`seg-item ${hudMode === 'addon' ? 'on' : ''}`}
+              onClick={() => setCs2({ hudMode: 'addon' })}
+            >
+              {t.t('settings.hudModeAddon')}
+            </span>
+            <span
+              className={`seg-item ${hudMode === 'inject' ? 'on' : ''}`}
+              onClick={() => {
+                if (hudMode !== 'inject') setShowInjectConfirm(true)
+              }}
+            >
+              {t.t('settings.hudModeInject')}
+            </span>
+            <span
+              className={`seg-item ${hudMode === 'off' ? 'on' : ''}`}
+              onClick={() => setCs2({ hudMode: 'off' })}
+            >
+              {t.t('settings.hudModeOff')}
+            </span>
+          </div>
         </div>
 
-        <div className="set-row" style={{ alignItems: 'center' }}>
-          <div className="info">
-            <div className="t">VAC 官匹纯净安全 / 一键文件还原</div>
-            <div className="d">
-              一键清除所有录像回放注入配置与临时文件，将 CS2 核心配置彻底还原为 Valve 官方签名状态，确保正常加入 VAC 官匹安全服务器。
+        {hudMode !== 'off' && (
+          <div className="set-row" style={{ alignItems: 'flex-start' }}>
+            <div className="info">
+              <div className="t">{t.t('settings.muteHudMode')}</div>
+              <div className="d">{t.t('settings.muteHudModeHint')}</div>
+            </div>
+            <div className="seg">
+              <span
+                className={`seg-item ${muteHudMode === 'badge' ? 'on' : ''}`}
+                onClick={() => setOverlay({ muteHudMode: 'badge' })}
+              >
+                {t.t('settings.muteHudModeBadge')}
+              </span>
+              <span
+                className={`seg-item ${muteHudMode === 'hide' ? 'on' : ''}`}
+                onClick={() => setOverlay({ muteHudMode: 'hide' })}
+              >
+                {t.t('settings.muteHudModeHide')}
+              </span>
             </div>
           </div>
-          <Btn
-            variant="secondary"
-            size="sm"
-            onClick={async () => {
-              const res = await window.api.live.restoreCleanFiles()
-              if (res.ok) {
-                toast.push(res.message, 'ok')
-              } else {
-                toast.push(res.message, 'err')
-              }
-            }}
-          >
-            一键还原官方纯净文件
-          </Btn>
+        )}
+
+        <div className="set-row" style={{ alignItems: 'flex-start' }}>
+          <div className="info">
+            <div className="t">{t.t('settings.steamSafetyTitle')}</div>
+            <div className="d">{t.t('settings.steamSafetyHint')}</div>
+            {steamSafety && (
+              <div
+                style={{
+                  marginTop: 10,
+                  display: 'grid',
+                  gap: 5,
+                  fontSize: 11.5,
+                  color: 'var(--text-1)'
+                }}
+              >
+                {steamSafety.installPath ? (
+                  <>
+                    <div className="flex" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <Led
+                        state={steamSafety.officialClean ? 'on' : 'red'}
+                        label={
+                          steamSafety.officialClean
+                            ? t.t('settings.steamSafetyOfficialClean')
+                            : t.t('settings.steamSafetyNotClean')
+                        }
+                      />
+                      {steamSafety.cs2Running && (
+                        <Tag tone="ghost">{t.t('settings.steamSafetyRunning')}</Tag>
+                      )}
+                    </div>
+                    <div>
+                      {t.t('settings.steamSafetyGameinfo')}：
+                      {steamSafety.gameinfoHasDsh
+                        ? t.t('settings.steamSafetyYes')
+                        : t.t('settings.steamSafetyNo')}
+                    </div>
+                    <div>
+                      {t.t('settings.steamSafetyBackup')}：
+                      {steamSafety.backupExists
+                        ? t.t('settings.steamSafetyExists')
+                        : t.t('settings.steamSafetyMissing')}
+                    </div>
+                    <div>
+                      {t.t('settings.steamSafetyVpk')}：
+                      {t.tf('settings.steamSafetyCount', { n: steamSafety.projectVpks.length })}
+                    </div>
+                    <div>
+                      {t.t('settings.steamSafetyAddon')}：
+                      {steamSafety.addonPresent
+                        ? t.t('settings.steamSafetyExists')
+                        : t.t('settings.steamSafetyMissing')}
+                      {steamSafety.addonPresent
+                        ? `（${t.t('settings.steamSafetyAddonExtra')}）`
+                        : ''}
+                    </div>
+                    {steamSafety.addonPresent && steamSafety.addonFiles && (
+                      <div>
+                        {t.t('settings.steamSafetyAddonFiles')}：
+                        {steamSafety.addonComplete
+                          ? t.t('settings.steamSafetyYes')
+                          : t.tf('settings.steamSafetyAddonMissing', {
+                              n: steamSafety.addonFiles.filter((f) => !f.exists).length
+                            })}
+                      </div>
+                    )}
+                    {steamSafety.error && (
+                      <div style={{ color: '#ff453a' }}>{steamSafety.error}</div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ color: '#ff9f0a' }}>
+                    {steamSafety.error ?? t.t('settings.steamSafetyNoInstall')}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="flex" style={{ gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <Btn
+              variant="ghost"
+              size="sm"
+              disabled={safetyLoading}
+              onClick={() => void refreshSteamSafety()}
+            >
+              <IcRefresh size={12} />
+              {safetyLoading ? t.t('settings.steamSafetyChecking') : t.t('settings.steamSafetyCheck')}
+            </Btn>
+            <Btn
+              variant="secondary"
+              size="sm"
+              disabled={safetyLoading}
+              onClick={() => void cleanSteamSafety()}
+            >
+              {safetyLoading ? t.t('settings.steamSafetyCleaning') : t.t('settings.steamSafetyClean')}
+            </Btn>
+          </div>
         </div>
 
-        {draft.cs2.voiceHud && (
+        {hudMode !== 'off' && (
           <>
 
             <div className="set-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
@@ -1105,7 +1490,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                 <input
                   className="input"
                   style={{ width: 280 }}
-                  placeholder="输入选手昵称或 SteamID64"
+                  placeholder={t.t('settings.mutedPlaceholder')}
                   value={newMutedInput}
                   onChange={(e) => setNewMutedInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -1114,7 +1499,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                 />
                 <Btn variant="secondary" size="sm" onClick={addMutedPlayer} disabled={!newMutedInput.trim()}>
                   <IcPlus size={12} />
-                  <span>添加静音</span>
+                  <span>{t.t('settings.mutedAdd')}</span>
                 </Btn>
               </div>
 
@@ -1141,7 +1526,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                       <button
                         type="button"
                         onClick={() => removeMutedPlayer(p)}
-                        title={`解除 ${p} 静音`}
+                        title={t.tf('settings.mutedRemoveTitle', { name: p })}
                         style={{
                           background: 'none',
                           border: 'none',
@@ -1159,7 +1544,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                 </div>
               ) : (
                 <div className="muted" style={{ fontSize: 11.5 }}>
-                  当前无全局静音选手（可在 Demo 详情页选手列表快速点选或在此添加）
+                  {t.t('settings.mutedEmpty')}
                 </div>
               )}
             </div>
@@ -1244,7 +1629,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
               ) : prog !== null || downloadingKind === row.kind ? (
                 <div className="flex" style={{ gap: 8, alignItems: 'center' }}>
                   <span className="mono muted" style={{ fontSize: 11 }}>
-                    {prog !== null ? `${prog}%` : '准备中…'}
+                    {prog !== null ? `${prog}%` : t.t('settings.enginePreparing')}
                   </span>
                   <Btn variant="ghost" size="sm" onClick={() => cancelEngineDownload(row.kind)}>
                     {t.t('settings.cancelDownload')}
@@ -1293,38 +1678,36 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
                 <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--text-0)' }}>
-                  【本地模型与引擎离线放置步骤】
+                  {t.t('settings.offlineStepsTitle')}
                 </div>
                 <div style={{ color: 'var(--text-1)', lineHeight: 1.8 }}>
                   <div>
-                    1. 点击下方「打开模型目录」按钮（或资源管理器直接进入{' '}
-                    <code style={{ userSelect: 'text', background: 'var(--field-bg)', padding: '2px 6px', borderRadius: 4 }}>
-                      %APPDATA%/cs2-demo-analyst/engines/
-                    </code>
-                    ）。
+                    {t.tf('settings.offlineStep1', {
+                      path: dataDir ? `${dataDir}\\engines\\` : '%APPDATA%/CS2 Demo Analyst/engines/'
+                    })}
                   </div>
-                  <div>2. 将下载好的对应文件放入子目录：</div>
+                  <div>{t.t('settings.offlineStep2')}</div>
                   <div style={{ paddingLeft: 12 }}>
                     <div>
-                      • <b>whisper 语音模型</b>（<code>ggml-base.bin</code> / <code>ggml-small.bin</code> / <code>ggml-medium.bin</code>）<br />
-                      👉 放入 <code>whisper/models/</code> 目录中
+                      • <b>{t.t('settings.offlineWhisperModels')}</b>（<code>ggml-base.bin</code> / <code>ggml-small.bin</code> / <code>ggml-medium.bin</code>）<br />
+                      👉 {t.t('settings.offlineWhisperModelsDesc')}
                     </div>
                     <div>
-                      • <b>whisper-cli.exe</b>（本地转写执行程序）<br />
-                      👉 放入 <code>whisper/</code> 根目录中
+                      • <b>{t.t('settings.offlineWhisperCli')}</b><br />
+                      👉 {t.t('settings.offlineWhisperCliDesc')}
                     </div>
                     <div>
-                      • <b>csgove.exe</b>（CS2 语音提取工具）<br />
-                      👉 放入 <code>csgove/</code> 根目录中
+                      • <b>{t.t('settings.offlineCsgove')}</b><br />
+                      👉 {t.t('settings.offlineCsgoveDesc')}
                     </div>
                   </div>
-                  <div style={{ marginTop: 4 }}>3. 放置完成后回到设置页，点击「刷新」按钮，对应项即刻显示为「就绪」！</div>
+                  <div style={{ marginTop: 4 }}>{t.t('settings.offlineStep3')}</div>
                 </div>
               </div>
 
               <div>
                 <div style={{ fontWeight: 600, marginBottom: 8, color: 'var(--text-0)' }}>
-                  【下载源推荐（支持一键访问或复制链接）】
+                  {t.t('settings.offlineSourcesTitle')}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {OFFLINE_SOURCES.map((s) => (
@@ -1342,8 +1725,8 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                       }}
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text-0)' }}>{s.title}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 2 }}>{s.desc}</div>
+                        <div style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text-0)' }}>{t.t(s.titleKey as never)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 2 }}>{t.t(s.descKey as never)}</div>
                         <div
                           style={{
                             fontSize: 11,
@@ -1359,10 +1742,10 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                       </div>
                       <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                         <Btn variant="ghost" size="sm" onClick={() => copyUrl(s.url)}>
-                          复制
+                          {t.t('common.copy')}
                         </Btn>
                         <Btn variant="primary" size="sm" onClick={() => window.api.app.openUrl(s.url)}>
-                          访问
+                          {t.t('common.visit')}
                         </Btn>
                       </div>
                     </div>
@@ -1371,6 +1754,20 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
               </div>
             </div>
           }
+        />
+      )}
+
+      {/* Inject 实验模式确认 */}
+      {showInjectConfirm && (
+        <Modal
+          title={t.t('settings.hudModeInject')}
+          body={t.t('settings.hudModeInjectWarning')}
+          confirmLabel={t.t('common.confirm')}
+          onClose={() => setShowInjectConfirm(false)}
+          onConfirm={() => {
+            setShowInjectConfirm(false)
+            setCs2({ hudMode: 'inject' })
+          }}
         />
       )}
 
@@ -1388,3 +1785,5 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
     </div>
   )
 }
+
+

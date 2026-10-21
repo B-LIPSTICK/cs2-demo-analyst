@@ -674,17 +674,31 @@ export interface TranscribeOptions {
   players?: string[]
 }
 
+/** 单个玩家的转写失败信息 */
+export interface PlayerTranscribeFailure {
+  playerName: string
+  message: string
+}
+
+/** 转写结果：成功段 + 失败玩家列表（供上层提示“X 个玩家失败”） */
+export interface TranscribeResult {
+  segments: VoiceSegment[]
+  failedPlayers: PlayerTranscribeFailure[]
+}
+
 /**
- * 完整转写流程：提取 → 逐玩家 ASR → 时间戳映射到 tick/回合
+ * 完整转写流程：提取 → 逐玩家 ASR → 时间戳映射到 tick/回合。
+ * 单个玩家失败会记录到 failedPlayers 并继续；全部玩家失败或没有任何有效片段时抛错。
  */
 export async function transcribeDemo(
   detail: DemoDetail,
   options: TranscribeOptions,
   events: AsrEvents,
   signal?: AbortSignal
-): Promise<VoiceSegment[]> {
+): Promise<TranscribeResult> {
   const tickRate = detail.meta.tickRate ?? 64
   const segments: VoiceSegment[] = []
+  const failedPlayers: PlayerTranscribeFailure[] = []
 
   events.progress('voice-extract', 0, 1)
   let items = await extractVoice(detail, events, signal)
@@ -796,7 +810,16 @@ export async function transcribeDemo(
       segs = effective
     } catch (err) {
       if (signal?.aborted) break
+      const message = err instanceof Error ? err.message : String(err)
+      failedPlayers.push({ playerName: item.playerName, message })
       console.error(`[asr] ${item.playerName} failed`, err)
+      // 单个玩家失败不打断其他玩家，但把失败原因推到 progress，避免静默跳过
+      events.progress(
+        options.engine === 'cloud' ? 'asr-cloud' : 'asr-local',
+        i + 1,
+        items.length,
+        `${item.playerName} · 转写失败：${message}`
+      )
       continue
     }
     for (const s of segs) {
@@ -820,7 +843,37 @@ export async function transcribeDemo(
     events.progress(options.engine === 'cloud' ? 'asr-cloud' : 'asr-local', i + 1, items.length)
   }
 
-  return segments
+  // 取消：返回已完成的部分，避免把主动取消误报成“全部失败”
+  if (signal?.aborted) {
+    return { segments, failedPlayers }
+  }
+
+  if (failedPlayers.length === items.length) {
+    const names = failedPlayers.map((f) => f.playerName).join('、')
+    const firstError = failedPlayers[0]?.message ?? '未知错误'
+    throw new Error(`ASR 全部失败（${failedPlayers.length} 个玩家：${names}）：${firstError}`)
+  }
+
+  // 全部玩家都没有有效语音（或失败 + 无语音）时同样不能静默返回 0 段
+  if (segments.length === 0) {
+    throw new Error(
+      failedPlayers.length > 0
+        ? `未识别到任何语音片段（${failedPlayers.length} 个玩家失败，其余玩家无有效语音）`
+        : '未识别到任何语音片段（所有玩家均无有效语音）'
+    )
+  }
+
+  if (failedPlayers.length > 0) {
+    const names = failedPlayers.map((f) => f.playerName).join('、')
+    events.progress(
+      options.engine === 'cloud' ? 'asr-cloud' : 'asr-local',
+      items.length,
+      items.length,
+      `完成，${failedPlayers.length} 个玩家失败：${names}`
+    )
+  }
+
+  return { segments, failedPlayers }
 }
 
 /** 语音分割结果（无文字，仅分段信息，供直接听） */

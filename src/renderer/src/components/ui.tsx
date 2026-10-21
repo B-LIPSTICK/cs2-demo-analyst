@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -282,7 +283,7 @@ export function Btn({
   size?: 'sm' | 'lg' | ''
 }) {
   return (
-    <button className={`btn ${variant ?? ''} ${size ?? ''} ${className}`} {...rest}>
+    <button type="button" className={`btn ${variant ?? ''} ${size ?? ''} ${className}`} {...rest}>
       {children}
     </button>
   )
@@ -319,12 +320,22 @@ export function Led({ state, label }: { state: 'on' | 'warn' | 'red' | 'off'; la
 
 // ─── 进度环 ─────────────────────────────────────────────────────────────────
 
-export function Ring({ pct, size = 46, label }: { pct: number; size?: number; label?: string }) {
+export function Ring({
+  pct,
+  size = 46,
+  label,
+  indeterminate = false
+}: {
+  pct: number
+  size?: number
+  label?: string
+  indeterminate?: boolean
+}) {
   const r = (size - 5) / 2
   const c = 2 * Math.PI * r
   const v = Math.max(0, Math.min(1, pct))
   return (
-    <div className="ring" style={{ width: size, height: size }}>
+    <div className={`ring ${indeterminate ? 'indeterminate' : ''}`} style={{ width: size, height: size }}>
       <svg width={size} height={size}>
         <circle className="track" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={3} />
         <circle
@@ -659,12 +670,14 @@ export function VoicePlayButton({
 
   return (
     <button
+      type="button"
       className={`icon-btn voice-play ${playing ? 'on' : ''}`}
       onClick={(e) => {
         e.stopPropagation()
         void toggle()
       }}
       title={playing ? '停止' : '播放'}
+      aria-label={playing ? '停止播放语音' : '播放语音'}
     >
       {playing ? <IcPause size={size} /> : <IcPlay size={size} />}
     </button>
@@ -762,8 +775,11 @@ export function CustomSelect<T extends string = string>({
   disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const optionRefs = useRef<(HTMLDivElement | null)[]>([])
+  const menuId = useId()
 
   const minW = typeof width === 'number' ? width : 160
   const { coords } = useFloatingPosition(containerRef, open, { minWidth: minW, defaultMaxHeight: 280 })
@@ -795,6 +811,54 @@ export function CustomSelect<T extends string = string>({
   }, [open])
 
   const cur = options.find((o) => o.value === value)
+  const selectedIndex = options.findIndex((o) => o.value === value)
+
+  // 打开时把高亮定位到当前值；之后 ArrowUp / ArrowDown 在选项间移动。
+  useEffect(() => {
+    if (!open) return
+    setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0)
+  }, [open, selectedIndex])
+
+  // 键盘上下移动时把当前项滚入菜单可视区，避免高亮跑出视野。
+  useEffect(() => {
+    if (!open) return
+    optionRefs.current[activeIndex]?.scrollIntoView({ block: 'nearest' })
+  }, [open, activeIndex])
+
+  const choose = (idx: number) => {
+    const opt = options[idx]
+    if (!opt) return
+    onChange(opt.value)
+    setOpen(false)
+  }
+
+  const onTriggerKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (disabled) return
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (!open) {
+        setOpen(true)
+        setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0)
+        return
+      }
+      if (options.length === 0) return
+      setActiveIndex((i) =>
+        e.key === 'ArrowDown' ? (i + 1) % options.length : (i - 1 + options.length) % options.length
+      )
+      return
+    }
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      // 关闭态交给 button 原生 click 打开；打开态由这里确认选择，避免重复 toggle。
+      if (!open) return
+      e.preventDefault()
+      choose(activeIndex)
+      return
+    }
+    if (e.key === 'Escape' && open) {
+      e.preventDefault()
+      setOpen(false)
+    }
+  }
 
   return (
     <div
@@ -804,9 +868,19 @@ export function CustomSelect<T extends string = string>({
     >
       <button
         type="button"
+        role="combobox"
         className="cs-trigger"
-        onClick={() => !disabled && setOpen((v) => !v)}
+        onClick={() => {
+          if (disabled) return
+          if (!open) setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0)
+          setOpen(!open)
+        }}
+        onKeyDown={onTriggerKeyDown}
         disabled={disabled}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-controls={menuId}
+        aria-activedescendant={open && options[activeIndex] ? `${menuId}-option-${activeIndex}` : undefined}
       >
         <span className="cs-label">
           {cur ? (
@@ -836,6 +910,9 @@ export function CustomSelect<T extends string = string>({
         createPortal(
           <div
             ref={menuRef}
+            id={menuId}
+            role="listbox"
+            aria-label={placeholder ?? '选项'}
             className="custom-select-menu"
             style={{
               position: 'fixed',
@@ -848,16 +925,20 @@ export function CustomSelect<T extends string = string>({
               zIndex: 99999
             }}
           >
-            {options.map((opt) => {
+            {options.map((opt, idx) => {
               const isSelected = opt.value === value
               return (
                 <div
                   key={opt.value}
-                  className={`cs-item ${isSelected ? 'selected' : ''}`}
-                  onClick={() => {
-                    onChange(opt.value)
-                    setOpen(false)
+                  id={`${menuId}-option-${idx}`}
+                  ref={(el) => {
+                    optionRefs.current[idx] = el
                   }}
+                  role="option"
+                  aria-selected={isSelected}
+                  className={`cs-item ${isSelected ? 'selected' : ''} ${idx === activeIndex ? 'active' : ''}`}
+                  onMouseEnter={() => setActiveIndex(idx)}
+                  onClick={() => choose(idx)}
                 >
                   <div className="cs-item-content">
                     {opt.icon && <span className="cs-icon">{opt.icon}</span>}

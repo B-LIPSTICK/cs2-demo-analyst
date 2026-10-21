@@ -54,7 +54,15 @@ export interface ParseResult {
   scoreCT: number
 }
 
-const TICK_RATE = 64
+/** ServerInfo 缺失时的保守回退；正常 demo 用 SVC_SERVER_INFO.tickInterval 推导。 */
+const DEFAULT_TICK_RATE = 64
+
+/** 归一化 tickrate：只接受有限正数并取整，异常值返回 undefined。 */
+function normalizeTickRate(rate: unknown): number | undefined {
+  if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0) return undefined
+  const rounded = Math.round(rate)
+  return rounded >= 16 && rounded <= 1000 ? rounded : undefined
+}
 
 // ─── 武器显示名 ─────────────────────────────────────────────────────────────
 
@@ -339,6 +347,10 @@ export async function parseDemo(
   let lastTick = 0
   let mapName: string | undefined
   let userInfoLoaded = false
+  // ★tickrate 不再硬编码 64：优先从 SVC_SERVER_INFO.tickInterval 读取；
+  //   ServerInfo 缺失时再尝试 deadem 的 Demo.server.tickRate，最后回退 64。
+  let demoTickRate = DEFAULT_TICK_RATE
+  let tickRateDetected = false
 
   // ★伤害统计（player_hurt 事件累加，截断至有效伤害，过滤队友误伤）
   const playerDamage = new Map<string, number>()
@@ -441,12 +453,18 @@ export async function parseDemo(
 
   const closeRound = (endTick: number) => {
     const r = currentRound
-    r.endTick = endTick
-    // 胜负推导: 炸弹事件 > 回合最后一杀
-    if (r.bombExplodedTick !== undefined) {
+    // ★保留 round_officially_ended 记录的正式结束 tick；下一回合 prestart 的 tick 不能覆盖它。
+    const effectiveEndTick = r.endTick ?? endTick
+    r.endTick = effectiveEndTick
+    // ★只统计正式结束前的击杀；post-round 击杀不得影响回合胜负/统计。
+    r.kills = r.kills.filter((k) => k.tick <= effectiveEndTick)
+    // 胜负推导: 炸弹事件 > 回合最后一杀（同样只认正式结束前的炸弹事件）
+    const bombExploded = r.bombExplodedTick !== undefined && r.bombExplodedTick <= effectiveEndTick
+    const bombDefused = r.bombDefusedTick !== undefined && r.bombDefusedTick <= effectiveEndTick
+    if (bombExploded) {
       r.winner = 'T'
       r.endType = 'bomb_exploded'
-    } else if (r.bombDefusedTick !== undefined) {
+    } else if (bombDefused) {
       r.winner = 'CT'
       r.endType = 'bomb_defused'
     } else {
@@ -631,7 +649,7 @@ export async function parseDemo(
         const vPawnTeam = pawnIdxTeam.get(int(ev.userid_pawn) & 0xfff)
         const kill: KillEvent = {
           tick,
-          timeSec: tick / TICK_RATE,
+          timeSec: tick / demoTickRate,
           attackerUid: attacker,
           attackerSteamId: aInfo?.steamId,
           attackerName: aName,
@@ -666,6 +684,9 @@ export async function parseDemo(
           if (matchStartForImplicit >= 0 && tick < matchStartForImplicit) break
         }
 
+        // ★round_officially_ended 之后的击杀属于 post-round：不进入本回合统计。
+        if (currentRound.endTick !== undefined && tick > currentRound.endTick) break
+
         // ★首杀/首死追踪（排除热身阶段与自杀/阵营未知的非正常击杀）
         if (
           !currentRound.firstKill &&
@@ -687,6 +708,8 @@ export async function parseDemo(
         break
       }
       case 'player_hurt': {
+        // ★回合正式结束后的伤害不进入本回合 ADR/助攻统计。
+        if (currentRound.endTick !== undefined && tick > currentRound.endTick) break
         const attacker = int(ev.attacker)
         const victim = int(ev.userid)
         if (attacker === 65535 || attacker === victim) break
@@ -742,6 +765,8 @@ export async function parseDemo(
         break
       }
       case 'player_blind': {
+        // ★回合正式结束后的致盲不进入本回合闪光统计。
+        if (currentRound.endTick !== undefined && tick > currentRound.endTick) break
         if (!roundsStarted) {
           const matchStartForImplicit =
             lastBeginNewMatchTick >= 0 ? lastBeginNewMatchTick : lastMatchStartTick
@@ -986,8 +1011,17 @@ export async function parseDemo(
 
       switch (messagePacket.type) {
         case MessagePacketType.SVC_SERVER_INFO: {
-          const data = messagePacket.data as { mapName?: string }
+          const data = messagePacket.data as { mapName?: string; tickInterval?: number }
           mapName = data.mapName
+          // ★CS2 demo 的 ServerInfo 带 tickInterval（64-tick ≈ 0.015625，128-tick ≈ 0.0078125）。
+          //   用 1/tickInterval 推导实际 tickrate；异常值保留安全回退。
+          const rate = typeof data.tickInterval === 'number' && data.tickInterval > 0
+            ? normalizeTickRate(1 / data.tickInterval)
+            : undefined
+          if (rate !== undefined) {
+            demoTickRate = rate
+            tickRateDetected = true
+          }
           break
         }
         case MessagePacketType.GE_SOURCE1_LEGACY_GAME_EVENT_LIST: {
@@ -1006,7 +1040,7 @@ export async function parseDemo(
           const data = messagePacket.data as { messagename?: string; param1?: string; param2?: string }
           chat.push({
             tick,
-            timeSec: tick / TICK_RATE,
+            timeSec: tick / demoTickRate,
             channel: CHAT_CHANNELS[str(data.messagename)] ?? 'ALLCHAT',
             playerName: cleanPlayerName(data.param1),
             text: str(data.param2),
@@ -1049,24 +1083,45 @@ export async function parseDemo(
     throw err
   }
 
+  // ★ServerInfo 未触发时，再从 deadem 的 Demo.server 读取一次（库 API 明确提供 Server.tickRate）。
+  //   仍失败则保留 DEFAULT_TICK_RATE=64 的安全回退。
+  if (!tickRateDetected) {
+    try {
+      const server = (parser.getDemo() as unknown as { server?: { tickRate?: number } }).server
+      const rate = normalizeTickRate(server?.tickRate)
+      if (rate !== undefined) {
+        demoTickRate = rate
+        tickRateDetected = true
+      }
+    } catch {
+      /* ServerInfo 缺失/损坏 demo：保留 64 回退 */
+    }
+  }
+
   // 闭合末回合
   closeRound(lastTick)
 
   // 过滤预热/伪回合
   const minStartTick =
     lastBeginNewMatchTick >= 0
-      ? lastBeginNewMatchTick - 64 * 3
+      ? lastBeginNewMatchTick - demoTickRate * 3
       : lastMatchStartTick >= 0
-        ? lastMatchStartTick - 64 * 30
+        ? lastMatchStartTick - demoTickRate * 30
         : -1
   const realRounds = rounds.filter(
     (r) =>
       (minStartTick < 0 || r.startTick >= minStartTick) &&
-      (r.endTick ?? lastTick) - r.startTick >= 64 * 5
+      (r.endTick ?? lastTick) - r.startTick >= demoTickRate * 5
   )
   realRounds.forEach((r, i) => {
     r.roundNum = i + 1
   })
+
+  // ★ServerInfo 可能晚于首包才出现：统一用最终 tickrate 重算时间，避免前几秒按 64 计。
+  for (const r of realRounds) {
+    for (const k of r.kills) k.timeSec = k.tick / demoTickRate
+  }
+  for (const c of chat) c.timeSec = c.tick / demoTickRate
 
   // 完成后补全玩家：★USER_INFO 表是玩家身份权威（击杀 userid 直接对应），
   // 实体 _index 与 USER_INFO userid 存在偏移（5E: 实体 4-13 ↔ USER_INFO 3-12），
@@ -1283,12 +1338,13 @@ export async function parseDemo(
       }
       return s.kills > 0 || s.deaths > 0 || s.assists > 0 || (s.steamId && s.team !== 'NONE')
     })
-    .map((s, idx) => {
+    .map((s) => {
+      // ★槽位未知时保持 undefined：绝不能用排序后的玩家下标 idx 兜底，否则会闭麦错误选手。
       const slot =
         (s.steamId ? slotBySteamId.get(s.steamId) : undefined) ??
         slotByName.get(s.name) ??
         s.slot ??
-        (typeof s.userid === 'number' && s.userid >= 1 && s.userid <= 64 ? s.userid - 1 : idx)
+        (typeof s.userid === 'number' && s.userid >= 1 && s.userid <= 64 ? s.userid - 1 : undefined)
       return {
         steamId: s.steamId ?? '',
         name: s.name,
@@ -1474,7 +1530,7 @@ export async function parseDemo(
 
   return {
     mapName,
-    tickRate: TICK_RATE,
+    tickRate: demoTickRate,
     firstTick: firstTick === Infinity ? 0 : firstTick,
     lastTick,
     players: players.sort((a, b) => b.kills - a.kills),
@@ -1494,7 +1550,7 @@ export async function parseDemo(
     chat: chat.sort((a, b) => a.tick - b.tick),
     hasVoice: voiceCount > 0,
     // 真实累计语音秒数：去重语音 tick / tickrate（每 tick 至多 ~20ms 语音帧）
-    voiceSec: Math.round(voiceTicks.size / TICK_RATE),
+    voiceSec: Math.round(voiceTicks.size / demoTickRate),
     teamT,
     teamCT,
     scoreT,

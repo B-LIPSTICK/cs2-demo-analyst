@@ -119,5 +119,5 @@ build/                       # electron-builder 图标（icon-256.png / icon.ico
 ## 6. 状态与开放问题（写文档时刻快照）
 
 - 最近交付：`4ac8296 feat(parser+asr): 手枪局保留、转写链路优化、demo not found 修复`（已 push origin/main）。此后工作区新增改动：卡片布局改版/转写页 navSeq 联动/聊天头像（本轮十四补4，**未提交**）+ 本 AGENTS.md。
-- 开放问题：① 游戏内 HUD 头像左裁（待截图）；② winner 推导 vs 实体比分偏差；③ README 截图与最新 UI 有出入（apple-* 是老风格）；④ `scripts/hud/dsh_voice.css` 是旧版残留（未引用，可删）。
+- 开放问题：① 游戏内 HUD 头像左裁（待截图）；② winner 推导 vs 实体比分偏差；③ README 截图与最新 UI 有出入（apple-* 是老风格）；④ 旧版残留 `scripts/hud/dsh_voice.css` 已于 2026-10-20 删除。
 - 每次开工：读 progress.md 顶部最新几轮 → 核对 git status 未提交内容 → 再动手。

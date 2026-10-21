@@ -2,15 +2,36 @@
  * 主进程入口：窗口、IPC 装配、冒烟模式。
  */
 import { app, BrowserWindow, dialog, ipcMain, net, shell } from 'electron'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Settings } from '@shared/types'
+import type { HudMode, MuteHudMode, Settings } from '@shared/types'
 import { createLibraryService } from './services/library'
 import { getSettings, updateSettings } from './services/settings'
 
 // 固定应用名，保证开发与打包后 userData 一致（%APPDATA%\CS2 Demo Analyst）
 app.setName('CS2 Demo Analyst')
 
+/** 读取指定目录下 package.json 的版本号；失败返回 null */
+function readPackageVersion(root: string): string | null {
+  try {
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+      version?: string
+    }
+    return pkg.version || null
+  } catch {
+    return null
+  }
+}
+
+/** 开发模式标题栏显示 package.json 版本，打包后仍使用 Electron 注入的应用版本 */
+function getDisplayVersion(): string {
+  if (app.isPackaged) return app.getVersion()
+  // electron-vite dev 下 app.getAppPath() 通常就是项目根目录；再兜底 process.cwd()
+  return readPackageVersion(app.getAppPath()) ?? readPackageVersion(process.cwd()) ?? app.getVersion()
+}
+
 let mainWindow: BrowserWindow | null = null
+let settingsSetSeq = 0
 const library = createLibraryService(() => mainWindow, getSettings)
 import { LiveService, isCs2Running } from './services/live'
 const live = new LiveService({
@@ -20,9 +41,12 @@ const live = new LiveService({
 })
 import { AiService } from './services/ai'
 const ai = new AiService({
-  delta: (demoId, chunk) => mainWindow?.webContents.send('ai:delta', { demoId, chunk }),
-  done: (demoId, answer) => mainWindow?.webContents.send('ai:done', { demoId, answer }),
-  error: (demoId, error) => mainWindow?.webContents.send('ai:error', { demoId, error })
+  delta: (demoId, chunk, sessionId, requestId) =>
+    mainWindow?.webContents.send('ai:delta', { demoId, chunk, sessionId, requestId }),
+  done: (demoId, answer, sessionId, requestId) =>
+    mainWindow?.webContents.send('ai:done', { demoId, answer, sessionId, requestId }),
+  error: (demoId, error, sessionId, requestId) =>
+    mainWindow?.webContents.send('ai:error', { demoId, error, sessionId, requestId })
 })
 
 function createWindow(): void {
@@ -48,6 +72,15 @@ function createWindow(): void {
 
   mainWindow.on('maximize', () => mainWindow?.webContents.send('window:maximized', true))
   mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window:maximized', false))
+
+  // 外链统一交给系统浏览器；其他 window.open 一律拒绝，避免弹出不可控窗口。
+  // 只拦截新窗口请求，不影响 loadURL/loadFile 的应用内导航。
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      void shell.openExternal(url).catch(() => {})
+    }
+    return { action: 'deny' }
+  })
 
   // 开发辅助：--route=library/demoId 直接打开指定页面
   const routeArg = process.argv.find((a) => a.startsWith('--route='))
@@ -79,20 +112,33 @@ function registerIpc(): void {
   // 设置
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:set', async (_e, patch: Partial<Settings>) => {
-    const settings = await updateSettings(patch)
-    if (patch.libraryRoots) {
-      await library.setRoots(patch.libraryRoots)
+    const seq = ++settingsSetSeq
+    try {
+      const settings = await updateSettings(patch)
+      if (patch.libraryRoots) {
+        await library.setRoots(patch.libraryRoots)
+      }
+      if (patch.cs2?.installPath !== undefined) {
+        live.setInstallPath(patch.cs2.installPath)
+      }
+      if (patch.cs2?.vconsolePort !== undefined) {
+        live.setPorts(patch.cs2.vconsolePort)
+      }
+      // 连续 set 时只广播最后一次，避免中间态覆盖渲染层正在输入的内容。
+      // 事件载荷必须带 { settings } 包装（renderer 按 e.settings 读取；
+      // 之前发裸对象导致 e.settings=undefined → App setSettings(undefined) → 页面全黑）
+      if (seq === settingsSetSeq) {
+        mainWindow?.webContents.send('settings:changed', { settings })
+      }
+      return settings
+    } catch (err) {
+      // 最后一次写入失败时广播当前已落盘设置，避免 UI 停在旧的中间态。
+      if (seq === settingsSetSeq) {
+        const settings = await getSettings()
+        mainWindow?.webContents.send('settings:changed', { settings })
+      }
+      throw err
     }
-    if (patch.cs2?.installPath !== undefined) {
-      live.setInstallPath(patch.cs2.installPath)
-    }
-    if (patch.cs2?.vconsolePort !== undefined) {
-      live.setPorts(patch.cs2.vconsolePort)
-    }
-    // 事件载荷必须带 { settings } 包装（renderer 按 e.settings 读取；
-    // 之前发裸对象导致 e.settings=undefined → App setSettings(undefined) → 页面全黑）
-    mainWindow?.webContents.send('settings:changed', { settings })
-    return settings
   })
 
   // 资料库
@@ -156,13 +202,23 @@ function registerIpc(): void {
   ipcMain.handle('asr:cancel', () => library.cancelTranscribe())
 
   // AI 分析
-  ipcMain.handle('ai:ask', async (_e, id: string, question: string, history?: { role: 'user' | 'assistant'; text: string }[]) => {
-    // 等待详情就绪（demo 刚加入还在解析时自动等待/重解析，而不是直接报 demo not found）
-    const detail = await library.waitDetail(id)
-    if (!detail) return { started: false, error: 'demo 尚未解析完成，请稍候再试（或该 demo 解析失败）' }
-    const s = await getSettings()
-    return ai.ask(id, question, detail, s.ai, s.language, history)
-  })
+  ipcMain.handle(
+    'ai:ask',
+    async (
+      _e,
+      id: string,
+      question: string,
+      history?: { role: 'user' | 'assistant'; text: string }[],
+      sessionId?: string,
+      requestId?: string
+    ) => {
+      // 等待详情就绪（demo 刚加入还在解析时自动等待/重解析，而不是直接报 demo not found）
+      const detail = await library.waitDetail(id)
+      if (!detail) return { started: false, error: 'demo 尚未解析完成，请稍候再试（或该 demo 解析失败）' }
+      const s = await getSettings()
+      return ai.ask(id, question, detail, s.ai, s.language, history, sessionId, requestId)
+    }
+  )
   ipcMain.handle('ai:cancel', () => ai.cancel())
   ipcMain.handle('ai:listModels', async () => {
     const s = await getSettings()
@@ -190,7 +246,8 @@ function registerIpc(): void {
       opts?: {
         toolsMode?: boolean
         playDemoPath?: string
-        voiceHud?: boolean
+        hudMode?: HudMode
+        muteHudMode?: MuteHudMode
         startTick?: number
         tvVoiceIndices?: { low: number; high: number }
       }
@@ -200,7 +257,9 @@ function registerIpc(): void {
         {
           ...opts,
           toolsMode: opts?.toolsMode ?? (s.cs2.playMode === 'tools'),
-          voiceHud: opts?.voiceHud ?? s.cs2.voiceHud
+          hudMode: opts?.hudMode ?? s.cs2.hudMode ?? 'addon',
+          // 静态 per-launch：播放中修改设置，下次启动才生效
+          muteHudMode: opts?.muteHudMode ?? s.overlay.muteHudMode ?? 'badge'
         },
         s.cs2.launchArgs ?? '',
         s.cs2.installPath
@@ -212,6 +271,7 @@ function registerIpc(): void {
   )
   ipcMain.handle('live:installGsi', () => Promise.resolve(null))
   ipcMain.handle('live:locateInstall', () => live.locateInstall())
+  ipcMain.handle('live:steamSafety', () => live.getSteamSafety())
   ipcMain.handle('live:restoreCleanFiles', () => live.restoreCleanFiles())
 
   // Overlay 悬浮层
@@ -284,13 +344,14 @@ function registerIpc(): void {
   })
 
   // 通用
-  ipcMain.handle('app:version', () => app.getVersion())
+  ipcMain.handle('app:version', () => getDisplayVersion())
   ipcMain.handle('app:revealInFolder', (_e, path: string) => {
     shell.showItemInFolder(path)
   })
   ipcMain.handle('app:openUrl', (_e, url: string) => {
     if (typeof url === 'string' && /^https?:\/\//.test(url)) return shell.openExternal(url)
   })
+  ipcMain.handle('app:dataDir', () => app.getPath('userData'))
   // 目录选择（设置页选 CS2 安装路径等）
   ipcMain.handle('app:pickDirectory', async () => {
     const res = await dialog.showOpenDialog(mainWindow!, {

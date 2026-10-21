@@ -42,6 +42,23 @@ var DshVoiceHud = (function () {
 		return DshVoiceData;
 	}
 
+	/** 静音模式：缺省/未知值一律按 badge 处理，避免老数据导致 HUD 消失 */
+	function _MuteMode(data) {
+		return data && data.muteMode === "hide" ? "hide" : "badge";
+	}
+
+	/** mutedSlots → { slot: true }；只接受 0~63 的合法槽位 */
+	function _MutedSlotMap(data) {
+		var map = {};
+		var list = data && data.mutedSlots;
+		if (!list || !list.length) return map;
+		for (var i = 0; i < list.length; i++) {
+			var slot = Number(list[i]);
+			if (isFinite(slot) && slot >= 0 && slot < 64) map[slot] = true;
+		}
+		return map;
+	}
+
 	function _LatestAtOrBefore(ticks, tick) {
 		if (!ticks || ticks.length === 0) return -1;
 		var lo = 0, hi = ticks.length - 1, result = -1;
@@ -62,6 +79,8 @@ var DshVoiceHud = (function () {
 		if (!state || !data || !isFinite(Number(state.nTick))) return result;
 		var tick = Math.floor(Number(state.nTick));
 		var hold = Math.max(1, Math.floor(Number(data.holdTicks || 30)));
+		var muteMode = _MuteMode(data);
+		var muted = _MutedSlotMap(data);
 		for (var key in data.pulsesBySlot) {
 			if (!data.pulsesBySlot.hasOwnProperty(key)) continue;
 			var slot = Number(key);
@@ -70,7 +89,11 @@ var DshVoiceHud = (function () {
 			var idx = _LatestAtOrBefore(ticks, tick);
 			if (idx < 0) continue;
 			var age = tick - Number(ticks[idx]);
-			if (age >= 0 && age <= hold) result.push(slot);
+			if (age >= 0 && age <= hold) {
+				// hide 模式：静音选手完全不进入说话者列表（不分配行、不显示）
+				if (muteMode === "hide" && muted[slot]) continue;
+				result.push(slot);
+			}
 		}
 		result.sort(function (a, b) { return a - b; });
 		return result;
@@ -178,7 +201,8 @@ var DshVoiceHud = (function () {
 			slot: -1, // 当前占用的说话者实体槽
 			panel: item,
 			avatar: item.FindChildTraverse("DshRowAvatar"),
-			name: item.FindChildTraverse("DshRowName")
+			name: item.FindChildTraverse("DshRowName"),
+			muteBadge: item.FindChildTraverse("DshRowMuteBadge")
 		};
 		_rows[i] = row;
 		return row;
@@ -229,7 +253,7 @@ var DshVoiceHud = (function () {
 		row.slot = -1;
 	}
 
-	function _ShowRow(i, slot, player) {
+	function _ShowRow(i, slot, player, muted) {
 		var row = _EnsureRow(i);
 		if (!row) return;
 		var wasHidden = row.slot < 0;
@@ -242,6 +266,10 @@ var DshVoiceHud = (function () {
 		row.panel.RemoveClass("team-ct");
 		row.panel.RemoveClass("team-spec");
 		row.panel.AddClass(_TeamClass(team));
+		// badge 模式：静音行加 muted class，由 CSS 显示行内显式禁言标志子节点
+		var hasMutedClass = row.panel.BHasClass("muted");
+		if (muted && !hasMutedClass) row.panel.AddClass("muted");
+		else if (!muted && hasMutedClass) row.panel.RemoveClass("muted");
 		if (player && player.xuid && row.avatar && row.avatar.PopulateFromSteamID) {
 			try { row.avatar.PopulateFromSteamID(player.xuid); } catch (e) {}
 		}
@@ -252,6 +280,9 @@ var DshVoiceHud = (function () {
 
 	/** 渲染：释放已停说的行 → 为新说话者分配槽位 → 更新内容 */
 	function _Render(slots) {
+		var data = _VoiceData();
+		var muteMode = _MuteMode(data);
+		var mutedMap = _MutedSlotMap(data);
 		// ① 释放：已不在说话列表中的行隐藏、槽位清空
 		for (var i = 0; i < _rows.length; i++) {
 			if (_rows[i] && _rows[i].slot >= 0) {
@@ -269,13 +300,13 @@ var DshVoiceHud = (function () {
 			var free = _FindFreeRow();
 			if (free < 0) continue; // 无空位（最多 _MAX_ROWS 行）
 			var player = _PlayerForSlot(slot);
-			_ShowRow(free, slot, player);
+			_ShowRow(free, slot, player, muteMode === "badge" && mutedMap[slot] === true);
 		}
 		// ③ 内容刷新（玩家名/阵营延迟解析时更新）
 		for (var k = 0; k < _rows.length; k++) {
 			if (_rows[k] && _rows[k].slot >= 0) {
 				var p = _PlayerForSlot(_rows[k].slot);
-				if (p) _ShowRow(k, _rows[k].slot, p);
+				if (p) _ShowRow(k, _rows[k].slot, p, muteMode === "badge" && mutedMap[_rows[k].slot] === true);
 			}
 		}
 	}

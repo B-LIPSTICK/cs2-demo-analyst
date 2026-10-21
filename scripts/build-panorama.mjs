@@ -1,28 +1,41 @@
 /**
- * 构建 Panorama 静态 VPK（构建时运行，产物入库）
+ * 构建 Panorama HUD 资源（构建时运行，产物入库）
  *
- * 流程（与 SwiftDemoUIPro 的官方 addon 编译管线一致，工具为 CS2 自带）:
- *  1. 源文件(.xml/.css/.js) 复制到 <cs2>/content/csgo_addons/dsh_voice_hud/ 并改名 .vxml/.vcss/.vjs
- *  2. resourcecompiler.exe -game <cs2>/game/csgo -i <inputs...> -f -nop4 -v
- *     → 输出 <cs2>/game/csgo_addons/dsh_voice_hud/ 下同名 .vxml_c/.vcss_c/.vjs_c
- *  3. 用本项目 vpk.ts 的 buildVpk 打包 → assets/panorama/dsh_voice_override.vpk
- *  4. 清理临时 addon 目录
+ * 两种模式:
+ *  1. 默认: 编译 → 打包静态 VPK assets/panorama/dsh_voice_override.vpk（inject fallback）
+ *  2. addon: --keep-addon 或 --addon-output <dir>
+ *     编译 → 把 .vxml_c/.vcss_c/.vjs_c 输出到
+ *     assets/panorama/addon/dsh_voice_hud/（默认）
+ *     不写 VPK，不修改 gameinfo.gi/overrides。
  *
- * 用法: node scripts/build-panorama.mjs [--cs2 <CS2安装根>]
+ * 编译临时目录使用 <cs2>/content/csgo_addons/dsh_build_<pid>_<ts> 与对应
+ * <cs2>/game/csgo_addons/...，脚本结束/失败都会清理，最终只保留项目内产物。
+ *
+ * 用法:
+ *   node scripts/build-panorama.mjs
+ *   node scripts/build-panorama.mjs --keep-addon
+ *   node scripts/build-panorama.mjs --addon-output assets/panorama/addon/dsh_voice_hud
+ *   node scripts/build-panorama.mjs --cs2 <CS2安装根>
  */
 import { spawnSync } from 'node:child_process'
 import { promises as fs } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import os from 'node:os'
 
 const ROOT = process.cwd()
 const ADDON = 'dsh_voice_hud'
+const ADDON_ROOT = join(ROOT, 'assets', 'panorama', 'addon')
+const DEFAULT_ADDON_OUTPUT = join(ADDON_ROOT, ADDON)
 const cli = process.argv.slice(2)
 const getArg = (n) => {
   const i = cli.indexOf(n)
   return i >= 0 ? cli[i + 1] : undefined
 }
+
+const KEEP_ADDON = cli.includes('--keep-addon')
+const ADDON_OUTPUT_ARG = getArg('--addon-output')
+const ADDON_MODE = KEEP_ADDON || ADDON_OUTPUT_ARG !== undefined
 
 async function locateCs2() {
   const cliPath = getArg('--cs2')
@@ -35,6 +48,8 @@ async function locateCs2() {
   return 'D:\\11-Steam\\steamapps\\common\\Counter-Strike Global Offensive'
 }
 
+// HUD 样式唯一来源：assets/panorama/styles/hud/dsh_voice.css。
+// scripts/hud/dsh_voice.css 是已删除的旧副本，不要再次加入构建输入。
 const SOURCES = [
   ['panorama/layout/hud/huddemocontroller.xml', 'panorama/layout/hud/huddemocontroller.vxml', 'vxml'],
   ['panorama/styles/hud/dsh_voice.css', 'panorama/styles/hud/dsh_voice.vcss', 'vcss'],
@@ -42,74 +57,123 @@ const SOURCES = [
   ['panorama/scripts/hud/dsh_voice_data.js', 'panorama/scripts/hud/dsh_voice_data.vjs', 'vjs']
 ]
 
+const ADDON_INFO = `"AddonInfo"
+{
+\t"IsPlayable"\t"0"
+\t"IsTemplate"\t"0"
+\t"HideInTools"\t"1"
+}
+`
+
+/** child 必须严格位于 parent 内，避免 --addon-output 误删整个 addon 根目录。 */
+function isStrictInside(parent, child) {
+  const rel = relative(parent, child)
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
+}
+
 async function main() {
   const cs2 = await locateCs2()
   const gameDir = join(cs2, 'game', 'csgo')
   const compiler = join(cs2, 'game', 'bin', 'win64', 'resourcecompiler.exe')
-  const contentAddon = join(cs2, 'content', 'csgo_addons', ADDON)
-  const gameAddon = join(cs2, 'game', 'csgo_addons', ADDON)
+  const buildAddon = `dsh_build_${process.pid}_${Date.now()}`
+  const contentAddon = join(cs2, 'content', 'csgo_addons', buildAddon)
+  const gameAddon = join(cs2, 'game', 'csgo_addons', buildAddon)
+
+  let addonOutput = null
+  if (ADDON_MODE) {
+    if (cli.includes('--addon-output') && !ADDON_OUTPUT_ARG) {
+      throw new Error('--addon-output 需要一个输出目录')
+    }
+    addonOutput = resolve(ROOT, ADDON_OUTPUT_ARG ?? DEFAULT_ADDON_OUTPUT)
+    if (!isStrictInside(ADDON_ROOT, addonOutput)) {
+      throw new Error(`addon 输出目录必须位于 ${ADDON_ROOT} 之内：${addonOutput}`)
+    }
+  }
 
   try {
-    await fs.access(compiler)
-  } catch {
-    console.error(`✗ resourcecompiler 不存在: ${compiler}`)
-    process.exit(1)
-  }
+    try {
+      await fs.access(compiler)
+    } catch {
+      throw new Error(`resourcecompiler 不存在: ${compiler}`)
+    }
 
-  // ① 准备输入
-  await fs.rm(contentAddon, { recursive: true, force: true })
-  await fs.rm(gameAddon, { recursive: true, force: true })
-  const inputs = []
-  for (const [srcRel, inRel] of SOURCES) {
-    const src = join(ROOT, 'assets', 'panorama', srcRel.replace('panorama/', ''))
-    const dest = join(contentAddon, inRel)
-    await fs.mkdir(join(dest, '..'), { recursive: true })
-    await fs.copyFile(src, dest)
-    inputs.push(dest)
-  }
-  // preprocessor_config.txt（Panorama 预处理器配置，空块）
-  await fs.mkdir(join(contentAddon, 'panorama'), { recursive: true })
-  await fs.writeFile(join(contentAddon, 'panorama', 'preprocessor_config.txt'), '"PanzipCfg"\n{\n    "BlockDefs"\n    {\n    }\n}\n', 'ascii')
-  console.log(`✓ 输入就绪: ${contentAddon}`)
+    // ① 准备输入（使用唯一临时 addon，避免覆盖用户已有 dsh_voice_hud）
+    await fs.mkdir(contentAddon, { recursive: true })
+    const inputs = []
+    for (const [srcRel, inRel] of SOURCES) {
+      const src = join(ROOT, 'assets', 'panorama', srcRel.replace('panorama/', ''))
+      const dest = join(contentAddon, inRel)
+      await fs.mkdir(dirname(dest), { recursive: true })
+      await fs.copyFile(src, dest)
+      inputs.push(dest)
+    }
+    await fs.mkdir(join(contentAddon, 'panorama'), { recursive: true })
+    await fs.writeFile(
+      join(contentAddon, 'panorama', 'preprocessor_config.txt'),
+      '"PanzipCfg"\n{\n    "BlockDefs"\n    {\n    }\n}\n',
+      'ascii'
+    )
+    console.log(`✓ 输入就绪: ${contentAddon}`)
 
-  // ② 编译
-  const args = ['-game', gameDir]
-  for (const i of inputs) args.push('-i', i)
-  args.push('-f', '-nop4', '-v')
-  console.log(`→ resourcecompiler ${args.join(' ')}`)
-  const r = spawnSync(compiler, args, { stdio: 'inherit', timeout: 120000 })
-  if (r.status !== 0) {
-    console.error(`✗ resourcecompiler 失败 (exit ${r.status})`)
-    process.exit(1)
-  }
+    // ② 编译
+    const args = ['-game', gameDir]
+    for (const i of inputs) args.push('-i', i)
+    args.push('-f', '-nop4', '-v')
+    console.log(`→ resourcecompiler ${args.join(' ')}`)
+    const r = spawnSync(compiler, args, { stdio: 'inherit', timeout: 120000 })
+    if (r.error) throw r.error
+    if (r.status !== 0) throw new Error(`resourcecompiler 失败 (exit ${r.status})`)
 
-  // ③ 收集产物并打包（编译输出 = 输入名 + "_c"，如 huddemocontroller.vxml_c）
-  const outputs = SOURCES.map(([, inRel]) => {
-    return { inRel, compiled: join(gameAddon, inRel + '_c') }
-  })
-  const entries = []
-  for (const o of outputs) {
-    const data = await fs.readFile(o.compiled)
-    // 条目路径以编译产物文件名（xxx.vxml_c）为准，目录同源文件
-    const parts = o.compiled.split(/[\\/]/)
-    const file = parts.pop()
-    const extIdx = file.lastIndexOf('.')
-    const name = file.slice(0, extIdx)
-    const ext = file.slice(extIdx + 1)
-    const dirParts = o.inRel.split('/')
-    dirParts.pop()
-    entries.push({ ext, path: dirParts.join('/'), name, data })
-    console.log(`  ✓ ${file} (${data.length}B)`)
-  }
-  const vpk = inlineBuildVpk(entries)
-  const outPath = join(ROOT, 'assets', 'panorama', 'dsh_voice_override.vpk')
-  await fs.writeFile(outPath, vpk)
-  console.log(`✓ 静态 VPK: ${outPath} (${vpk.length}B, ${entries.length} 文件)`)
+    // ③ 收集编译产物（输出 = 输入名 + "_c"）
+    const outputs = []
+    for (const [, inRel] of SOURCES) {
+      const compiled = join(gameAddon, inRel + '_c')
+      const data = await fs.readFile(compiled)
+      outputs.push({ inRel, compiled, data })
+    }
 
-  // ④ 清理
-  await fs.rm(contentAddon, { recursive: true, force: true })
-  await fs.rm(gameAddon, { recursive: true, force: true })
-  console.log('✓ 临时 addon 目录已清理')
+    if (addonOutput) {
+      // ④ addon 模式：只写项目内 addon 资源，不打包 VPK
+      await fs.rm(addonOutput, { recursive: true, force: true })
+      await fs.mkdir(addonOutput, { recursive: true })
+      for (const o of outputs) {
+        const dest = join(addonOutput, o.inRel + '_c')
+        await fs.mkdir(dirname(dest), { recursive: true })
+        await fs.writeFile(dest, o.data)
+        console.log(`  ✓ ${relative(addonOutput, dest)} (${o.data.length}B)`)
+      }
+      await fs.writeFile(join(addonOutput, 'addoninfo.txt'), ADDON_INFO, 'utf8')
+      console.log(`✓ addon 输出: ${addonOutput} (${outputs.length} 文件 + addoninfo.txt)`)
+      console.log('  启动参数: -addon dsh_voice_hud（不修改 gameinfo.gi）')
+    } else {
+      // ④ VPK 模式：保持 inject fallback 可用
+      const entries = []
+      for (const o of outputs) {
+        const parts = o.compiled.split(/[\\/]/)
+        const file = parts.pop()
+        const extIdx = file.lastIndexOf('.')
+        const name = file.slice(0, extIdx)
+        const ext = file.slice(extIdx + 1)
+        const dirParts = o.inRel.split('/')
+        dirParts.pop()
+        entries.push({ ext, path: dirParts.join('/'), name, data: o.data })
+        console.log(`  ✓ ${file} (${o.data.length}B)`)
+      }
+      const vpk = inlineBuildVpk(entries)
+      const outPath = join(ROOT, 'assets', 'panorama', 'dsh_voice_override.vpk')
+      await fs.writeFile(outPath, vpk)
+      console.log(`✓ 静态 VPK: ${outPath} (${vpk.length}B, ${entries.length} 文件)`)
+    }
+  } finally {
+    // ⑤ 清理临时编译目录；无论成功失败都不在游戏目录留文件
+    await fs.rm(contentAddon, { recursive: true, force: true }).catch((err) => {
+      console.warn(`⚠ 无法清理临时 content addon: ${contentAddon}`, err)
+    })
+    await fs.rm(gameAddon, { recursive: true, force: true }).catch((err) => {
+      console.warn(`⚠ 无法清理临时 game addon: ${gameAddon}`, err)
+    })
+    console.log('✓ 临时编译目录已清理')
+  }
 }
 
 // ─── VPK v2 打包（CS2 overrides 需 v2；与 src/main/services/vpk.ts 同逻辑） ───

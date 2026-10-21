@@ -186,6 +186,10 @@ export function buildVoiceDataJs(payload: {
   voicePacketCount: number
   pulsesBySlot: Record<string, number[]>
   players?: Record<string, { name?: string; team?: string }>
+  /** 静音槽位（仅包含 pulsesBySlot 中存在的 slot；bit=0 表示该 slot 已静音） */
+  mutedSlots?: number[]
+  /** 静音选手在 HUD 中的显示方式：badge=显示禁言标志，hide=完全隐藏说话者 */
+  muteMode?: 'hide' | 'badge'
 }): string {
   const p = {
     schemaVersion: 1,
@@ -193,7 +197,10 @@ export function buildVoiceDataJs(payload: {
     holdTicks: payload.holdTicks ?? 30,
     voicePacketCount: payload.voicePacketCount,
     pulsesBySlot: payload.pulsesBySlot,
-    players: payload.players ?? {}
+    players: payload.players ?? {},
+    mutedSlots: payload.mutedSlots ?? [],
+    // 默认 badge：静音选手仍显示头像与禁言标志；只有显式 hide 才完全隐藏
+    muteMode: payload.muteMode === 'hide' ? 'hide' : 'badge'
   }
   return '"use strict";var DshVoiceData=' + JSON.stringify(p) + ';'
 }

@@ -16,6 +16,8 @@ import {
   useToast
 } from '@/components/ui'
 import { useTKey } from '@/i18n'
+import { formatMapName } from '@/utils/format'
+import { computeVoiceMask } from './DemoDetailPage'
 import type { ChatMessage, DemoDetail, DemoMeta, Settings, VoiceSegment } from '@shared/types'
 
 export function TranscriptPage({
@@ -59,21 +61,11 @@ export function TranscriptPage({
     }
   }, [])
 
-  // 页面常驻（App 只切换 display）后，从详情页跳转带入新的 demoId 时同步切换；
+  // 外部导航（详情页跳转/侧栏切换）时同步 demoId。
+  // 用户主动清空时 initialDemoId 会变为 undefined，这里不能回填旧值，否则会弹回上一个 demo。
   useEffect(() => {
     if (initialDemoId) setDemoId(initialDemoId)
   }, [initialDemoId])
-
-  // 外部导航（navSeq 变化，例如点击“转写页 ->”或侧栏切换）时，主动拉取最新 detail 并清空陈旧的进度条
-  useEffect(() => {
-    const idToLoad = initialDemoId || demoId
-    if (idToLoad) {
-      if (initialDemoId && initialDemoId !== demoId) {
-        setDemoId(initialDemoId)
-      }
-      loadDetail(idToLoad)
-    }
-  }, [navSeq, initialDemoId, demoId, loadDetail])
 
   useEffect(() => {
     window.api.settings.get().then((s) => {
@@ -113,7 +105,8 @@ export function TranscriptPage({
     return () => {
       alive = false
     }
-  }, [demoId])
+    // navSeq 变化（重复导航到同一 demo）时也刷新详情
+  }, [demoId, navSeq])
 
   // 转写 / 分割事件
   useEffect(() => {
@@ -273,12 +266,18 @@ export function TranscriptPage({
     // CS2 未运行：直接局外一键唤起 CS2 播放并定位
     if (detail?.meta.path) {
       const s = await window.api.settings.get()
-      const voiceHud = !!s.cs2?.voiceHud
-      if (voiceHud) toast.push(t('detail.voiceHudPreparing'))
+      const hudMode = s.cs2?.hudMode ?? 'addon'
+      if (hudMode !== 'off') toast.push(t('detail.voiceHudPreparing'))
+      // 与详情页一致：按静音名单计算 GOTV 语音位掩码，保证各入口启动行为统一
+      const voiceIndices = computeVoiceMask(
+        detail.meta.players ?? [],
+        new Set(s.overlay?.mutedPlayers ?? [])
+      )
       const r = await window.api.live.launch({
         playDemoPath: detail.meta.path,
-        voiceHud,
-        startTick: tick
+        hudMode,
+        startTick: tick,
+        tvVoiceIndices: { low: voiceIndices.low, high: voiceIndices.high }
       })
       if (r.ok) {
         toast.push(t('common.jumpLaunched').replace('{tick}', String(tick)))
@@ -303,7 +302,7 @@ export function TranscriptPage({
         `[${fmtTick(v.tick)}] ${v.playerName}: ${v.text}`
     )
     if (filteredChat.length) {
-      lines.push('', '── CHAT ──')
+      lines.push('', t('transcript.exportChatHeader'))
       for (const c of filteredChat) lines.push(`[${fmtTick(c.tick)}] ${c.playerName}: ${c.text}`)
     }
     const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })
@@ -312,7 +311,8 @@ export function TranscriptPage({
     a.href = url
     a.download = `${detail?.meta.mapName ?? 'demo'}_transcript.txt`
     a.click()
-    URL.revokeObjectURL(url)
+    // 延迟释放：部分浏览器/Electron 在 click 同步返回后立刻 revoke 会导致下载被取消
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
   const rounds = detail?.rounds ?? []
@@ -325,6 +325,8 @@ export function TranscriptPage({
     if (msg.includes('demo not found')) return t('transcript.demoGoneHint')
     return msg
   }
+
+  const mapLabel = detail ? formatMapName(detail.meta.mapName) || '—' : '—'
 
   return (
     <div className="page">
@@ -346,17 +348,26 @@ export function TranscriptPage({
                 label: d.fileName,
                 sublabel:
                   d.status === 'ready' && d.mapName
-                    ? d.mapName
+                    ? formatMapName(d.mapName)
                     : d.status === 'pending'
-                      ? '待解析'
+                      ? t('common.pending')
                       : d.status === 'error'
-                        ? '失败'
+                        ? t('common.failed')
                         : undefined
               }))
             ]}
             onChange={(v) => {
-              setDemoId(v || undefined)
-              if (v) onOpenDemo(v)
+              if (!v) {
+                // 真正清空选择，并同步 App 路由，避免被旧 initialDemoId 弹回
+                setDemoId(undefined)
+                setDetail(null)
+                setLiveSegs([])
+                setProgress(null)
+                onOpenDemo('')
+                return
+              }
+              setDemoId(v)
+              onOpenDemo(v)
             }}
           />
           {/* 先分割（提取语音片段），再转写（生成文字） */}
@@ -404,7 +415,7 @@ export function TranscriptPage({
                     : progress.stage === 'voice-extract'
                       ? t('transcript.stage.extract')
                       : progress.stage === 'voice-split'
-                        ? '正在切分玩家语音…'
+                        ? t('transcript.stage.split')
                         : t('transcript.stage.asr')}
                 </span>
                 <span className="mono muted" style={{ fontSize: 11 }}>
@@ -449,11 +460,11 @@ export function TranscriptPage({
                       color: muted && !on ? '#ff6961' : undefined
                     }}
                     onClick={() => togglePlayer(p)}
-                    title={muted ? `${p} (已静音)` : p}
+                    title={muted ? `${p} ${t('common.mutedSuffix')}` : p}
                   >
                     {muted && <IcMicOff size={11} style={{ color: '#ff453a' }} />}
                     <span>{p}</span>
-                    {muted && <span style={{ fontSize: 9, color: '#ff453a', opacity: 0.85 }}>[已静音]</span>}
+                    {muted && <span style={{ fontSize: 9, color: '#ff453a', opacity: 0.85 }}>{t('common.mutedTag')}</span>}
                   </span>
                 )
               })}
@@ -497,10 +508,10 @@ export function TranscriptPage({
             </div>
           </div>
 
-          <Panel hd={tab === 'voice' ? `${t('transcript.voice')} · ${detail.meta.mapName}` : `${t('transcript.chat')} · ${detail.meta.mapName}`}>
+          <Panel hd={`${tab === 'voice' ? t('transcript.voice') : t('transcript.chat')} · ${mapLabel}`}>
             {tab === 'voice' ? (
               filteredVoice.length === 0 ? (
-                <Empty ghost="NO VOICE" hint={t('transcript.noSegmentsHint')} />
+                <Empty ghost={t('transcript.emptyVoice')} hint={t('transcript.noSegmentsHint')} />
               ) : (
                 <div style={{ maxHeight: 560, overflowY: 'auto', padding: '8px 0' }}>
                   {filteredVoice.map((v, i) => {
@@ -520,7 +531,7 @@ export function TranscriptPage({
                 </div>
               )
             ) : filteredChat.length === 0 ? (
-              <Empty ghost="NO CHAT" hint="—" />
+              <Empty ghost={t('transcript.emptyChat')} hint="—" />
             ) : (
               <div style={{ maxHeight: 560, overflowY: 'auto', padding: '8px 0' }}>
                 {filteredChat.map((c, i) => (
@@ -563,7 +574,7 @@ function VoiceRow({
         <Avatar name={seg.playerName} team={seg.team} size={18} avatar={avatar} muted={muted} />
         <span className={`nm ${seg.team === 'T' ? 't' : seg.team === 'CT' ? 'ct' : ''}`}>
           {seg.playerName}
-          {muted && <span style={{ fontSize: 10, color: '#ff453a', marginLeft: 4 }}>(已静音)</span>}
+          {muted && <span style={{ fontSize: 10, color: '#ff453a', marginLeft: 4 }}>{t('common.mutedSuffix')}</span>}
         </span>
         {seg.roundNum !== undefined && <Tag tone="ghost">R{seg.roundNum}</Tag>}
       </span>

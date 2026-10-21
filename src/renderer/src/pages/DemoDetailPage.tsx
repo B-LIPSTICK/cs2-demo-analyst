@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   Avatar,
   Btn,
@@ -21,7 +21,21 @@ import {
   useToast
 } from '@/components/ui'
 import { useTKey } from '@/i18n'
+import { formatMapName } from '@/utils/format'
 import type { DemoDetail, KillEvent, PlayerInfo, RoundEndType, RoundInfo, Settings, TeamSide } from '@shared/types'
+
+/** Enter / Space 激活自定义可点击容器；嵌套按钮自行处理键盘时忽略。 */
+function activateOnKey(e: ReactKeyboardEvent<Element>, action: () => void) {
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+    e.preventDefault()
+    action()
+  }
+}
+
+/** 判断选手是否有可用于 tv_listen_voice_indices 的有效槽位 (0~63)。 */
+function hasUsableVoiceSlot(p?: { slot?: number } | null): boolean {
+  return !!p && typeof p.slot === 'number' && Number.isInteger(p.slot) && p.slot >= 0 && p.slot < 64
+}
 
 /**
  * 根据选手列表与静音名单，计算 CS2 GOTV 录像回放语音位掩码 (tv_listen_voice_indices)
@@ -32,27 +46,32 @@ import type { DemoDetail, KillEvent, PlayerInfo, RoundEndType, RoundInfo, Settin
 export function computeVoiceMask(
   players: PlayerInfo[],
   muted: Set<string>
-): { low: number; high: number } {
+): { low: number; high: number; unknownSlots: string[] } {
   if (!muted || muted.size === 0) {
-    return { low: -1, high: -1 }
+    return { low: -1, high: -1, unknownSlots: [] }
   }
 
   let low = 0xffffffff
   let high = 0xffffffff
+  const unknownSlots = new Set<string>()
 
   players.forEach((p) => {
     const isMuted = (p.steamId && muted.has(p.steamId)) || (p.name && muted.has(p.name))
-    if (isMuted && typeof p.slot === 'number') {
-      const slot = p.slot
-      if (slot >= 0 && slot < 32) {
-        low = (low & ~(1 << slot)) >>> 0
-      } else if (slot >= 32 && slot < 64) {
-        high = (high & ~(1 << (slot - 32))) >>> 0
-      }
+    if (!isMuted) return
+    // ★无有效槽位的静音选手直接跳过：宁可不静音，也不能发送错误 bit 误伤其他选手。
+    if (!hasUsableVoiceSlot(p)) {
+      unknownSlots.add(p.name || p.steamId || '未知选手')
+      return
+    }
+    const slot = p.slot as number
+    if (slot >= 0 && slot < 32) {
+      low = (low & ~(1 << slot)) >>> 0
+    } else if (slot >= 32 && slot < 64) {
+      high = (high & ~(1 << (slot - 32))) >>> 0
     }
   })
 
-  return { low: low | 0, high: high | 0 }
+  return { low: low | 0, high: high | 0, unknownSlots: [...unknownSlots] }
 }
 
 export function DemoDetailPage({
@@ -171,15 +190,24 @@ export function DemoDetailPage({
     async (nextMutedKeys: string[]) => {
       if (!detail) return
       const mask = computeVoiceMask(detail.meta.players ?? [], new Set(nextMutedKeys))
+      // 槽位未知的静音请求不进入位掩码；在提示里明确列出，避免用户误以为已闭麦。
+      const unknownNote =
+        mask.unknownSlots.length > 0 ? `；槽位未知已跳过：${mask.unknownSlots.join('、')}` : ''
       const status = await window.api.live.getStatus().catch(() => null)
       if (status?.cs2Running) {
-        const res = await window.api.live.setVoiceMask(mask).catch(() => null)
+        const res = await window.api.live.setVoiceMask({ low: mask.low, high: mask.high }).catch(() => null)
         if (res?.sent) {
-          toast.push(`已向 CS2 发送消音指令 (tv_listen_voice_indices ${mask.low})`)
+          toast.push(
+            `已向 CS2 发送消音指令 (tv_listen_voice_indices ${mask.low})${unknownNote}`,
+            mask.unknownSlots.length > 0 ? 'warn' : undefined
+          )
         } else if (res?.cmd) {
           try {
             await navigator.clipboard.writeText(res.cmd)
-            toast.push(`游戏未加 -vconsole 启动项无法自动注入，已复制闭麦指令 (${res.cmd})，可在控制台按 ~ 粘贴`, 'warn')
+            toast.push(
+              `游戏未加 -vconsole 启动项无法自动注入，已复制闭麦指令 (${res.cmd})，可在控制台按 ~ 粘贴${unknownNote}`,
+              'warn'
+            )
           } catch {
             /* ignore */
           }
@@ -193,20 +221,33 @@ export function DemoDetailPage({
     if (!detail) return
     const mask = computeVoiceMask(detail.meta.players ?? [], mutedSet)
     const cmd = `tv_listen_voice_indices ${mask.low}; tv_listen_voice_indices_h ${mask.high}`
+    const unknownNote =
+      mask.unknownSlots.length > 0
+        ? `；槽位未知已跳过：${mask.unknownSlots.join('、')}（请手动处理这些选手）`
+        : ''
     try {
       await navigator.clipboard.writeText(cmd)
-      toast.push(`已复制消音指令: ${cmd}（在控制台按 ~ 粘贴执行；该指令在音频底层消音，不改变计分板头像）`)
+      toast.push(
+        `已复制消音指令: ${cmd}（在控制台按 ~ 粘贴执行；该指令在音频底层消音，不改变计分板头像）${unknownNote}`,
+        mask.unknownSlots.length > 0 ? 'warn' : undefined
+      )
     } catch {
       toast.push('复制失败，请检查剪贴板权限', 'err')
     }
   }, [detail, mutedSet, toast])
 
   const togglePlayerMute = useCallback(
-    async (p: { steamId?: string; name: string }) => {
+    async (p: { steamId?: string; name: string; slot?: number }) => {
       const key = p.steamId || p.name
       if (!key) return
       const curList = settings?.overlay?.mutedPlayers ?? []
       const isAlready = curList.includes(key) || (p.name && curList.includes(p.name)) || (p.steamId && curList.includes(p.steamId))
+      // ★槽位未知且尚未静音时拒绝：UI 不能显示“已静音”，更不能发送错误掩码。
+      //   若已有旧静音设置（isAlready），仍允许点击清除。
+      if (!hasUsableVoiceSlot(p) && !isAlready) {
+        toast.push(`${p.name} 槽位未知，无法自动闭麦`, 'warn')
+        return
+      }
       const nextList = isAlready
         ? curList.filter((x) => x !== key && x !== p.name && x !== p.steamId)
         : [...curList, key]
@@ -230,7 +271,14 @@ export function DemoDetailPage({
 
   const muteAll = useCallback(async () => {
     if (!detail) return
-    const allKeys = (detail.meta.players ?? []).map((p) => p.steamId || p.name).filter(Boolean)
+    const allPlayers = detail.meta.players ?? []
+    const muteable = allPlayers.filter((p) => hasUsableVoiceSlot(p))
+    const skipped = allPlayers.length - muteable.length
+    if (muteable.length === 0) {
+      toast.push('所有选手槽位未知，无法自动闭麦', 'warn')
+      return
+    }
+    const allKeys = muteable.map((p) => p.steamId || p.name)
     const updated = await window.api.settings.set({
       overlay: {
         ...(settings?.overlay ?? { enabled: false, position: 'bottom-left', clickThrough: false, scale: 1 }),
@@ -239,7 +287,12 @@ export function DemoDetailPage({
     })
     setSettings(updated)
     void syncVoiceMaskToLive(allKeys)
-    toast.push('已一键静音全场 10 位选手', 'warn')
+    toast.push(
+      skipped > 0
+        ? `已静音 ${muteable.length} 位选手，${skipped} 位槽位未知已跳过`
+        : `已一键静音全场 ${muteable.length} 位选手`,
+      'warn'
+    )
   }, [detail, settings, syncVoiceMaskToLive, toast])
 
   const unmuteAll = useCallback(async () => {
@@ -256,7 +309,10 @@ export function DemoDetailPage({
 
   const isTeamMuted = useCallback(
     (team: 'T' | 'CT') => {
-      const teamPlayers = (detail?.meta.players ?? []).filter((p) => p.team === team)
+      // 只把有有效槽位的选手计入队伍静音状态；未知槽位无法自动闭麦。
+      const teamPlayers = (detail?.meta.players ?? []).filter(
+        (p) => p.team === team && hasUsableVoiceSlot(p)
+      )
       if (teamPlayers.length === 0) return false
       return teamPlayers.every((p) => isPlayerMuted(p))
     },
@@ -266,20 +322,32 @@ export function DemoDetailPage({
   const toggleTeamMute = useCallback(
     async (team: 'T' | 'CT') => {
       if (!detail) return
-      const teamPlayers = (detail.meta.players ?? []).filter((p) => p.team === team)
-      if (teamPlayers.length === 0) return
+      const allTeamPlayers = (detail.meta.players ?? []).filter((p) => p.team === team)
+      if (allTeamPlayers.length === 0) return
+      const muteable = allTeamPlayers.filter((p) => hasUsableVoiceSlot(p))
+      if (muteable.length === 0) {
+        toast.push(`${team === 'T' ? 'T 阵营' : 'CT 阵营'}所有选手槽位未知，无法自动闭麦`, 'warn')
+        return
+      }
+      const skipped = allTeamPlayers.length - muteable.length
 
       const cur = settings?.overlay?.mutedPlayers ?? []
-      const allMuted = teamPlayers.every((p) => isPlayerMuted(p))
+      const allMuted = muteable.every((p) => isPlayerMuted(p))
 
       let nextList: string[]
       if (allMuted) {
-        nextList = cur.filter((x) => !teamPlayers.some((p) => x === p.steamId || x === p.name))
+        // 恢复时清掉该队所有旧设置（含槽位未知的历史条目）。
+        nextList = cur.filter((x) => !allTeamPlayers.some((p) => x === p.steamId || x === p.name))
         toast.push(`已恢复 ${team === 'T' ? 'T 阵营' : 'CT 阵营'} 全体选手语音`)
       } else {
-        const teamKeys = teamPlayers.map((p) => p.steamId || p.name).filter(Boolean)
+        const teamKeys = muteable.map((p) => p.steamId || p.name)
         nextList = [...new Set([...cur, ...teamKeys])]
-        toast.push(`已静音 ${team === 'T' ? 'T 阵营' : 'CT 阵营'} 全体选手`, 'warn')
+        toast.push(
+          `已静音 ${team === 'T' ? 'T 阵营' : 'CT 阵营'} 全体选手${
+            skipped > 0 ? `（${skipped} 位槽位未知已跳过）` : ''
+          }`,
+          'warn'
+        )
       }
 
       const updated = await window.api.settings.set({
@@ -369,14 +437,20 @@ export function DemoDetailPage({
       return
     }
     const s = await window.api.settings.get()
-    const voiceHud = !!s.cs2?.voiceHud
-    if (voiceHud) toast.push(t('detail.voiceHudPreparing'))
+    const hudMode = s.cs2?.hudMode ?? 'addon'
+    if (hudMode !== 'off') toast.push(t('detail.voiceHudPreparing'))
     const voiceIndices = computeVoiceMask(detail.meta.players ?? [], mutedSet)
+    if (voiceIndices.unknownSlots.length > 0) {
+      toast.push(
+        `槽位未知，无法自动闭麦：${voiceIndices.unknownSlots.join('、')}`,
+        'warn'
+      )
+    }
     const r = await window.api.live.launch({
       playDemoPath: detail.meta.path,
-      voiceHud,
+      hudMode,
       startTick: tick,
-      tvVoiceIndices: voiceIndices
+      tvVoiceIndices: { low: voiceIndices.low, high: voiceIndices.high }
     })
     if (r.ok) {
       if (typeof tick === 'number' && tick > 0) {
@@ -464,12 +538,40 @@ export function DemoDetailPage({
 
   const { meta, rounds, chat, voice } = detail
 
+  // ★保守模式检测：Rush 等非 5v5 模式通常不是 10 人。无法可靠读取 GameRules 时，
+  //   至少用 players.length !== 10 提示，并隐藏 5v5/MR12 专属统计，避免伪造。
+  const playerCount = (meta.players ?? []).length
+  const unsupportedMode = playerCount !== 10
+  // 只统计有有效槽位且已静音的选手；槽位未知的旧设置不计入“已静音”人数。
+  const mutedPlayerCount = (meta.players ?? []).filter(
+    (p) => hasUsableVoiceSlot(p) && isPlayerMuted(p)
+  ).length
+
   // 已转写：用转写段累计时长；未转写：回退用解析时检测到的语音时长（meta.voiceSec）
   const voiceSecs =
     voice.length > 0 ? voice.reduce((s, v) => s + (v.endSec - v.timeSec), 0) : (meta.voiceSec ?? 0)
 
   return (
     <div className="page">
+      {unsupportedMode && (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: '10px 14px',
+            borderRadius: 8,
+            border: '1px solid rgba(255, 159, 10, 0.35)',
+            background: 'rgba(255, 159, 10, 0.10)',
+            color: '#ffb340',
+            fontSize: 12.5,
+            lineHeight: 1.6
+          }}
+        >
+          <b>该模式暂不支持完整分析</b>
+          <span style={{ marginLeft: 8 }}>
+            检测到 {playerCount} 人阵容（可能为 Rush 等非 5v5 模式），已隐藏 5v5/MR12 专属统计与时间轴。
+          </span>
+        </div>
+      )}
       {/* HUD 头部 */}
       <Panel className="hud-accent" raised>
         <div className="panel-bd" style={{ padding: 18 }}>
@@ -481,7 +583,7 @@ export function DemoDetailPage({
                   {t('common.back')}
                 </Btn>
                 <span className="map" style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-0.01em' }}>
-                  {meta.mapName}
+                  {formatMapName(meta.mapName) || '—'}
                 </span>
                 {meta.hasVoice === true && (
                   <Tag tone="voice" dot>
@@ -489,7 +591,7 @@ export function DemoDetailPage({
                   </Tag>
                 )}
               </div>
-              <div className="file muted" style={{ marginTop: 6, fontSize: 11 }} title={meta.path}>
+              <div className="file muted" style={{ marginTop: 6, fontSize: 11.5 }} title={meta.path}>
                 {meta.fileName} · {fmtBytes(meta.sizeBytes)}
               </div>
             </div>
@@ -536,7 +638,7 @@ export function DemoDetailPage({
                 [t('detail.chat'), String(chat.length)]
               ].map(([k, v]) => (
                 <div key={k} style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 500, color: 'var(--text-2)' }}>{k}</div>
+                  <div style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--text-2)' }}>{k}</div>
                   <div className="mono" style={{ fontSize: 15, fontWeight: 600, marginTop: 2 }}>{v}</div>
                 </div>
               ))}
@@ -544,13 +646,15 @@ export function DemoDetailPage({
           </div>
 
           {/* 回合胜负走势图（CS:GO / CS2 官方比赛计分板风格） */}
-          <div style={{ marginTop: 16 }}>
-            <MatchTimelineBar
-              rounds={rounds}
-              selectedRound={selectedRound === 'all' ? undefined : selectedRound}
-              onSelectRound={(r) => setSelectedRound((cur) => (cur === r ? 'all' : r))}
-            />
-          </div>
+          {!unsupportedMode && (
+            <div style={{ marginTop: 16 }}>
+              <MatchTimelineBar
+                rounds={rounds}
+                selectedRound={selectedRound === 'all' ? undefined : selectedRound}
+                onSelectRound={(r) => setSelectedRound((cur) => (cur === r ? 'all' : r))}
+              />
+            </div>
+          )}
         </div>
       </Panel>
 
@@ -562,11 +666,11 @@ export function DemoDetailPage({
           <div className="flex between" style={{ alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: 8 }}>
             <div className="flex" style={{ alignItems: 'center', gap: 8 }}>
               <span>{t('detail.players')}</span>
-              {(meta.players ?? []).filter((p) => isPlayerMuted(p)).length > 0 ? (
+              {mutedPlayerCount > 0 ? (
                 <span
                   className="tag alert"
                   style={{
-                    fontSize: 11,
+                    fontSize: 11.5,
                     padding: '2px 8px',
                     borderRadius: 999,
                     height: 'auto',
@@ -575,21 +679,21 @@ export function DemoDetailPage({
                     borderColor: 'rgba(255, 69, 58, 0.35)'
                   }}
                 >
-                  已静音 {(meta.players ?? []).filter((p) => isPlayerMuted(p)).length} 人
+                  已静音 {mutedPlayerCount} 人
                 </span>
               ) : (
-                <span className="muted" style={{ fontSize: 11, fontWeight: 'normal' }}>
+                <span className="muted" style={{ fontSize: 11.5, fontWeight: 'normal' }}>
                   全员开麦
                 </span>
               )}
             </div>
             <div className="flex" style={{ alignItems: 'center', gap: 6 }}>
-              {(meta.players ?? []).filter((p) => isPlayerMuted(p)).length > 0 ? (
-                <Btn size="sm" variant="ghost" onClick={unmuteAll} style={{ fontSize: 11, height: 26, padding: '0 8px' }}>
+              {mutedPlayerCount > 0 ? (
+                <Btn size="sm" variant="ghost" onClick={unmuteAll} style={{ fontSize: 11.5, height: 26, padding: '0 8px' }}>
                   全员恢复
                 </Btn>
               ) : (
-                <Btn size="sm" variant="ghost" onClick={muteAll} style={{ fontSize: 11, height: 26, padding: '0 8px' }}>
+                <Btn size="sm" variant="ghost" onClick={muteAll} style={{ fontSize: 11.5, height: 26, padding: '0 8px' }}>
                   一键全员静音
                 </Btn>
               )}
@@ -597,7 +701,7 @@ export function DemoDetailPage({
                 size="sm"
                 variant={isTeamMuted('T') ? 'secondary' : 'ghost'}
                 onClick={() => toggleTeamMute('T')}
-                style={{ fontSize: 11, height: 26, padding: '0 8px' }}
+                style={{ fontSize: 11.5, height: 26, padding: '0 8px' }}
                 title={isTeamMuted('T') ? '恢复进攻方 (T) 全体选手语音' : '静音进攻方 (T) 全体选手'}
               >
                 {isTeamMuted('T') ? '恢复 T' : '静音 T'}
@@ -606,7 +710,7 @@ export function DemoDetailPage({
                 size="sm"
                 variant={isTeamMuted('CT') ? 'secondary' : 'ghost'}
                 onClick={() => toggleTeamMute('CT')}
-                style={{ fontSize: 11, height: 26, padding: '0 8px' }}
+                style={{ fontSize: 11.5, height: 26, padding: '0 8px' }}
                 title={isTeamMuted('CT') ? '恢复防守方 (CT) 全体选手语音' : '静音防守方 (CT) 全体选手'}
               >
                 {isTeamMuted('CT') ? '恢复 CT' : '静音 CT'}
@@ -615,7 +719,7 @@ export function DemoDetailPage({
                 size="sm"
                 variant="ghost"
                 onClick={copyVoiceMaskCommand}
-                style={{ fontSize: 11, height: 26, padding: '0 8px' }}
+                style={{ fontSize: 11.5, height: 26, padding: '0 8px' }}
                 title="复制当前设置对应的 CS2 原生控制台消音指令 (tv_listen_voice_indices)"
               >
                 复制 CS2 闭麦指令
@@ -624,8 +728,15 @@ export function DemoDetailPage({
           </div>
         }
       >
-        <div className="tbl-wrap" style={{ padding: '6px 0' }}>
-          <table className="tbl">
+        {unsupportedMode ? (
+          <div className="muted" style={{ padding: '28px 16px', textAlign: 'center', fontSize: 12, lineHeight: 1.7 }}>
+            该模式暂不支持完整分析（检测到 {playerCount} 人阵容，可能为 Rush 等非 5v5 模式）。
+            <br />
+            已隐藏 5v5/MR12 专属的选手统计与回合时间轴。
+          </div>
+        ) : (
+          <div className="tbl-wrap" style={{ padding: '6px 0' }}>
+            <table className="tbl">
             <thead>
               <tr>
                 <th>#</th>
@@ -646,6 +757,7 @@ export function DemoDetailPage({
             <tbody>
               {(meta.players ?? []).map((p, i) => {
                 const muted = isPlayerMuted(p)
+                const slotKnown = hasUsableVoiceSlot(p)
                 return (
                   <tr
                     key={p.steamId || p.name}
@@ -655,7 +767,15 @@ export function DemoDetailPage({
                   >
                     <td className="num muted">{i + 1}</td>
                     <td>
-                      <span className="flex gap-8" style={{ alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="player-name-btn"
+                        aria-label={`查看 ${p.name} 详情`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setPlayer(p)
+                        }}
+                      >
                         <Avatar name={p.name} team={p.team} size={20} avatar={p.avatar} muted={muted} />
                         <span
                           className={`nm ${p.team === 'T' ? 't' : p.team === 'CT' ? 'ct' : ''}`}
@@ -663,26 +783,40 @@ export function DemoDetailPage({
                         >
                           {p.name}
                         </span>
-                      </span>
+                      </button>
                     </td>
                     <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
                       <button
                         type="button"
                         className={`btn-mic-toggle ${muted ? 'muted' : 'active'}`}
                         onClick={() => togglePlayerMute(p)}
+                        disabled={!slotKnown && !muted}
                         title={
-                          muted
-                            ? `点击恢复 ${p.name} 开麦${typeof p.slot === 'number' ? ` (底层槽位: Slot ${p.slot})` : ''}`
-                            : `点击静音 ${p.name}${typeof p.slot === 'number' ? ` (底层槽位: Slot ${p.slot})` : ''}`
+                          !slotKnown
+                            ? '槽位未知，无法自动闭麦'
+                            : muted
+                              ? `点击恢复 ${p.name} 开麦${typeof p.slot === 'number' ? ` (底层槽位: Slot ${p.slot})` : ''}`
+                              : `点击静音 ${p.name}${typeof p.slot === 'number' ? ` (底层槽位: Slot ${p.slot})` : ''}`
                         }
                         style={{
-                          background: muted ? 'rgba(255, 69, 58, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                          border: `1px solid ${muted ? 'rgba(255, 69, 58, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
-                          color: muted ? '#ff453a' : 'var(--text-muted, #999)',
+                          background: !slotKnown
+                            ? 'rgba(255, 159, 10, 0.12)'
+                            : muted
+                              ? 'rgba(255, 69, 58, 0.15)'
+                              : 'rgba(255, 255, 255, 0.05)',
+                          border: `1px solid ${
+                            !slotKnown
+                              ? 'rgba(255, 159, 10, 0.4)'
+                              : muted
+                                ? 'rgba(255, 69, 58, 0.4)'
+                                : 'rgba(255, 255, 255, 0.1)'
+                          }`,
+                          color: !slotKnown ? '#ff9f0a' : muted ? '#ff453a' : 'var(--text-muted, #999)',
                           borderRadius: 6,
                           padding: '3px 8px',
-                          fontSize: 11,
-                          cursor: 'pointer',
+                          fontSize: 11.5,
+                          cursor: !slotKnown && !muted ? 'not-allowed' : 'pointer',
+                          opacity: !slotKnown && !muted ? 0.7 : 1,
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: 4,
@@ -691,8 +825,13 @@ export function DemoDetailPage({
                         }}
                       >
                         {muted ? <IcMicOff size={12} /> : <IcMic size={12} />}
-                        <span>{muted ? '已静音' : '开麦'}</span>
+                        <span>{!slotKnown ? '槽位未知' : muted ? '已静音' : '开麦'}</span>
                       </button>
+                      {!slotKnown && (
+                        <div style={{ marginTop: 2, fontSize: 11.5, lineHeight: 1.3, color: '#ff9f0a', whiteSpace: 'nowrap' }}>
+                          槽位未知，无法自动闭麦
+                        </div>
+                      )}
                     </td>
                     <td
                       className={`num ${p.rating && p.rating >= 1.2 ? 'win-rating' : p.rating && p.rating < 0.85 ? 'low-rating' : ''}`}
@@ -718,8 +857,9 @@ export function DemoDetailPage({
                 )
               })}
             </tbody>
-          </table>
-        </div>
+            </table>
+          </div>
+        )}
       </Panel>
 
       {/* 回合简报 */}
@@ -807,32 +947,42 @@ export function DemoDetailPage({
         <Panel
           hd={
             <div className="flex between" style={{ alignItems: 'center', width: '100%', gap: 8 }}>
-              <div className="seg">
-                <span
+              <div className="seg" role="tablist" aria-label="局内通信">
+                <button
+                  type="button"
+                  id="detail-tab-voice"
+                  role="tab"
+                  aria-selected={bottomTab === 'voice'}
+                  aria-controls="detail-comm-panel"
                   className={`seg-item ${bottomTab === 'voice' ? 'on' : ''}`}
                   onClick={() => setBottomTab('voice')}
-                  style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
                 >
                   <IcMic size={12} />
                   <span>队内语音</span>
-                  <span style={{ opacity: 0.7, fontSize: 11 }}>({filteredVoice.length})</span>
-                </span>
-                <span
+                  <span style={{ opacity: 0.7, fontSize: 11.5 }}>({filteredVoice.length})</span>
+                </button>
+                <button
+                  type="button"
+                  id="detail-tab-chat"
+                  role="tab"
+                  aria-selected={bottomTab === 'chat'}
+                  aria-controls="detail-comm-panel"
                   className={`seg-item ${bottomTab === 'chat' ? 'on' : ''}`}
                   onClick={() => setBottomTab('chat')}
-                  style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
                 >
                   <IcChat size={12} />
                   <span>局内聊天</span>
-                  <span style={{ opacity: 0.7, fontSize: 11 }}>({filteredChat.length})</span>
-                </span>
+                  <span style={{ opacity: 0.7, fontSize: 11.5 }}>({filteredChat.length})</span>
+                </button>
               </div>
               <Btn
                 size="sm"
                 variant="ghost"
                 onClick={onGoTranscript}
                 title="前往完整转写页查看全部语音并支持搜索"
-                style={{ fontSize: 11, height: 26, padding: '0 8px' }}
+                style={{ fontSize: 11.5, height: 26, padding: '0 8px' }}
               >
                 <span>转写页</span>
                 <span>→</span>
@@ -840,7 +990,13 @@ export function DemoDetailPage({
             </div>
           }
         >
-          <div className="panel-bd" style={{ padding: '10px 14px' }}>
+          <div
+            className="panel-bd"
+            id="detail-comm-panel"
+            role="tabpanel"
+            aria-labelledby={bottomTab === 'voice' ? 'detail-tab-voice' : 'detail-tab-chat'}
+            style={{ padding: '10px 14px' }}
+          >
             {/* 进度条（仅在切分/转写运行中展示） */}
             {progress && (
               <div style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--bg-2)', border: '1px solid var(--line-1)', borderRadius: 8 }}>
@@ -848,7 +1004,7 @@ export function DemoDetailPage({
                   <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-1)' }}>
                     {progress.message || (progress.stage === 'voice-extract' ? '正在提取语音…' : progress.stage === 'voice-split' ? '正在切分玩家语音…' : '正在识别文字…')}
                   </span>
-                  <span className="mono muted" style={{ fontSize: 11 }}>
+                  <span className="mono muted" style={{ fontSize: 11.5 }}>
                     {progress.total > 0 ? `${progress.done}/${progress.total}` : '…'}
                   </span>
                 </div>
@@ -923,7 +1079,18 @@ export function DemoDetailPage({
                   {filteredVoice.map((v, i) => {
                     const vMuted = isPlayerMuted({ steamId: v.steamId, name: v.playerName })
                     return (
-                      <div key={`${v.tick}-${i}`} className={`tline ${vMuted ? 'muted-line' : ''}`} onClick={() => jump(v.tick)}>
+                      <div
+                        key={`${v.tick}-${i}`}
+                        className={`tline ${vMuted ? 'muted-line' : ''}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`跳转到 ${fmtTick(v.tick, meta.tickRate ?? 64)}，${v.playerName} 的语音`}
+                        onClick={() => jump(v.tick)}
+                        onKeyDown={(e) => {
+                          if (e.target !== e.currentTarget) return
+                          activateOnKey(e, () => jump(v.tick))
+                        }}
+                      >
                         <span className="tm">{fmtTick(v.tick, meta.tickRate ?? 64)}</span>
                         <span className="who">
                           <Avatar
@@ -935,10 +1102,10 @@ export function DemoDetailPage({
                           />
                           <span className={`nm ${v.team === 'T' ? 't' : v.team === 'CT' ? 'ct' : ''}`}>
                             {v.playerName}
-                            {vMuted && <span style={{ fontSize: 10, color: '#ff453a', marginLeft: 4 }}>(已静音)</span>}
+                            {vMuted && <span style={{ fontSize: 11.5, color: '#ff453a', marginLeft: 4 }}>(已静音)</span>}
                           </span>
                           {selectedRound === 'all' && v.roundNum !== undefined && (
-                            <Tag tone="ghost" style={{ fontSize: 10, padding: '1px 5px' }}>R{v.roundNum}</Tag>
+                            <Tag tone="ghost" style={{ fontSize: 11.5, padding: '1px 5px' }}>R{v.roundNum}</Tag>
                           )}
                         </span>
                         <span className={`txt ${vMuted ? 'muted' : ''}`} style={vMuted ? { opacity: 0.6 } : undefined}>
@@ -953,6 +1120,7 @@ export function DemoDetailPage({
                           type="button"
                           className="icon-btn jump"
                           title={t('transcript.jump')}
+                          aria-label={t('transcript.jump')}
                           onClick={(e) => {
                             e.stopPropagation()
                             jump(v.tick)
@@ -974,7 +1142,18 @@ export function DemoDetailPage({
               ) : (
                 <div style={{ maxHeight: 440, overflowY: 'auto' }}>
                   {filteredChat.map((c, i) => (
-                    <div key={i} className="tline" onClick={() => jump(c.tick)}>
+                    <div
+                      key={i}
+                      className="tline"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`跳转到 ${fmtTick(c.tick, meta.tickRate ?? 64)}，${c.playerName} 的聊天`}
+                      onClick={() => jump(c.tick)}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return
+                        activateOnKey(e, () => jump(c.tick))
+                      }}
+                    >
                       <span className="tm">{fmtTick(c.tick, meta.tickRate ?? 64)}</span>
                       <span className="who">
                         <Avatar
@@ -985,7 +1164,7 @@ export function DemoDetailPage({
                         />
                         <span className="nm">{c.playerName}</span>
                         {selectedRound === 'all' && c.roundNum !== undefined && (
-                          <Tag tone="ghost" style={{ fontSize: 10, padding: '1px 5px' }}>R{c.roundNum}</Tag>
+                          <Tag tone="ghost" style={{ fontSize: 11.5, padding: '1px 5px' }}>R{c.roundNum}</Tag>
                         )}
                         <Tag tone={c.channel === 'T' ? 't' : c.channel === 'CT' ? 'ct' : 'ghost'}>
                           {c.channel}
@@ -996,6 +1175,7 @@ export function DemoDetailPage({
                         type="button"
                         className="icon-btn jump"
                         title={t('transcript.jump')}
+                        aria-label={t('transcript.jump')}
                         onClick={(e) => {
                           e.stopPropagation()
                           jump(c.tick)
@@ -1306,11 +1486,13 @@ function MatchTimelineBar({
 }) {
   if (!rounds || rounds.length === 0) return null
 
-  // CS2 统一 MR12（12回合换边），早前 CS:GO MR15（15回合换边）
-  const halfRound = rounds.length > 26 ? 15 : 12
+  // ★CS2 固定 MR12：R1-12 上半场，R13-24 下半场，R25+ 为加时。
+  //   不再用 rounds.length > 26 猜 MR15（加时会被误判成 15 回合半场）。
+  const halfRound = 12
+  const regulationRounds = halfRound * 2
   const half1 = rounds.filter((r) => r.roundNum <= halfRound)
-  const half2 = rounds.filter((r) => r.roundNum > halfRound && r.roundNum <= halfRound * 2)
-  const overtime = rounds.filter((r) => r.roundNum > halfRound * 2)
+  const half2 = rounds.filter((r) => r.roundNum > halfRound && r.roundNum <= regulationRounds)
+  const overtime = rounds.filter((r) => r.roundNum > regulationRounds)
 
   const renderCol = (r: RoundInfo) => {
     const isHalf2 = r.roundNum > halfRound
@@ -1326,7 +1508,8 @@ function MatchTimelineBar({
     // 计算获胜方存活人数
     const winningDeaths = (r.kills ?? []).filter((k) => k.victimTeam === r.winner).length
     const survivors = Math.max(0, Math.min(5, 5 - winningDeaths))
-    const isLastRound = r.roundNum === rounds.length && r.roundNum >= (halfRound === 15 ? 16 : 13)
+    // 冠军点奖杯只在第二半场/加时的最后一回合显示。
+    const isLastRound = r.roundNum === rounds.length && r.roundNum > halfRound
 
     const endTypeName = (() => {
       switch (r.endType) {
@@ -1346,7 +1529,12 @@ function MatchTimelineBar({
       <div
         key={r.roundNum}
         className={`round-col ${selectedRound === r.roundNum ? 'active' : ''}`}
+        role="button"
+        tabIndex={0}
+        aria-label={tooltip}
+        aria-pressed={selectedRound === r.roundNum}
         onClick={() => onSelectRound(r.roundNum)}
+        onKeyDown={(e) => activateOnKey(e, () => onSelectRound(r.roundNum))}
         title={tooltip}
       >
         <div className="track-row top">
@@ -1457,6 +1645,27 @@ export function displayWeapon(raw?: string): string {
   return cleaned || raw
 }
 
+/** 自杀判定：两个 UID 都必须存在且相等；缺 UID 时绝不能把 undefined === undefined 当自杀。 */
+function isSuicideKill(kill: KillEvent): boolean {
+  return (
+    kill.attackerUid !== undefined &&
+    kill.victimUid !== undefined &&
+    kill.attackerUid === kill.victimUid
+  )
+}
+
+/** 世界/环境击杀：attackerUid === 65535 时显示“环境”，而不是“自杀”。 */
+function isEnvironmentKill(kill: KillEvent): boolean {
+  return kill.attackerUid === 65535
+}
+
+/** 击杀原因标签：环境 > 自杀 > 武器名（65535 边界优先按环境处理）。 */
+function killCauseLabel(kill: KillEvent): string {
+  if (isEnvironmentKill(kill)) return '环境'
+  if (isSuicideKill(kill)) return '自杀'
+  return displayWeapon(kill.weapon)
+}
+
 function KillRow({
   kill,
   tickRate,
@@ -1469,9 +1678,10 @@ function KillRow({
   onJump: (tick: number) => void
 }) {
   const t = useTKey()
-  // 自杀/环境击杀（attacker 与 victim 同一人，或 attacker=世界 65535）
-  const isSuicide = kill.attackerUid === kill.victimUid || kill.attackerUid === 65535
-  const attackerLabel = isSuicide ? '' : (kill.attackerName ?? '—')
+  // ★环境击杀（65535）与自杀分开：环境优先；自杀要求两个 UID 都存在且相等。
+  const isEnvironment = isEnvironmentKill(kill)
+  const isSuicide = !isEnvironment && isSuicideKill(kill)
+  const attackerLabel = isSuicide || isEnvironment ? '' : (kill.attackerName ?? '—')
   const victimLabel = isSuicide ? (kill.attackerName ?? kill.victimName ?? '—') : (kill.victimName ?? '—')
 
   const handleJump = () => {
@@ -1480,7 +1690,18 @@ function KillRow({
   }
 
   return (
-    <div className="kill-row" onClick={handleJump} title={t('transcript.jumpKill')}>
+    <div
+      className="kill-row"
+      role="button"
+      tabIndex={0}
+      aria-label={`${fmtTick(kill.tick, tickRate)}，跳转到该击杀`}
+      onClick={handleJump}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
+        activateOnKey(e, handleJump)
+      }}
+      title={t('transcript.jumpKill')}
+    >
       <span className="tk">{fmtTick(kill.tick, tickRate)}</span>
       <span
         className={`nm atk ${kill.attackerTeam === 'T' ? 't' : kill.attackerTeam === 'CT' ? 'ct' : ''}`}
@@ -1489,7 +1710,7 @@ function KillRow({
         {attackerLabel}
       </span>
       <span className="wp">
-        <span className="wp-name">{isSuicide ? '自杀' : displayWeapon(kill.weapon)}</span>
+        <span className="wp-name">{killCauseLabel(kill)}</span>
         <KillIcons kill={kill} />
       </span>
       <span
@@ -1503,6 +1724,7 @@ function KillRow({
         type="button"
         className="icon-btn jump"
         title={t('transcript.jumpKill')}
+        aria-label={t('transcript.jumpKill')}
         onClick={(e) => {
           e.stopPropagation()
           handleJump()
@@ -1536,6 +1758,15 @@ function PlayerModal({
 }) {
   const t = useTKey()
   const [activeTick, setActiveTick] = useState<number | null>(null)
+
+  // 弹窗内按 Esc 关闭，键盘用户无需先移出内容区
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
   const myKills = useMemo(
     () =>
       kills.filter((k) =>
@@ -1554,16 +1785,22 @@ function PlayerModal({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal player-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal player-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="player-modal-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="pm-head">
           <Avatar name={player.name} team={player.team} size={46} avatar={player.avatar} muted={isMuted} />
           <div style={{ minWidth: 0 }}>
-            <div className="pm-name" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div className="pm-name" id="player-modal-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span>{player.name}</span>
               {isMuted && (
                 <span
                   style={{
-                    fontSize: 11,
+                    fontSize: 11.5,
                     color: '#ff453a',
                     background: 'rgba(255, 69, 58, 0.12)',
                     padding: '1px 6px',
@@ -1577,10 +1814,12 @@ function PlayerModal({
             </div>
             <div className="pm-sub" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span>{player.team === 'T' ? 'T 队' : player.team === 'CT' ? 'CT 队' : '—'}</span>
-              {typeof player.slot === 'number' && (
-                <span style={{ opacity: 0.55, fontSize: 11, fontFamily: 'monospace' }}>
+              {hasUsableVoiceSlot(player) ? (
+                <span style={{ color: 'var(--text-2)', fontSize: 11.5, fontFamily: 'monospace' }}>
                   CS2 Slot: {player.slot}
                 </span>
+              ) : (
+                <span style={{ color: '#ff9f0a', fontSize: 11.5 }}>槽位未知，无法自动闭麦</span>
               )}
             </div>
           </div>
@@ -1590,18 +1829,21 @@ function PlayerModal({
               variant={isMuted ? 'danger' : 'secondary'}
               size="sm"
               onClick={onToggleMute}
+              disabled={!hasUsableVoiceSlot(player) && !isMuted}
               title={
-                isMuted
-                  ? `点击取消静音该选手${typeof player.slot === 'number' ? ` (Slot ${player.slot})` : ''}`
-                  : `点击静音该选手麦克风${typeof player.slot === 'number' ? ` (Slot ${player.slot})` : ''}`
+                !hasUsableVoiceSlot(player)
+                  ? '槽位未知，无法自动闭麦'
+                  : isMuted
+                    ? `点击取消静音该选手${typeof player.slot === 'number' ? ` (Slot ${player.slot})` : ''}`
+                    : `点击静音该选手麦克风${typeof player.slot === 'number' ? ` (Slot ${player.slot})` : ''}`
               }
               style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginRight: 6 }}
             >
               {isMuted ? <IcMicOff size={13} /> : <IcMic size={13} />}
-              <span>{isMuted ? '已静音' : '静音选手'}</span>
+              <span>{!hasUsableVoiceSlot(player) ? '槽位未知' : isMuted ? '已静音' : '静音选手'}</span>
             </Btn>
           )}
-          <Btn variant="ghost" size="sm" onClick={onClose}>
+          <Btn variant="ghost" size="sm" onClick={onClose} aria-label="关闭选手详情">
             ✕
           </Btn>
         </div>
@@ -1646,7 +1888,7 @@ function PlayerModal({
             <b>
               {player.utilityDamage ?? 0}
               {player.utilityDamagePerRound !== undefined && (
-                <span className="muted" style={{ fontSize: 11, fontWeight: 'normal', marginLeft: 4 }}>
+                <span className="muted" style={{ fontSize: 11.5, fontWeight: 'normal', marginLeft: 4 }}>
                   ({player.utilityDamagePerRound}/局)
                 </span>
               )}
@@ -1660,7 +1902,7 @@ function PlayerModal({
             <span>{t('detail.hud.blindEnemy')}</span>
             <b>
               {player.enemiesBlinded ?? 0}
-              <span className="muted" style={{ fontSize: 11, fontWeight: 'normal', marginLeft: 4 }}>
+              <span className="muted" style={{ fontSize: 11.5, fontWeight: 'normal', marginLeft: 4 }}>
                 ({player.enemyBlindDuration ?? 0}s)
               </span>
             </b>
@@ -1669,7 +1911,7 @@ function PlayerModal({
             <span>{t('detail.hud.blindTeam')}</span>
             <b>
               {player.teammatesBlinded ?? 0}
-              <span className="muted" style={{ fontSize: 11, fontWeight: 'normal', marginLeft: 4 }}>
+              <span className="muted" style={{ fontSize: 11.5, fontWeight: 'normal', marginLeft: 4 }}>
                 ({player.teamBlindDuration ?? 0}s)
               </span>
             </b>
@@ -1704,12 +1946,20 @@ function PlayerModal({
                 <div
                   key={`${k.tick}-${i}`}
                   className={`pm-kill ${isJumpActive ? 'active' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${fmtTick(k.tick, tickRate)}，跳转到该击杀`}
+                  aria-pressed={isJumpActive}
                   onClick={handleJump}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return
+                    activateOnKey(e, handleJump)
+                  }}
                   title={t('transcript.jumpKill')}
                 >
                   <span className="tm">{fmtTick(k.tick, tickRate)}</span>
                   <span className="wp">
-                    {displayWeapon(k.weapon)}
+                    {killCauseLabel(k)}
                     <KillIcons kill={k} />
                   </span>
                   <span className="vic">{k.victimName ?? '—'}</span>
@@ -1718,6 +1968,7 @@ function PlayerModal({
                     type="button"
                     className={`icon-btn jump ${isJumpActive ? 'active' : ''}`}
                     title={t('transcript.jumpKill')}
+                    aria-label={t('transcript.jumpKill')}
                     onClick={(e) => {
                       e.stopPropagation()
                       handleJump()
@@ -1777,7 +2028,7 @@ function RoundStrip({
         <span className="muted" style={{ fontSize: 12 }}>
           {endLabel} · {round.kills.length} kills
         </span>
-        <span className="mono muted" style={{ fontSize: 11 }}>
+        <span className="mono muted" style={{ fontSize: 11.5 }}>
           {fmtTick(round.startTick, tickRate)} → {fmtTick(round.endTick, tickRate)}
         </span>
 

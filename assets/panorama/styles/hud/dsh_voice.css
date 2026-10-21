@@ -38,17 +38,45 @@
 	opacity: 1;
 }
 
-/* 方形头像（CS2 原生风格：小圆角方形，左右对称不被容器截断） */
-.dsh-voice-avatar {
+/* 头像容器：固定 28px 方形，保留原左右 margin；overflow noclip 保证右上角禁言标志不被裁切 */
+.dsh-voice-avatar-wrap {
 	width: 28px;
 	height: 28px;
 	margin-left: 3px;
 	margin-right: 8px;
+	vertical-align: center;
+	overflow: noclip;
+}
+
+/* 方形头像（CS2 原生风格：小圆角方形，左右对称不被容器截断） */
+.dsh-voice-avatar {
+	width: 28px;
+	height: 28px;
 	border-radius: 3px;
 	vertical-align: center;
 	box-shadow: 0px 0px 3px #000000aa;
 	transition-property: box-shadow;
 	transition-duration: 0.08s;
+}
+
+/* 静音禁言标志：14x14，红底白图标，右上角对齐；默认隐藏，行带 muted class 时显示 */
+.dsh-voice-mute-badge {
+	width: 14px;
+	height: 14px;
+	horizontal-align: right;
+	vertical-align: top;
+	margin-top: -3px;
+	margin-right: -3px;
+	background-color: #e5484d;
+	border: 1px solid #ffffffcc;
+	border-radius: 7px;
+	wash-color: #ffffff;
+	box-shadow: 0px 0px 3px #000000cc;
+	visibility: collapse;
+}
+
+.dsh-voice-item.muted .dsh-voice-mute-badge {
+	visibility: visible;
 }
 
 .dsh-voice-item.visible .dsh-voice-avatar {

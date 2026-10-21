@@ -2,7 +2,7 @@
  * Preload：以 contextBridge 暴露类型化 API（见 @shared/types ApiWithEvents）。
  */
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ApiWithEvents, MainEvent, MainEventType, Settings } from '@shared/types'
+import type { ApiWithEvents, HudMode, MainEvent, MainEventType, MuteHudMode, Settings } from '@shared/types'
 
 const api: ApiWithEvents = {
   window: {
@@ -47,8 +47,13 @@ const api: ApiWithEvents = {
     cancel: () => ipcRenderer.invoke('asr:cancel')
   },
   ai: {
-    ask: (id: string, question: string, history?: { role: 'user' | 'assistant'; text: string }[]) =>
-      ipcRenderer.invoke('ai:ask', id, question, history),
+    ask: (
+      id: string,
+      question: string,
+      history?: { role: 'user' | 'assistant'; text: string }[],
+      sessionId?: string,
+      requestId?: string
+    ) => ipcRenderer.invoke('ai:ask', id, question, history, sessionId, requestId),
     cancel: () => ipcRenderer.invoke('ai:cancel'),
     listModels: () => ipcRenderer.invoke('ai:listModels'),
     listChats: () => ipcRenderer.invoke('ai:listChats'),
@@ -69,7 +74,8 @@ const api: ApiWithEvents = {
     launch: (opts?: {
       toolsMode?: boolean
       playDemoPath?: string
-      voiceHud?: boolean
+      hudMode?: HudMode
+      muteHudMode?: MuteHudMode
       startTick?: number
       tvVoiceIndices?: { low: number; high: number }
     }) => ipcRenderer.invoke('live:launch', opts),
@@ -77,6 +83,7 @@ const api: ApiWithEvents = {
       ipcRenderer.invoke('live:setVoiceMask', mask),
     installGsi: () => ipcRenderer.invoke('live:installGsi'),
     locateInstall: () => ipcRenderer.invoke('live:locateInstall'),
+    steamSafety: () => ipcRenderer.invoke('live:steamSafety'),
     restoreCleanFiles: () => ipcRenderer.invoke('live:restoreCleanFiles')
   },
   overlay: {
@@ -99,7 +106,8 @@ const api: ApiWithEvents = {
     version: () => ipcRenderer.invoke('app:version'),
     revealInFolder: (path: string) => ipcRenderer.invoke('app:revealInFolder', path),
     pickDirectory: () => ipcRenderer.invoke('app:pickDirectory'),
-    openUrl: (url: string) => ipcRenderer.invoke('app:openUrl', url)
+    openUrl: (url: string) => ipcRenderer.invoke('app:openUrl', url),
+    dataDir: () => ipcRenderer.invoke('app:dataDir')
   },
   onEvent: <T extends MainEventType>(
     type: T,

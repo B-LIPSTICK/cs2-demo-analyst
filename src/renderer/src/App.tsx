@@ -1,4 +1,4 @@
-import { Component, useCallback, useEffect, useState, type ReactNode } from 'react'
+import { Component, Fragment, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { I18nProvider, useTKey, type Lang } from './i18n'
 import { ToastProvider } from './components/ui'
 import { TitleBar } from './components/TitleBar'
@@ -8,6 +8,8 @@ import { TranscriptPage } from './pages/TranscriptPage'
 import { AiPage } from './pages/AiPage'
 import { SettingsPage } from './pages/SettingsPage'
 import type { LiveStatus, Settings } from '@shared/types'
+import { zh } from './i18n/zh'
+import { en } from './i18n/en'
 
 interface Route {
   page: Page
@@ -15,37 +17,56 @@ interface Route {
 }
 
 /** 渲染错误兜底：任何组件抛错都显示可见信息，而不是黑屏 */
-class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
-  state: { error: Error | null } = { error: null }
+class ErrorBoundary extends Component<
+  { children: ReactNode; lang: Lang },
+  { error: Error | null; resetKey: number }
+> {
+  state: { error: Error | null; resetKey: number } = { error: null, resetKey: 0 }
   static getDerivedStateFromError(error: Error) {
     return { error }
   }
   componentDidCatch(error: Error, info: unknown) {
     console.error('[ui] render error', error, info)
   }
+  /** resetKey 变化会让子树整体重挂载，而不只是清掉错误状态 */
+  private retry = () => {
+    this.setState((s) => ({ error: null, resetKey: s.resetKey + 1 }))
+  }
+  /** 用主进程返回的真实 userData 路径，避免 revealInFolder('') 打开到未知位置 */
+  private openDataDir = () => {
+    try {
+      window.api.app
+        .dataDir()
+        .then((dir) => window.api.app.revealInFolder(dir))
+        .catch(() => {})
+    } catch {
+      /* preload 未就绪时静默失败 */
+    }
+  }
   render() {
+    const dict = this.props.lang === 'en' ? en : zh
     if (this.state.error) {
       return (
         <div className="app-crash">
           <div className="app-crash-box">
-            <div className="app-crash-title">UI 渲染异常</div>
+            <div className="app-crash-title">{dict['error.title']}</div>
             <div className="app-crash-msg">{String(this.state.error?.message ?? this.state.error)}</div>
             <div className="app-crash-stack">
               {String(this.state.error?.stack ?? '').split('\n').slice(0, 12).join('\n')}
             </div>
             <div className="flex" style={{ gap: 8 }}>
-              <button className="btn primary" onClick={() => this.setState({ error: null })}>
-                重试
+              <button className="btn primary" onClick={this.retry}>
+                {dict['error.retry']}
               </button>
-              <button className="btn ghost" onClick={() => window.api.app.revealInFolder('')}>
-                打开数据目录
+              <button className="btn ghost" onClick={this.openDataDir}>
+                {dict['error.openDataDir']}
               </button>
             </div>
           </div>
         </div>
       )
     }
-    return this.props.children
+    return <Fragment key={this.state.resetKey}>{this.props.children}</Fragment>
   }
 }
 
@@ -72,6 +93,7 @@ export default function App() {
     gsiActive: false
   })
   const [version, setVersion] = useState('1.0.0')
+  const [maximized, setMaximized] = useState(false)
   const [update, setUpdate] = useState<{ version: string; url: string } | null>(null)
 
   // 初始数据
@@ -79,7 +101,13 @@ export default function App() {
     window.api.settings.get().then(setSettings)
     window.api.app.version().then(setVersion)
     window.api.live.getStatus().then(setLive)
-    window.api.window.isMaximized()
+  }, [])
+
+  // 最大化状态：初始查询 + 订阅主进程事件（最大化/还原时图标与标题同步）
+  useEffect(() => {
+    window.api.window.isMaximized().then(setMaximized).catch(() => {})
+    const off = window.api.onEvent('window:maximized', (e) => setMaximized(e.maximized))
+    return off
   }, [])
 
   // 主题应用到根节点（明暗切换）
@@ -140,7 +168,7 @@ export default function App() {
   }
 
   return (
-    <ErrorBoundary>
+    <ErrorBoundary lang={settings.language}>
       <I18nProvider lang={settings.language} onLangChange={onLangChange}>
         <ToastProvider>
           <div className="app">
@@ -159,6 +187,7 @@ export default function App() {
               status={live}
               version={version}
               theme={settings.ui.theme}
+              maximized={maximized}
               onToggleTheme={onToggleTheme}
             />
             <div className="app-body">

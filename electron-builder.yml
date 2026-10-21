@@ -8,11 +8,14 @@ files:
   - package.json
   - build/icon-256.png
 extraResources:
-  # 游戏内语音 HUD 静态 VPK（VPK 注入 Panorama 用，只带产物）
+  # 游戏内语音 HUD 产物：
+  #  - 静态 VPK：显式 inject fallback
+  #  - addon/：非侵入式 addon HUD（编译后的 .vxml_c/.vcss_c/.vjs_c）
   - from: assets/panorama
     to: panorama
     filter:
       - "*.vpk"
+      - "addon/**/*"
 asar: true
 win:
   icon: build/icon.ico

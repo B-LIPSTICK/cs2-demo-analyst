@@ -1,21 +1,53 @@
 /**
- * CS2 回放与进程服务：CS2 进程检测、纯净原生回放（+exec cfg）、游戏内语音 HUD 注入。
+ * CS2 回放与进程服务：CS2 进程检测、纯净原生回放（+exec cfg）、游戏内语音 HUD（addon 优先 / inject fallback）。
  */
 import { execFile, spawn } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { dirname, join, parse } from 'node:path'
+import { dirname, join, parse, resolve } from 'node:path'
 import { shell } from 'electron'
-import type { LaunchResult, LiveStatus } from '@shared/types'
-import { extractVoiceIndex } from './voiceIndex'
+import type { HudMode, LaunchResult, LiveStatus, MuteHudMode, SteamSafetyReport } from '@shared/types'
+import { extractVoiceIndexCached } from './voiceIndex'
 import { buildVjsResource, buildVoiceDataJs, buildVpk } from './vpk'
-import { demoInjector } from './injector'
+import { demoInjector, VOICE_HUD_ADDON } from './injector'
 import { VConsoleClient } from './vconsole'
+import {
+  cleanupStagedDemo,
+  pruneStagedDemos,
+  registerStagedDemo,
+  stagingRootsForInstall,
+  STAGED_DEMO_MAX_AGE_MS
+} from './stagedDemos'
 
 export interface LiveEvents {
   status: (s: LiveStatus) => void
   consoleLine?: (channel: string, text: string) => void
   gsi?: (s: unknown) => void
+}
+
+/**
+ * 从 launch 的 tv_listen_voice_indices 位掩码推导静音槽位。
+ * - bit=0 表示静音；bit=1 表示可听。
+ * - 只统计 pulsesBySlot 中实际存在的 slot，避免把无关 bit 写进 HUD 数据。
+ * - slot 0~31 用低 32 位，slot 32~63 用高 32 位；JS 位运算统一按 uint32 处理。
+ */
+export function deriveMutedSlots(
+  pulsesBySlot: Record<string, number[]>,
+  mask?: { low: number; high: number } | null
+): number[] {
+  if (!mask) return []
+  const low = Number.isFinite(Number(mask.low)) ? Number(mask.low) >>> 0 : 0xffffffff
+  const high = Number.isFinite(Number(mask.high)) ? Number(mask.high) >>> 0 : 0xffffffff
+  const result: number[] = []
+  for (const key of Object.keys(pulsesBySlot)) {
+    const slot = Number(key)
+    if (!Number.isInteger(slot) || slot < 0 || slot >= 64) continue
+    const word = slot < 32 ? low : high
+    const bit = slot < 32 ? slot : slot - 32
+    if (((word >>> bit) & 1) === 0) result.push(slot)
+  }
+  result.sort((a, b) => a - b)
+  return result
 }
 
 export class LiveService {
@@ -33,6 +65,8 @@ export class LiveService {
   private detectTimer: NodeJS.Timeout | null = null
   /** 普通模式播放 cfg（dsh-play.cfg）退出后清理定时器 */
   private playCfgCleanupTimer: NodeJS.Timeout | null = null
+  /** 本次会话中已暂存的 demo 路径（CS2 退出后清理） */
+  private sessionStagedDemos = new Set<string>()
   private events: LiveEvents
   private mockCs2 = false
   private installPath?: string
@@ -74,16 +108,42 @@ export class LiveService {
   async cleanupStaleInjection(): Promise<void> {
     try {
       const install = await locateCs2Install(this.installPath)
-      if (!install) return
-      if (await demoInjector.isInjected(install)) {
-        const running = await isCs2Running()
-        if (!running) {
-          await demoInjector.uninstall(install)
-          if (process.env['DEBUG_LIVE'] === '1') console.log('[live] 已清理残留的语音 HUD 注入')
+      if (!install) {
+        if (process.env['DEBUG_LIVE'] === '1') {
+          console.log('[live] 未找到 CS2 安装目录，跳过暂存 demo 清理')
+        }
+        return
+      }
+      const running = await isCs2Running()
+      // 只读自检：gameinfo dsh 行、本项目 VPK、dsh_inject.bak 任一残留都清理。
+      // addon 目录是额外内容，不计入 officialClean，也不会在这里被删除。
+      const safety = await demoInjector.inspect(install)
+      if (!running && !safety.officialClean) {
+        const err = await demoInjector.cleanAll(install)
+        if (process.env['DEBUG_LIVE'] === '1') {
+          console.log(
+            err ? `[live] 清理残留失败：${err}` : '[live] 已清理残留的语音 HUD 注入/备份'
+          )
         }
       }
       // 顺带清理残留播放 cfg
       await fs.unlink(join(install, 'game', 'csgo', 'cfg', 'dsh-play.cfg')).catch(() => {})
+
+      // 启动时清理超过 7 天的暂存 demo；CS2 运行中不动，避免误删正在播放的文件。
+      if (!running) {
+        const result = await pruneStagedDemos(
+          STAGED_DEMO_MAX_AGE_MS,
+          stagingRootsForInstall(install)
+        )
+        if (
+          process.env['DEBUG_LIVE'] === '1' &&
+          (result.deleted.length > 0 || result.skipped.length > 0)
+        ) {
+          console.log(
+            `[live] 暂存 demo 清理：删除 ${result.deleted.length}，跳过 ${result.skipped.length}`
+          )
+        }
+      }
     } catch {
       /* 清理失败不阻塞启动 */
     }
@@ -248,6 +308,8 @@ export class LiveService {
       } catch {
         await fs.copyFile(demoPath, dest)
       }
+      // 复制/复用后登记清单，供会话退出或启动时清理。
+      await this.registerStagedDemoSafe(dest, demoPath, install)
       return name
     } catch {
       return null
@@ -273,23 +335,191 @@ export class LiveService {
       } catch {
         await fs.copyFile(demoPath, dest)
       }
+      // 复制/复用后登记清单，供会话退出或启动时清理。
+      await this.registerStagedDemoSafe(dest, demoPath, install)
       return dest
     } catch {
       return null
     }
   }
 
-  /**
-   * 游戏内语音 HUD 准备：提取语音说话者索引 → 生成会话 VPK（vjs_c 内嵌数据）
-   * → 部署静态 VPK + 会话 VPK + gameinfo.gi SearchPath 注入。
-   */
-  private async prepareVoiceHud(demoPath: string, install: string): Promise<string | null> {
+  /** 登记暂存 demo；清单失败只记日志，不影响播放。 */
+  private async registerStagedDemoSafe(
+    stagedPath: string,
+    sourceDemoPath: string,
+    install: string
+  ): Promise<void> {
     try {
-      const index = await extractVoiceIndex(demoPath)
+      await registerStagedDemo(
+        { path: stagedPath, sourceDemoPath },
+        stagingRootsForInstall(install)
+      )
+    } catch (err) {
+      console.warn('[live] 写入暂存 demo 清单失败', err)
+    }
+  }
+
+  /**
+   * 查找随应用分发的静态 addon 资源目录。
+   * 开发态：assets/panorama/addon/dsh_voice_hud
+   * 打包态：resources/panorama/addon/dsh_voice_hud（electron-builder extraResources）
+   */
+  private async findVoiceHudAddonSource(): Promise<string | null> {
+    const candidates = [
+      join(process.cwd(), 'assets', 'panorama', 'addon', VOICE_HUD_ADDON),
+      join(process.resourcesPath ?? '', 'panorama', 'addon', VOICE_HUD_ADDON)
+    ]
+    for (const dir of candidates) {
+      try {
+        if ((await fs.stat(dir)).isDirectory()) return dir
+      } catch {
+        /* 下一个候选 */
+      }
+    }
+    return null
+  }
+
+  /**
+   * 用 CS2 自带的 resourcecompiler 把运行时 JS 编译成合法的 .vjs_c。
+   * addon 直接读文件，必须使用完整资源头；手写 48B 头只有 VPK 路径能容忍。
+   * 失败返回 null（调用方回退到旧格式，不阻塞 Demo 播放）。
+   */
+  private async compileVjsResource(install: string, source: string): Promise<Uint8Array | null> {
+    const compiler = join(install, 'game', 'bin', 'win64', 'resourcecompiler.exe')
+    try {
+      await fs.access(compiler)
+    } catch {
+      return null
+    }
+    const tag = `dsh_runtime_${process.pid}_${Date.now()}`
+    const contentDir = join(install, 'content', 'csgo_addons', tag)
+    const gameDir = join(install, 'game', 'csgo_addons', tag)
+    const vjsRel = join('panorama', 'scripts', 'hud', 'dsh_voice_data.vjs')
+    try {
+      await fs.mkdir(dirname(join(contentDir, vjsRel)), { recursive: true })
+      await fs.writeFile(join(contentDir, vjsRel), source, 'utf-8')
+      await fs.mkdir(join(contentDir, 'panorama'), { recursive: true })
+      await fs.writeFile(
+        join(contentDir, 'panorama', 'preprocessor_config.txt'),
+        '"PanzipCfg"\n{\n    "BlockDefs"\n    {\n    }\n}\n',
+        'ascii'
+      )
+      await new Promise<void>((resolve, reject) => {
+        execFile(
+          compiler,
+          [
+            '-game',
+            join(install, 'game', 'csgo'),
+            '-i',
+            join(contentDir, vjsRel),
+            '-f',
+            '-nop4',
+            '-v'
+          ],
+          { timeout: 120000, windowsHide: true },
+          (err, _stdout, stderr) => {
+            if (err) reject(new Error(stderr || err.message))
+            else resolve()
+          }
+        )
+      })
+      return await fs.readFile(join(gameDir, vjsRel + '_c'))
+    } catch (err) {
+      if (process.env['DEBUG_LIVE'] === '1') {
+        console.warn('[live] compile vjs failed', err)
+      }
+      return null
+    } finally {
+      await fs.rm(contentDir, { recursive: true, force: true }).catch(() => {})
+      await fs.rm(gameDir, { recursive: true, force: true }).catch(() => {})
+    }
+  }
+
+  /**
+   * 非侵入式 addon HUD 准备：
+   *  1. 把静态 addon 资源复制到 game/csgo_addons/dsh_voice_hud/
+   *  2. 运行时用 resourcecompiler 生成会话 dsh_voice_data.vjs_c
+   *  3. 不修改 gameinfo.gi、不写 overrides、不碰官方 manifest
+   * 返回错误信息或 null；任何失败都不会静默回退到注入。
+   */
+  async prepareVoiceHudAddon(
+    demoPath: string,
+    install: string,
+    tvVoiceIndices?: { low: number; high: number } | null,
+    muteMode: MuteHudMode = 'badge'
+  ): Promise<string | null> {
+    const source = await this.findVoiceHudAddonSource()
+    if (!source) {
+      return 'addon HUD 资源缺失：请先运行 node scripts/build-panorama.mjs --keep-addon 重新生成（未修改 gameinfo.gi）'
+    }
+    const dest = join(install, 'game', 'csgo_addons', VOICE_HUD_ADDON)
+    try {
+      await copyDirContents(source, dest)
+      // 语音索引按 demo 指纹缓存，重复播放 HUD 时优先命中缓存
+      const index = await extractVoiceIndexCached(demoPath)
+      const mutedSlots = deriveMutedSlots(index.pulsesBySlot, tvVoiceIndices)
       const js = buildVoiceDataJs({
         voicePacketCount: index.voicePacketCount,
         pulsesBySlot: index.pulsesBySlot,
-        players: {}
+        players: {},
+        mutedSlots,
+        muteMode
+      })
+      // addon 直接读文件，必须用 resourcecompiler 生成完整资源头；
+      // 手写 48B 头（buildVjsResource）只适合 VPK 路径，addon 会加载失败导致 HUD 不显示。
+      const compiled = await this.compileVjsResource(install, js)
+      const dataFile = join(dest, 'panorama', 'scripts', 'hud', 'dsh_voice_data.vjs_c')
+      await fs.mkdir(dirname(dataFile), { recursive: true })
+      await fs.writeFile(dataFile, compiled ?? buildVjsResource(js))
+      if (!compiled && process.env['DEBUG_LIVE'] === '1') {
+        console.warn('[live] addon vjs compile failed; fallback to legacy header (HUD may not load)')
+      }
+
+      const required = [
+        'addoninfo.txt',
+        'panorama/layout/hud/huddemocontroller.vxml_c',
+        'panorama/scripts/hud/dsh_voice.vjs_c',
+        'panorama/styles/hud/dsh_voice.vcss_c',
+        'panorama/scripts/hud/dsh_voice_data.vjs_c'
+      ]
+      const missing: string[] = []
+      for (const rel of required) {
+        try {
+          await fs.access(join(dest, ...rel.split('/')))
+        } catch {
+          missing.push(rel)
+        }
+      }
+      if (missing.length > 0) {
+        return `addon HUD 资源不完整：${missing.join('、')}（未修改 gameinfo.gi）`
+      }
+      return null
+    } catch (err) {
+      return `addon HUD 准备失败：${err instanceof Error ? err.message : String(err)}（未修改 gameinfo.gi）`
+    }
+  }
+
+  /**
+   * 游戏内语音 HUD 准备（显式 fallback / 实验模式）：
+   * 提取语音说话者索引 → 生成会话 VPK（vjs_c 内嵌数据）
+   * → 部署静态 VPK + 会话 VPK + gameinfo.gi SearchPath 注入。
+   */
+  private async prepareVoiceHud(
+    demoPath: string,
+    install: string,
+    tvVoiceIndices?: { low: number; high: number } | null,
+    muteMode: MuteHudMode = 'badge'
+  ): Promise<string | null> {
+    try {
+      // 语音索引按 demo 指纹缓存，重复播放 HUD 时优先命中缓存
+      const index = await extractVoiceIndexCached(demoPath)
+      const mutedSlots = deriveMutedSlots(index.pulsesBySlot, tvVoiceIndices)
+      const js = buildVoiceDataJs({
+        voicePacketCount: index.voicePacketCount,
+        pulsesBySlot: index.pulsesBySlot,
+        players: {},
+        mutedSlots,
+        muteMode
       })
       const sessionVpk = Buffer.from(
         buildVpk([
@@ -309,12 +539,35 @@ export class LiveService {
     }
   }
 
-  /** CS2 退出后自动清理会话残留（dsh-play.cfg + 注入恢复 + steam_appid.txt 及 tool 缓存） */
-  private scheduleSessionCleanup(install: string): void {
+  /**
+   * CS2 退出后自动清理会话残留（dsh-play.cfg + 注入恢复 + steam_appid.txt 及 tool 缓存），
+   * 并删除本次会话暂存的 demo 副本（原始 demo 不在清理范围内）。
+   */
+  private scheduleSessionCleanup(
+    install: string,
+    stagedPaths: string[] = [],
+    cleanupInjection = false
+  ): void {
     if (this.playCfgCleanupTimer) clearTimeout(this.playCfgCleanupTimer)
+    for (const stagedPath of stagedPaths) {
+      if (stagedPath) this.sessionStagedDemos.add(resolve(stagedPath))
+    }
     let seenRunning = false
     let attempts = 0
     const maxWaitAttempts = 30 // 最多等待约 90 秒供 CS2 启动加载
+
+    const finish = () => {
+      if (cleanupInjection) {
+        // 仅显式 inject 会话才调用 cleanAll（会移除本项目 SearchPath/VPK/备份）。
+        void demoInjector.cleanAll(install).catch(() => {})
+      } else {
+        // addon / 原生模式只清理本次播放 cfg 与日志，不触碰 gameinfo.gi。
+        void fs.unlink(join(install, 'game', 'csgo', 'cfg', 'dsh-play.cfg')).catch(() => {})
+        void fs.unlink(join(install, 'game', 'csgo', 'dsh_hud.log')).catch(() => {})
+      }
+      // 暂存 demo 由清单模块按路径安全校验后删除。
+      void this.cleanupSessionStagedDemos(install)
+    }
 
     const check = () => {
       attempts++
@@ -324,13 +577,13 @@ export class LiveService {
           this.playCfgCleanupTimer = setTimeout(check, 3000)
         } else if (seenRunning) {
           // CS2 曾运行过，现在已完全退出：彻底清理残留并还原官方纯净文件
-          void demoInjector.cleanAll(install).catch(() => {})
+          finish()
         } else if (attempts < maxWaitAttempts) {
           // CS2 仍在启动初始化过程中，继续等待，绝不在启动阶段过早删除 dsh-play.cfg
           this.playCfgCleanupTimer = setTimeout(check, 3000)
         } else {
           // 超时（用户取消启动或启动失败），执行保护性清理
-          void demoInjector.cleanAll(install).catch(() => {})
+          finish()
         }
       })
     }
@@ -339,12 +592,38 @@ export class LiveService {
     this.playCfgCleanupTimer = setTimeout(check, 5000)
   }
 
+  /** 清理本次会话登记的暂存 demo（只删清单内、staging 根目录下的副本） */
+  private async cleanupSessionStagedDemos(install: string): Promise<void> {
+    const paths = [...this.sessionStagedDemos]
+    this.sessionStagedDemos.clear()
+    if (paths.length === 0) return
+
+    const roots = stagingRootsForInstall(install)
+    for (const stagedPath of paths) {
+      try {
+        const result = await cleanupStagedDemo(stagedPath, roots)
+        if (process.env['DEBUG_LIVE'] === '1') {
+          if (result.deleted) {
+            console.log(`[live] 已清理暂存 demo：${stagedPath}`)
+          } else {
+            console.log(
+              `[live] 暂存 demo 未删除：${stagedPath}（${result.reason ?? 'unknown'}）`
+            )
+          }
+        }
+      } catch (err) {
+        console.warn('[live] 清理暂存 demo 失败', err)
+      }
+    }
+  }
+
   /** 一键启动/原生回放 */
   async launch(
     opts?: {
       toolsMode?: boolean
       playDemoPath?: string
-      voiceHud?: boolean
+      hudMode?: HudMode
+      muteHudMode?: MuteHudMode
       startTick?: number
       tvVoiceIndices?: { low: number; high: number }
     },
@@ -354,7 +633,9 @@ export class LiveService {
   ): Promise<LaunchResult> {
     const toolsMode = opts?.toolsMode ?? false
     const demoPath = opts?.playDemoPath
-    const voiceHud = !!opts?.voiceHud
+    const hudMode: HudMode = opts?.hudMode ?? 'addon'
+    const muteHudMode: MuteHudMode = opts?.muteHudMode === 'hide' ? 'hide' : 'badge'
+    const hudEnabled = hudMode !== 'off'
     const startTick = typeof opts?.startTick === 'number' && opts.startTick > 0 ? opts.startTick : undefined
     const extra: string[] = (userArgs ?? '').match(/\S+/g) ?? []
 
@@ -363,8 +644,12 @@ export class LiveService {
       // ① CS2 正在运行
       if (running) {
         if (this.status.vconsoleConnected) {
-          const name = await this.stageDemoForPlay(demoPath, installPath)
-          if (name) {
+          const install = await locateCs2Install(installPath ?? this.installPath)
+          const name = install ? await this.stageDemoForPlay(demoPath, install) : null
+          if (name && install) {
+            const stagedPath = join(install, 'game', 'csgo', name)
+            // CS2 已在运行：同样登记会话清理，退出后删除本次暂存副本。
+            this.scheduleSessionCleanup(install, [stagedPath])
             if (opts?.tvVoiceIndices) {
               this.sendCommand(`tv_listen_voice_indices ${opts.tvVoiceIndices.low}`)
               this.sendCommand(`tv_listen_voice_indices_h ${opts.tvVoiceIndices.high}`)
@@ -398,7 +683,7 @@ export class LiveService {
           await fs.access(exe)
 
           // 2.1 直连跳转模式 (toolsMode)：原生分辨率 + -tools -noassetbrowser，VConsole 远程控制
-          if (toolsMode && !voiceHud) {
+          if (toolsMode && !hudEnabled) {
             await demoInjector.cleanAll(install).catch(() => {})
             const name = await this.stageDemoForPlay(demoPath, install)
             if (!name) {
@@ -428,11 +713,11 @@ export class LiveService {
             }, 3000)
 
             setTimeout(() => void this.connect(), 1500)
-            this.scheduleSessionCleanup(install)
+            this.scheduleSessionCleanup(install, [join(install, 'game', 'csgo', name)], true)
             return { ok: true, url: '', direct: true, exe, demoFile: name, starting: true }
           }
 
-          // 2.2 普通原生模式或带 voiceHud：+exec dsh-play.cfg 秒播（完美/5E同款原生安全回放）
+          // 2.2 普通原生模式 / addon HUD / inject fallback：+exec dsh-play.cfg 秒播
           const staged = await this.stageDemoForPlayNoSpace(demoPath, install)
           if (!staged) {
             return {
@@ -441,13 +726,35 @@ export class LiveService {
               error: '无法准备 demo 文件（写入暂存目录失败）。请检查磁盘空间或 CS2 路径设置。'
             }
           }
-          // 游戏内语音 HUD：提取语音索引 → 会话 VPK → 部署 VPK + gameinfo.gi 注入
-          if (voiceHud) {
-            const err = await this.prepareVoiceHud(demoPath, install)
+          // 启动前只读检查：addon/off 不允许静默带着本项目注入残留启动。
+          // 这里不调用 cleanAll，避免原生/addon 模式在启动阶段修改 gameinfo.gi。
+          const safety = await demoInjector.inspect(install)
+          if (hudMode !== 'inject' && safety.activeInjection) {
+            return {
+              ok: false,
+              url: '',
+              error:
+                '检测到本项目注入残留（gameinfo.gi SearchPath 或 overrides VPK）。请先在 设置 → Steam 安全自检 执行“一键清理”，再启动。'
+            }
+          }
+          if (hudMode === 'addon') {
+            // 非侵入式：只写 game/csgo_addons/dsh_voice_hud/，不修改 gameinfo.gi
+            const err = await this.prepareVoiceHudAddon(
+              demoPath,
+              install,
+              opts?.tvVoiceIndices,
+              muteHudMode
+            )
             if (err) return { ok: false, url: '', error: err }
-          } else {
-            // 原生模式：启动前确保游戏目录处于纯净官方状态
-            await demoInjector.cleanAll(install).catch(() => {})
+          } else if (hudMode === 'inject') {
+            // 显式 fallback / 实验模式：部署 VPK + gameinfo.gi SearchPath
+            const err = await this.prepareVoiceHud(
+              demoPath,
+              install,
+              opts?.tvVoiceIndices,
+              muteHudMode
+            )
+            if (err) return { ok: false, url: '', error: err }
           }
           // 写播放 cfg（完美平台同款原生机制；退出后自动清理）
           const cfgFile = join(install, 'game', 'csgo', 'cfg', 'dsh-play.cfg')
@@ -468,10 +775,24 @@ export class LiveService {
 
           const tickArgs = startTick ? ['+demo_gototick', String(startTick)] : []
 
-          // 直接启动 cs2.exe 传参（完美/5E同款：cs2.exe 原生接收 +exec 启动参数秒进 Demo，不走 steam.exe 避免参数被吞）
-          const playArgs: string[] = voiceHud
-            ? ['-insecure', '+exec', 'dsh-play.cfg', '+cl_demo_predict', '0', '-novid', '-consolelog', 'dsh_hud.log', ...tickArgs, ...extra]
-            : ['+exec', 'dsh-play.cfg', '+cl_demo_predict', '0', '-novid', ...tickArgs, ...extra]
+          // 直接启动 cs2.exe 传参（完美/5E同款：cs2.exe 原生接收 +exec 启动参数秒进 Demo）
+          // -insecure 仅影响本次播放会话，不修改任何游戏文件；addon 模式额外加 -addon。
+          const hudArgs =
+            hudMode === 'inject'
+              ? ['-insecure', '-consolelog', 'dsh_hud.log']
+              : hudMode === 'addon'
+                ? ['-insecure', '-addon', VOICE_HUD_ADDON]
+                : []
+          const playArgs: string[] = [
+            ...hudArgs,
+            '+exec',
+            'dsh-play.cfg',
+            '+cl_demo_predict',
+            '0',
+            '-novid',
+            ...tickArgs,
+            ...extra
+          ]
 
           const child = spawn(exe, playArgs, {
             cwd: dirname(exe),
@@ -481,10 +802,22 @@ export class LiveService {
           })
           child.on('error', () => {})
           child.unref()
-          this.scheduleSessionCleanup(install)
+          this.scheduleSessionCleanup(install, [staged], hudMode === 'inject')
           return { ok: true, url: '', direct: true, exe, demoFile: staged }
-        } catch {
-          /* 回退 steam:// */
+        } catch (err) {
+          if (hudMode !== 'off') {
+            const detail = err instanceof Error ? err.message : String(err)
+            return {
+              ok: false,
+              url: '',
+              error: `语音 HUD 启动失败：${detail}。${
+                hudMode === 'inject'
+                  ? 'Inject 可能已部分部署，请在 设置 → Steam 安全自检 执行“一键清理”。'
+                  : '未修改 gameinfo.gi；可重试或切换 Inject 实验模式。'
+              }`
+            }
+          }
+          /* 原生模式回退 steam:// */
         }
       }
 
@@ -520,11 +853,20 @@ export class LiveService {
             void fs.unlink(join(install, 'game', 'bin', 'win64', 'steam_appid.txt')).catch(() => {})
           }, 3000)
           setTimeout(() => void this.connect(), 1500)
-          this.scheduleSessionCleanup(install)
+          this.scheduleSessionCleanup(install, [], true)
           return { ok: true, url: '', direct: true, exe }
         }
 
-        await demoInjector.cleanAll(install).catch(() => {})
+        // 原生启动不修改游戏文件；若检测到本项目注入残留，明确提示用户先清理。
+        const safety = await demoInjector.inspect(install)
+        if (safety.activeInjection) {
+          return {
+            ok: false,
+            url: '',
+            error:
+              '检测到本项目注入残留（gameinfo.gi SearchPath 或 overrides VPK）。请先在 设置 → Steam 安全自检 执行“一键清理”，再启动。'
+          }
+        }
         const args: string[] = ['-novid', ...extra]
         const child = spawn(exe, args, {
           cwd: dirname(exe),
@@ -534,7 +876,7 @@ export class LiveService {
         })
         child.on('error', () => {})
         child.unref()
-        this.scheduleSessionCleanup(install)
+        this.scheduleSessionCleanup(install, [], false)
         return { ok: true, url: '', direct: true, exe }
       } catch {
         /* noop */
@@ -561,7 +903,49 @@ export class LiveService {
     return locateCs2Install(this.installPath)
   }
 
-  /** 一键清理所有注入与临时文件，将 CS2 游戏文件恢复官方纯净状态（保障 VAC 官匹安全） */
+  /** Steam 安全自检（只读）：gameinfo dsh 行、备份、本项目 VPK、官方纯净判定。 */
+  async getSteamSafety(): Promise<SteamSafetyReport> {
+    const running = await isCs2Running()
+    const install = await locateCs2Install(this.installPath)
+    if (!install) {
+      return {
+        installPath: null,
+        gameinfoExists: false,
+        gameinfoHasDsh: false,
+        backupExists: false,
+        projectVpks: [],
+        overridesHasProjectVpk: false,
+        addonPresent: false,
+        officialClean: false,
+        activeInjection: false,
+        cs2Running: running,
+        error: '未找到 CS2 安装目录，请在设置中指定有效路径。'
+      }
+    }
+    try {
+      const report = await demoInjector.inspect(install)
+      return { ...report, cs2Running: running }
+    } catch (err) {
+      return {
+        installPath: install,
+        gameinfoExists: false,
+        gameinfoHasDsh: false,
+        backupExists: false,
+        projectVpks: [],
+        overridesHasProjectVpk: false,
+        addonPresent: false,
+        officialClean: false,
+        activeInjection: false,
+        cs2Running: running,
+        error: err instanceof Error ? err.message : String(err)
+      }
+    }
+  }
+
+  /**
+   * 一键清理本项目注入残留（SearchPath 行/本项目 VPK/本项目备份）。
+   * 不覆盖 gameinfo.gi、不删除第三方 VPK、不碰 steam_appid.txt/_toolsettings/pak01/bin。
+   */
   async restoreCleanFiles(): Promise<{ ok: boolean; message: string }> {
     const install = await locateCs2Install(this.installPath)
     if (!install) {
@@ -569,11 +953,26 @@ export class LiveService {
     }
     const running = await isCs2Running()
     if (running) {
-      return { ok: false, message: 'CS2 正在运行中，请先退出游戏后再执行还原。' }
+      return { ok: false, message: 'CS2 正在运行中，请先退出游戏后再执行清理。' }
     }
     const err = await demoInjector.cleanAll(install)
     if (err) return { ok: false, message: err }
-    return { ok: true, message: '游戏文件已彻底还原为 Valve 官方纯净状态，可安全进行官匹。' }
+    const report = await demoInjector.inspect(install)
+    if (report.activeInjection) {
+      return {
+        ok: false,
+        message:
+          '已移除本项目 SearchPath/VPK/备份，但仍检测到其他 dsh 注入行；未改动第三方内容，请手动检查 gameinfo.gi。'
+      }
+    }
+    const addonNote = report.addonPresent ? ' addon 目录作为额外内容保留，未改动官方文件。' : ''
+    return {
+      ok: true,
+      message:
+        (report.officialClean
+          ? '已清理本项目注入残留，gameinfo.gi 未覆盖、未改动官方其他内容。'
+          : '已清理本项目 SearchPath/VPK/备份；gameinfo.gi 缺失或其他残留未自动处理。') + addonNote
+    }
   }
 
   getStatus(): LiveStatus {
@@ -586,6 +985,22 @@ export class LiveService {
 }
 
 // ─── 工具 ──────────────────────────────────────────────────────────────────
+
+/** 递归复制目录内容（不删除目标目录中已有文件，避免误删用户/第三方内容）。 */
+async function copyDirContents(src: string, dest: string): Promise<void> {
+  await fs.mkdir(dest, { recursive: true })
+  const entries = await fs.readdir(src, { withFileTypes: true })
+  for (const entry of entries) {
+    const from = join(src, entry.name)
+    const to = join(dest, entry.name)
+    if (entry.isDirectory()) {
+      await copyDirContents(from, to)
+    } else if (entry.isFile()) {
+      await fs.mkdir(dirname(to), { recursive: true })
+      await fs.copyFile(from, to)
+    }
+  }
+}
 
 function runCmd(cmd: string, args: string[]): Promise<string> {
   return new Promise((resolve) => {

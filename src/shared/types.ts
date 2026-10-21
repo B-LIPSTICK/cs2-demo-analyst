@@ -281,6 +281,41 @@ export interface LaunchResult {
 
 export type LocalWhisperModel = 'base' | 'small' | 'medium'
 
+/** 游戏内语音 HUD 的加载方式：addon 为非侵入式额外内容；inject 为实验性 VPK 注入。 */
+export type HudMode = 'addon' | 'inject' | 'off'
+
+/** 游戏内 HUD 中静音选手的显示方式：badge=显示禁言标志，hide=完全隐藏说话者。 */
+export type MuteHudMode = 'hide' | 'badge'
+
+/** Steam 安全自检结果（只读检查，不修改游戏文件）。 */
+export interface SteamSafetyReport {
+  /** 实际定位到的 CS2 安装根目录；未找到时为 null */
+  installPath: string | null
+  /** gameinfo.gi 是否存在 */
+  gameinfoExists: boolean
+  /** gameinfo.gi 是否含本项目或其他 dsh SearchPath 行 */
+  gameinfoHasDsh: boolean
+  /** gameinfo.gi.dsh_inject.bak 是否残留 */
+  backupExists: boolean
+  /** overrides 下检测到的本项目 VPK 文件名 */
+  projectVpks: string[]
+  /** overrides 是否含本项目 VPK */
+  overridesHasProjectVpk: boolean
+  /** game/csgo_addons/dsh_voice_hud 是否存在（额外内容，不计入注入残留） */
+  addonPresent: boolean
+  addonDir?: string
+  /** addon 关键文件检查（只读） */
+  addonFiles?: { path: string; exists: boolean; size: number }[]
+  /** addon 关键文件是否齐全 */
+  addonComplete?: boolean
+  /** 没有任何本项目注入残留（SearchPath/VPK/备份）；addon 额外目录不影响该判定 */
+  officialClean: boolean
+  /** 当前启动是否会实际加载注入内容（gameinfo 含 dsh 行或 overrides 含本项目 VPK） */
+  activeInjection: boolean
+  cs2Running: boolean
+  error?: string
+}
+
 export interface Settings {
   language: 'zh' | 'en'
   libraryRoots: string[]
@@ -310,8 +345,8 @@ export interface Settings {
     launchArgs?: string
     playMode?: 'tools' | 'native'
     playResolution?: string
-    /** 游戏内语音 HUD：VPK 注入 Panorama，普通模式播放时在 CS2 画面内显示说话者 */
-    voiceHud?: boolean
+    /** 游戏内语音 HUD 模式：默认 addon（非侵入式额外内容），inject 为实验性 VPK 注入，off 关闭 */
+    hudMode?: HudMode
   }
   overlay: {
     enabled: boolean
@@ -324,6 +359,8 @@ export interface Settings {
     mutedPlayers?: string[]
     /** 悬浮层是否显示静音选手的闭麦头像（true: 显示闭麦图标头像; false: 完全不显示静音选手） */
     showMutedSpeakers?: boolean
+    /** 游戏内 HUD 中静音选手的显示方式；静态 per-launch，播放中修改下次启动生效 */
+    muteHudMode?: MuteHudMode
   }
 }
 
@@ -356,7 +393,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cs2: {
     launchArgs: '',
     playMode: 'native',
-    voiceHud: false
+    hudMode: 'addon'
   },
   overlay: {
     enabled: false,
@@ -364,7 +401,8 @@ export const DEFAULT_SETTINGS: Settings = {
     clickThrough: false,
     scale: 1,
     mutedPlayers: [],
-    showMutedSpeakers: true
+    showMutedSpeakers: true,
+    muteHudMode: 'badge'
   }
 }
 
@@ -417,7 +455,11 @@ export interface Api {
     ask: (
       id: string,
       question: string,
-      history?: AiChatMessage[]
+      history?: AiChatMessage[],
+      /** 会话绑定：旧调用可省略；新调用由 AiPage 生成并回传 */
+      sessionId?: string,
+      /** 单次请求 id：用于过滤切换会话后到达的旧流式事件 */
+      requestId?: string
     ) => Promise<{ started: boolean; error?: string }>
     cancel: () => Promise<void>
     listModels: () => Promise<string[]>
@@ -439,13 +481,16 @@ export interface Api {
     launch: (opts?: {
       toolsMode?: boolean
       playDemoPath?: string
-      voiceHud?: boolean
+      hudMode?: HudMode
+      muteHudMode?: MuteHudMode
       startTick?: number
       tvVoiceIndices?: { low: number; high: number }
     }) => Promise<LaunchResult>
     setVoiceMask: (mask: { low: number; high: number }) => Promise<{ sent: boolean; cmd: string }>
     installGsi: () => Promise<string | null>
     locateInstall: () => Promise<string | null>
+    /** 只读 Steam 安全自检：gameinfo/备份/本项目 VPK/当前是否纯净 */
+    steamSafety: () => Promise<SteamSafetyReport>
     restoreCleanFiles: () => Promise<{ ok: boolean; message: string }>
   }
   overlay: {
@@ -468,6 +513,8 @@ export interface Api {
     pickDirectory: () => Promise<string | null>
     /** 用系统浏览器打开外部链接（更新下载页等） */
     openUrl: (url: string) => Promise<void>
+    /** 应用数据目录（userData，ErrorBoundary 打开数据目录用） */
+    dataDir: () => Promise<string>
   }
 }
 
@@ -479,16 +526,18 @@ export type MainEvent =
   | { type: 'library:updated'; demos: DemoMeta[] }
   | { type: 'library:item'; id: string; meta: DemoMeta }
   | { type: 'library:progress'; id: string; stage: string; progress: number }
+  | { type: 'library:scan'; phase: 'walk' | 'zip' | 'done'; done: number; total: number }
   | { type: 'library:detail'; id: string; detail: DemoDetail | null }
+  | { type: 'library:error'; message: string; backupPath?: string }
   | { type: 'asr:done'; demoId: string; segmentsCount: number }
   | { type: 'live:status'; status: LiveStatus }
   | { type: 'live:console'; channel: string; text: string }
   | { type: 'gsi:state'; state: GsiGameState }
   | { type: 'asr:progress'; demoId: string; stage: string; done: number; total: number; message?: string }
   | { type: 'asr:segment'; demoId: string; segment: VoiceSegment }
-  | { type: 'ai:delta'; demoId: string; chunk: string }
-  | { type: 'ai:done'; demoId: string; answer: string }
-  | { type: 'ai:error'; demoId: string; error: string }
+  | { type: 'ai:delta'; demoId: string; chunk: string; sessionId?: string; requestId: string }
+  | { type: 'ai:done'; demoId: string; answer: string; sessionId?: string; requestId: string }
+  | { type: 'ai:error'; demoId: string; error: string; sessionId?: string; requestId: string }
   | { type: 'engine:progress'; what: string; received: number; total: number }
   | { type: 'overlay:state'; state: OverlayState }
   | { type: 'voice:detected'; id: string; hasVoice: boolean; voiceSec: number }
@@ -557,3 +606,4 @@ export interface JobProgress {
   total: number
   message?: string
 }
+

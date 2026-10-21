@@ -2,6 +2,7 @@
  * 设置持久化（userData/settings.json，原子写）
  */
 import { app } from 'electron'
+import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import type { Settings } from '@shared/types'
@@ -50,12 +51,34 @@ export async function getSettings(): Promise<Settings> {
   return cache
 }
 
-export async function updateSettings(patch: Partial<Settings>): Promise<Settings> {
-  const cur = await getSettings()
-  cache = deepMerge(cur, patch)
-  const tmp = settingsPath() + '.tmp'
-  await fs.mkdir(join(app.getPath('userData')), { recursive: true })
-  await fs.writeFile(tmp, JSON.stringify(cache, null, 2), 'utf-8')
-  await fs.rename(tmp, settingsPath())
-  return cache
+let writeChain: Promise<void> = Promise.resolve()
+
+/**
+ * 串行化设置写入：所有更新排队执行，避免快速连续 patch 乱序或互相覆盖。
+ * 队列尾部吞掉错误，保证一次失败不会让后续写入全部被拒绝。
+ */
+export function updateSettings(patch: Partial<Settings>): Promise<Settings> {
+  const run = writeChain.then(async () => {
+    const cur = await getSettings()
+    const next = deepMerge(cur, patch)
+    const dir = app.getPath('userData')
+    await fs.mkdir(dir, { recursive: true })
+    // 每次写使用唯一临时文件，避免并发或残留 tmp 冲突
+    const tmp = join(dir, `settings.${process.pid}.${randomUUID()}.tmp`)
+    try {
+      await fs.writeFile(tmp, JSON.stringify(next, null, 2), 'utf-8')
+      await fs.rename(tmp, settingsPath())
+    } catch (err) {
+      // 失败时清理临时文件并向上抛出；cache 保持上一次成功写入的状态
+      await fs.unlink(tmp).catch(() => {})
+      throw err
+    }
+    cache = next
+    return next
+  })
+  writeChain = run.then(
+    () => undefined,
+    () => undefined
+  )
+  return run
 }

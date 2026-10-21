@@ -20,17 +20,19 @@ export function NavRail({
 }) {
   const t = useTKey()
   return (
-    <nav className="navrail">
+    <nav className="navrail" aria-label="主导航">
       {ITEMS.map((it) => (
-        <div
+        <button
           key={it.id}
+          type="button"
           className={`nav-item ${page === it.id ? 'active' : ''}`}
           onClick={() => onNavigate(it.id)}
+          aria-current={page === it.id ? 'page' : undefined}
         >
           {it.icon({ size: 15 })}
           <span>{t(`nav.${it.id}`)}</span>
           {it.tagKey && <span className="tag">{t(it.tagKey)}</span>}
-        </div>
+        </button>
       ))}
       <div className="nav-foot">
         <button

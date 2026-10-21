@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   Btn,
   CustomSelect,
@@ -13,13 +13,22 @@ import {
   fmtTime,
   useToast
 } from '@/components/ui'
-import { useTKey } from '@/i18n'
+import { useT, useTKey, type Lang } from '@/i18n'
+import { formatMapName } from '@/utils/format'
 import type { DemoMeta } from '@shared/types'
 import { DemoDetailPage } from './DemoDetailPage'
 import { fmtDate } from '@/components/ui'
 
+/** Enter / Space 激活自定义可点击容器；嵌套控件自身处理时直接忽略。 */
+function activateOnKey(e: ReactKeyboardEvent<Element>, action: () => void) {
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+    e.preventDefault()
+    action()
+  }
+}
+
 /** 格式化目录展示标签（识别常用对战平台与多层级路径，避免只显示 demo） */
-export function formatRootLabel(rootPath: string): {
+export function formatRootLabel(rootPath: string, lang: Lang = 'zh'): {
   title: string
   subtitle: string
   badge?: string
@@ -28,7 +37,7 @@ export function formatRootLabel(rootPath: string): {
   const norm = rootPath.replace(/\\/g, '/').toLowerCase()
   if (norm.includes('wmpvp/demo') || norm.includes('wmpvp\\demo') || norm.includes('/wmpvp')) {
     return {
-      title: '完美世界对战平台',
+      title: lang === 'en' ? 'Perfect World Arena' : '完美世界对战平台',
       subtitle: rootPath,
       badge: 'Wmpvp',
       badgeClass: 'root-badge-wmpvp'
@@ -36,7 +45,7 @@ export function formatRootLabel(rootPath: string): {
   }
   if (norm.includes('5edemocache') || norm.includes('5eclient')) {
     return {
-      title: '5E 对战平台',
+      title: lang === 'en' ? '5E Arena' : '5E 对战平台',
       subtitle: rootPath,
       badge: '5EPlay',
       badgeClass: 'root-badge-5e'
@@ -48,7 +57,7 @@ export function formatRootLabel(rootPath: string): {
     norm.includes('counter-strike global offensive')
   ) {
     return {
-      title: 'CS2 官方录像',
+      title: lang === 'en' ? 'CS2 Official Replay' : 'CS2 官方录像',
       subtitle: rootPath,
       badge: 'Steam',
       badgeClass: 'root-badge-steam'
@@ -59,7 +68,7 @@ export function formatRootLabel(rootPath: string): {
   return {
     title: last2,
     subtitle: rootPath,
-    badge: 'Folder',
+    badge: lang === 'en' ? 'Folder' : '文件夹',
     badgeClass: 'root-badge-custom'
   }
 }
@@ -69,7 +78,7 @@ function LibraryPageInner({
 }: {
   onOpenDemo: (id: string) => void
 }) {
-  const t = useTKey()
+  const { t, tf, lang } = useT()
   const toast = useToast()
   const [demos, setDemos] = useState<DemoMeta[]>([])
   const [query, setQuery] = useState('')
@@ -90,16 +99,21 @@ function LibraryPageInner({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [removeModal, setRemoveModal] = useState<{ ids: string[] } | null>(null)
   const [progress, setProgress] = useState<Record<string, number>>({})
+  const [scanning, setScanning] = useState<{
+    phase: 'walk' | 'zip' | 'done'
+    done: number
+    total: number
+  } | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const list = await window.api.library.list()
       setDemos(list)
     } catch {
       toast.push('library load failed', 'err')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [toast])
 
@@ -119,6 +133,9 @@ function LibraryPageInner({
       // 只更新进度数据（单卡片 Ring 展示），不动整个列表
       setProgress((p) => ({ ...p, [e.id]: typeof e.progress === 'number' ? e.progress : 0 }))
     })
+    const offScan = window.api.onEvent('library:scan', (e) => {
+      setScanning(e.phase === 'done' ? null : { phase: e.phase, done: e.done, total: e.total })
+    })
     const offItem = window.api.onEvent('library:item', (e) => {
       // 单条目更新：只替换该 demo 的卡片，清掉其进度
       setProgress((p) => {
@@ -136,6 +153,7 @@ function LibraryPageInner({
       off()
       offLib()
       offProg()
+      offScan()
       offItem()
       offSettings()
     }
@@ -186,13 +204,35 @@ function LibraryPageInner({
     }
   }
 
+  /** 点击解析后立即把卡片切到解析态，避免等待主进程第一条 progress 才出现动画 */
+  const markParsing = useCallback((ids: string[]) => {
+    if (ids.length === 0) return
+    const idSet = new Set(ids)
+    setDemos((ds) =>
+      ds.map((d) =>
+        idSet.has(d.id) && d.status !== 'parsing'
+          ? { ...d, status: 'parsing' as const, error: undefined }
+          : d
+      )
+    )
+    setProgress((p) => {
+      const next = { ...p }
+      for (const id of ids) if (next[id] === undefined) next[id] = 0
+      return next
+    })
+  }, [])
+
   const onRescan = async () => {
+    if (scanning) return
+    setScanning({ phase: 'walk', done: 0, total: roots.length })
     try {
       await window.api.library.rescan()
-      await load()
+      await load(true)
       toast.push(t('library.rescanDone'))
     } catch {
       toast.push(t('common.error'), 'err')
+    } finally {
+      setScanning(null)
     }
   }
 
@@ -288,7 +328,18 @@ function LibraryPageInner({
     return () => document.removeEventListener('click', close)
   }, [rootOpen])
 
+  // 删除确认弹窗支持 Esc 关闭
+  useEffect(() => {
+    if (!removeModal) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setRemoveModal(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [removeModal])
+
   const pendingCount = demos.filter((d) => d.status === 'pending').length
+  const parsingCount = demos.filter((d) => d.status === 'parsing').length
 
   const filtered = useMemo(() => {
     let list = demos
@@ -347,13 +398,16 @@ function LibraryPageInner({
             <>
               <div className="root-select" onClick={(e) => e.stopPropagation()}>
                 <button
+                  type="button"
                   className={`root-select-btn ${rootOpen ? 'active' : ''}`}
                   onClick={() => setRootOpen((v) => !v)}
-                  title={rootFilter ? formatRootLabel(rootFilter).subtitle : t('library.allRoots')}
+                  aria-expanded={rootOpen}
+                  aria-haspopup="menu"
+                  title={rootFilter ? formatRootLabel(rootFilter, lang).subtitle : t('library.allRoots')}
                 >
                   <span style={{ fontSize: 13, flex: 'none' }}>📁</span>
                   <span className="grow" style={{ textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
-                    {rootFilter ? formatRootLabel(rootFilter).title : t('library.allRoots')}
+                    {rootFilter ? formatRootLabel(rootFilter, lang).title : t('library.allRoots')}
                   </span>
                   <span style={{ color: 'var(--text-2)', fontSize: 10, flex: 'none' }}>▾</span>
                 </button>
@@ -362,9 +416,19 @@ function LibraryPageInner({
                     {/* 全部目录 */}
                     <div
                       className={`root-menu-item ${rootFilter === '' ? 'on' : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      aria-current={rootFilter === '' ? 'true' : undefined}
                       onClick={() => {
                         setRootFilter('')
                         setRootOpen(false)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return
+                        activateOnKey(e, () => {
+                          setRootFilter('')
+                          setRootOpen(false)
+                        })
                       }}
                     >
                       <span style={{ fontSize: 14 }}>🌐</span>
@@ -381,7 +445,7 @@ function LibraryPageInner({
 
                     {/* 平台/自定义目录列表 */}
                     {roots.map((r) => {
-                      const info = formatRootLabel(r)
+                      const info = formatRootLabel(r, lang)
                       const rf = r.replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '')
                       const count = demos.filter((d) => {
                         const p = d.path.replace(/\\/g, '/').toLowerCase()
@@ -393,9 +457,19 @@ function LibraryPageInner({
                         <div
                           key={r}
                           className={`root-menu-item ${isCur ? 'on' : ''}`}
+                          role="button"
+                          tabIndex={0}
+                          aria-current={isCur ? 'true' : undefined}
                           onClick={() => {
                             setRootFilter(r)
                             setRootOpen(false)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.target !== e.currentTarget) return
+                            activateOnKey(e, () => {
+                              setRootFilter(r)
+                              setRootOpen(false)
+                            })
                           }}
                         >
                           {info.badge && (
@@ -406,7 +480,7 @@ function LibraryPageInner({
                           <div className="root-item-body">
                             <div className="root-item-title">
                               <span>{info.title}</span>
-                              <span className="muted" style={{ fontSize: 10.5, fontWeight: 'normal' }}>
+                              <span className="muted" style={{ fontSize: 11.5, fontWeight: 'normal' }}>
                                 ({count})
                               </span>
                             </div>
@@ -415,8 +489,10 @@ function LibraryPageInner({
                             </div>
                           </div>
                           <button
+                            type="button"
                             className="root-del-btn"
                             title={t('library.removeDir')}
+                            aria-label={`${t('library.removeDir')}：${info.title}`}
                             onClick={(e) => {
                               e.stopPropagation()
                               removeRootAt(r)
@@ -433,6 +509,7 @@ function LibraryPageInner({
                     {/* 底部动作栏：自动检测平台目录 + 手动添加目录 */}
                     <div className="root-menu-actions">
                       <button
+                        type="button"
                         className="root-menu-action highlight"
                         onClick={(e) => {
                           e.stopPropagation()
@@ -444,6 +521,7 @@ function LibraryPageInner({
                         <span>{t('library.autoDetect')}</span>
                       </button>
                       <button
+                        type="button"
                         className="root-menu-action"
                         onClick={(e) => {
                           e.stopPropagation()
@@ -464,6 +542,7 @@ function LibraryPageInner({
                   className="input"
                   style={{ width: 160 }}
                   placeholder={t('common.search')}
+                  aria-label={t('common.search')}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
@@ -481,7 +560,7 @@ function LibraryPageInner({
                 <IcPlus size={13} />
                 {t('library.addRoot')}
               </Btn>
-              <Btn variant="secondary" onClick={onRescan}>
+              <Btn variant="secondary" onClick={onRescan} disabled={!!scanning}>
                 <IcRefresh size={13} />
                 {t('library.rescan')}
               </Btn>
@@ -489,12 +568,34 @@ function LibraryPageInner({
                 <Btn
                   variant="accent"
                   onClick={async () => {
-                    await window.api.library.parseAll()
-                    toast.push(t('library.parseStart'))
+                    const ids = demos
+                      .filter((d) => d.status === 'pending' || d.status === 'error')
+                      .map((d) => d.id)
+                    markParsing(ids)
+                    try {
+                      await window.api.library.parseAll()
+                      toast.push(t('library.parseStart'))
+                    } catch {
+                      toast.push(t('common.error'), 'err')
+                    }
                   }}
                 >
                   {t('library.parseAll')}（{pendingCount}）
                 </Btn>
+              )}
+              {scanning && (
+                <span className="scan-status" role="status" aria-live="polite">
+                  <span className="spinner" />
+                  {scanning.phase === 'walk'
+                    ? t('library.scanning')
+                    : `${t('library.scanZips')} ${scanning.done}/${scanning.total}`}
+                </span>
+              )}
+              {parsingCount > 0 && (
+                <span className="parse-status" role="status" aria-live="polite">
+                  <span className="spinner" />
+                  {tf('library.parsingCount', { n: parsingCount })}
+                </span>
               )}
               <Btn variant="secondary" onClick={() => window.api.favorites.reveal()}>
                 ★ {t('library.favFolder')}
@@ -529,7 +630,7 @@ function LibraryPageInner({
       ) : filtered.length === 0 ? (
         <Empty
           ghost="NO DEMOS"
-          hint={query ? t('common.search') : (rootFilter ? `当前目录下暂无 Demo（${formatRootLabel(rootFilter).title}）` : '')}
+          hint={query ? t('common.search') : rootFilter ? tf('library.emptyInRoot', { root: formatRootLabel(rootFilter, lang).title }) : ''}
         >
           {rootFilter && (
             <Btn variant="ghost" size="sm" onClick={() => setRootFilter('')} style={{ marginTop: 8 }}>
@@ -558,11 +659,15 @@ function LibraryPageInner({
               onToggleFav={() => toggleFav(d.id)}
               onRemoveMenu={() => setRemoveModal({ ids: [d.id] })}
               onParse={() => {
-                window.api.library.parse(d.id)
+                markParsing([d.id])
+                void window.api.library.parse(d.id).catch(() => toast.push(t('common.error'), 'err'))
                 toast.push(t('library.parseStart'))
               }}
               onReparse={() => {
-                window.api.library.parse(d.id, true)
+                markParsing([d.id])
+                void window.api.library
+                  .parse(d.id, true)
+                  .catch(() => toast.push(t('common.error'), 'err'))
                 toast.push(t('library.reparseStart'))
               }}
             />
@@ -571,7 +676,7 @@ function LibraryPageInner({
       )}
 
       <div style={{ marginTop: 18 }}>
-        <span className="muted" style={{ fontSize: 11 }}>
+        <span className="muted" style={{ fontSize: 11.5 }}>
           {t('library.mmNoVoice')}
         </span>
       </div>
@@ -579,13 +684,20 @@ function LibraryPageInner({
       {/* 删除确认弹窗 */}
       {removeModal && (
         <div className="modal-overlay" onClick={() => setRemoveModal(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">{t('library.removeTitle')}</div>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-title" id="remove-modal-title">{t('library.removeTitle')}</div>
             <div className="modal-body">
               {t('library.removeBody').replace('{n}', String(removeModal.ids.length))}
             </div>
             <div className="modal-actions">
               <button
+                type="button"
                 className="modal-choice"
                 onClick={() => confirmRemove(removeModal.ids, false)}
               >
@@ -593,6 +705,7 @@ function LibraryPageInner({
                 <span className="modal-choice-d">{t('library.removeOnlyHint')}</span>
               </button>
               <button
+                type="button"
                 className="modal-choice danger"
                 onClick={() => confirmRemove(removeModal.ids, true)}
               >
@@ -697,14 +810,22 @@ function DemoCard({
   const toast = useToast()
   const [menuOpen, setMenuOpen] = useState(false)
   // 未解析时用文件名推断地图（已解析用真实 mapName）
-  const mapName = demo.mapName ?? inferMap(demo.fileName)
+  const rawMapName = demo.mapName ?? inferMap(demo.fileName)
+  const mapName = rawMapName ? formatMapName(rawMapName) : undefined
 
-  // 点击外部关闭菜单
+  // 点击外部或按 Esc 关闭菜单
   useEffect(() => {
     if (!menuOpen) return
     const close = () => setMenuOpen(false)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
     document.addEventListener('click', close)
-    return () => document.removeEventListener('click', close)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('click', close)
+      window.removeEventListener('keydown', onKey)
+    }
   }, [menuOpen])
 
   const voiceTag = (() => {
@@ -721,9 +842,10 @@ function DemoCard({
     return (
       <Tag tone="ghost">
         {t('library.voicePending')}
-        <span
-          className="muted"
-          style={{ cursor: 'pointer', marginLeft: 4, textDecoration: 'underline dotted' }}
+        <button
+          type="button"
+          className="voice-scan-btn"
+          aria-label={t('library.voiceScan')}
           onClick={async (e) => {
             e.stopPropagation()
             const r = await window.api.voice.detect(demo.id)
@@ -731,7 +853,7 @@ function DemoCard({
           }}
         >
           {t('library.voiceScan')}
-        </span>
+        </button>
       </Tag>
     )
   })()
@@ -740,6 +862,10 @@ function DemoCard({
     <article
       className={`card ${selected ? 'selected' : ''}`}
       style={{ ['--i' as string]: index } as React.CSSProperties}
+      role="button"
+      tabIndex={0}
+      aria-label={selectMode ? `${selected ? '取消选择' : '选择'} ${demo.fileName}` : `打开 ${demo.fileName} 详情`}
+      aria-pressed={selectMode ? selected : undefined}
       onClick={(e) => {
         // Ctrl/⌘ 点击或选择模式 → 切换选中；普通点击 → 打开详情
         if (e.ctrlKey || e.metaKey || selectMode) {
@@ -748,6 +874,14 @@ function DemoCard({
         } else {
           onOpen()
         }
+      }}
+      onKeyDown={(e) => {
+        // 内部菜单 / 麦克风 / 播放按钮自行处理键盘，卡片只在自身聚焦时响应。
+        if (e.target !== e.currentTarget) return
+        activateOnKey(e, () => {
+          if (selectMode) onToggleSelect()
+          else onOpen()
+        })
       }}
     >
       {/* 选择模式：左上角勾选 */}
@@ -768,7 +902,11 @@ function DemoCard({
         {!selectMode && (
           <div className="card-menu-wrap">
             <button
+              type="button"
               className="card-menu-btn"
+              aria-label="更多操作"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
               onClick={(e) => {
                 e.stopPropagation()
                 setMenuOpen((v) => !v)
@@ -777,8 +915,10 @@ function DemoCard({
               ⋯
             </button>
             {menuOpen && (
-              <div className="card-menu" onClick={(e) => e.stopPropagation()}>
+              <div className="card-menu" role="menu" aria-label="Demo 操作" onClick={(e) => e.stopPropagation()}>
                 <button
+                  type="button"
+                  role="menuitem"
                   className="card-menu-item"
                   onClick={() => {
                     onToggleFav()
@@ -789,6 +929,8 @@ function DemoCard({
                 </button>
                 {demo.status === 'ready' && (
                   <button
+                    type="button"
+                    role="menuitem"
                     className="card-menu-item"
                     onClick={() => {
                       onReparse()
@@ -799,6 +941,8 @@ function DemoCard({
                   </button>
                 )}
                 <button
+                  type="button"
+                  role="menuitem"
                   className="card-menu-item danger"
                   onClick={() => {
                     onRemoveMenu()
@@ -840,7 +984,11 @@ function DemoCard({
       {(demo.status === 'parsing' || demo.status === 'pending') && (
         <div className="status-cover">
           {progress !== undefined || demo.status === 'parsing' ? (
-            <Ring pct={Math.max(0.03, Math.min(0.99, progress ?? 0.03))} label={`${Math.round((progress ?? 0.03) * 100)}%`} />
+            <Ring
+              pct={Math.max(0.03, Math.min(0.99, progress ?? 0.03))}
+              label={progress !== undefined && progress > 0 ? `${Math.round(progress * 100)}%` : '…'}
+              indeterminate={progress === undefined || progress <= 0}
+            />
           ) : (
             <Btn
               size="sm"

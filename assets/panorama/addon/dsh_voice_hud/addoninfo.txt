@@ -1,0 +1,6 @@
+"AddonInfo"
+{
+	"IsPlayable"	"0"
+	"IsTemplate"	"0"
+	"HideInTools"	"1"
+}

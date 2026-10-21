@@ -1,5 +1,62 @@
 # progress.md — 会话日志
 
+## 本轮三十四（修复 Shift+F2 原生 Demo UI 打不开：用当前 Valve 布局重建 HUD 覆盖层）✅
+- **根因**：项目 `huddemocontroller.xml` 基于 2026-08-24 的旧 Valve 布局，缺少当前 CS2（2026-10-16 build）脚本引用的 `PlayerList`、`RoundMenu`、`PlayerControls`、`CameraButton`、`message_arrow` 等节点；原生 `HudDemoController` 初始化失败，Shift+F2 进度条无法打开。这正是审查 F-01。
+- **修复**：用自写 VPK 解析器从当前 `game/csgo/pak01_dir.vpk` 提取 `huddemocontroller.vxml_c`/`.vts_c`/`.vcss_c`，用 Source2Viewer 20.1 反编译成 XML；以当前 Valve 布局为基准，仅追加 `dsh_voice` 样式/脚本、`DshSpeakingRow` snippet 和 `DshVoiceDock`/`DshVoiceList`，保留全部原生节点。
+- **验证**：重新编译静态 VPK（24,158B）；用 VRF 解包反编译确认包含 `PlayerList`、`RoundMenu`、`PlayerControls`、`CameraButton`、`message_arrow`、`DshVoiceDock`、`DshVoiceList`。新 VPK 已复制到 `dist/win-unpacked/resources/panorama/`，应用已重启。
+- **注意**：当前 CS2 是旧 VPK 启动的，必须完全退出后通过应用重新播放；便携 zip 尚未重新打包（等测试通过后再 dist:zip）。
+
+## 本轮三十三（按用户要求恢复 Inject 旧功能）✅
+- 用户确认“退出后自动恢复”可接受；`settings.cs2.hudMode` 已改为 `inject`，应用已重启。
+- 注意：Inject 必须在 CS2 启动前部署；对已经运行的 CS2 只能注入 playdemo，不会热加载 HUD。
+- `injector.writeTextPreserving` 失败时会清理 `gameinfo.gi.dsh.tmp`；`cleanAll` 也会清理该临时文件。
+- 已验证 `cleanAll` 恢复后 `gameinfo.gi` hash 不变、无 dsh SearchPath、无备份、无项目 VPK；当前官方纯净。
+- 待用户退出当前 CS2 后，通过应用播放 demo 验证游戏内 HUD。
+
+## 本轮三十二（修复游戏内 HUD 语音不显示：addon 会话数据必须用 resourcecompiler 编译）✅
+- **根因**：`prepareVoiceHudAddon` 用 `buildVjsResource` 手写 48B 资源头写入 `dsh_voice_data.vjs_c`；该格式只适合 VPK 路径。addon 直接读文件时，CS2 需要 resourcecompiler 生成的完整资源头（DATA offset 0x330、32B JS 头），手写头会导致 `DshVoiceData` 加载失败，HUD 因此没有语音。
+- **修复**：新增 `compileVjsResource()`：启动时把会话 JS 写入临时 `content/csgo_addons/dsh_runtime_*`，调用 CS2 自带 `resourcecompiler.exe` 编译，读取生成的 `.vjs_c` 覆盖到 addon，最后清理临时 content/game 目录；编译器缺失时回退旧格式并记录日志。
+- **验证**：`npm run typecheck` ✓；用当前 40,695B 会话 JS 手动编译，生成 41,543B 合法 `.vjs_c`，头部 `47 A2 00 00 ... DATA 30 03 00 00 F7 9E 00 00`，与 addon 静态资源格式一致。
+- **打包**：`dist/CS2-Demo-Analyst-1.0.0-win64-portable.zip`（2026-10-21 02:38，149.7 MB，SHA256 `C81279EADB5BB3E24E2A0550B4BB7C027443D2A7EA21A81FE36CC4965D657A87`）。
+- **待办**：用户启动 demo 后确认游戏内语音 HUD 是否出现；未 commit/push。
+
+## 本轮三十一（修复重新解析清空语音；新增 detail 覆盖前备份）✅
+- **根因**：`PARSER_VERSION 9` 让全部 detail 失效，`parseAll` 重新解析；`doParse` 只查内存 `store.details`，而 detail 是懒加载的，导致 `prevDetail` 为空，`voice` 被覆盖成 `[]`。
+- **修复**：`doParse` 先查内存，空则回读磁盘上的旧 detail，保留 `voice`；覆盖前把旧 detail 备份到 `userData/library/backup/<id>.<timestamp>.json`，每个 demo 保留最近 2 份。
+- **验证**：`npm run typecheck` ✓；独立 profile 构造 `voice=1` 的 v8 detail，强制 reparse 后 detail `voice=1`、`parserVersion=9`，backup 文件存在。
+- **数据现状**：真实 profile 的 7 个 detail 均 `voice=0`，旧版没有备份，历史转写无法从应用数据恢复；demo 本身 `hasVoice=true`（101–966s），可重新“智能转写”。卡片“语音”标记仍在，丢的是详情页转写记录。
+- **打包**：`dist/CS2-Demo-Analyst-1.0.0-win64-portable.zip`（2026-10-21 01:57，149.7 MB，SHA256 `8E3D4489E479D4A6FF59E821C01147EA8326C7209715C2DB6E73655332337D2C`）。
+- **快捷方式**：已重建 `dist/win-unpacked/CS2 Demo Analyst.lnk`，并刷新开始菜单 `CS2 Demo Analyst.lnk`；两者均指向最新 `dist/win-unpacked/CS2 Demo Analyst.exe`。
+- **待办**：用户决定是否重转写 7 个 demo；未 commit/push。
+
+## 本轮三十（修复“全部解析”无动画、重新扫描卡顿/列表闪空）✅
+- **根因 1（重新扫描）**：`scan()` 每次都用 `new AdmZip(zip)` 同步把整个压缩包读进主进程内存，7 个真实 zip（约 570MB）会阻塞窗口；同时 `onRescan` 调 `load()` 会把 `loading=true`，列表被 `SCANNING` 空态替换，看起来像“卡死后又把 demo 重新加一遍”。
+- **根因 2（解析动画）**：解析开始只发 `library:progress`，不发单条 `library:item`；首条 progress 到达前卡片仍是“解析”按钮，解析较快时动画一闪而过或完全看不到。
+- **扫描修复**：新增 `userData/library/zip-cache.json` 中央目录缓存（按 zip 路径 + size + mtime 失效），启动时用现有 index 预热；未变化的 zip 不再打开；变化/新增 zip 才 `new AdmZip`，并在 zip 之间 `setImmediate` 让出事件循环；`ensureZipEntry` 改用 `readFileAsync`，避免同步解压阻塞主进程；新增 `library:scan` 进度事件。
+- **UI 修复**：`onRescan` 改为静默 `load(true)`，扫描期间保留现有卡片，只在工具栏显示“检查压缩包 n/N + spinner”；`parseAll`/单卡解析点击后立即乐观标记 `parsing`，卡片显示旋转进度环，工具栏显示“解析中 n”；`Ring` 新增 `indeterminate` 旋转动画（尊重 reduced-motion）。
+- **验证**：`npm run typecheck` ✓、`npm run build` ✓；独立测试 profile（7 个真实 Wmpvp zip）：首次扫描建缓存后，第二次重新扫描 **35ms** 完成，列表保持 7 张卡片不闪空；点击“全部解析”后 80ms 内出现 7 个 `ring.indeterminate` + “解析中 7”，1.2s 后首个环到 9%；截图 `docs/review-2026-10-18/shots/parse-animation.png`。
+- **打包**：`dist/CS2-Demo-Analyst-1.0.0-win64-portable.zip`（2026-10-21 01:33，149.7 MB，SHA256 `A616CA53E52FD8ACDD9BF96E5E13828FDDCDFD134560989E3A733012BC791456`）。
+- **待办**：真机确认；首次无缓存扫描仍需解压 7 个 demo，会显示扫描进度（本次测试约 35s），之后 rescan 走缓存；未 commit/push。
+
+## 本轮二十九（收尾补丁：设置页目录名本地化、转写/AI 地图名统一、语音索引孤儿缓存清理、AI 数据说明修正）✅
+- **设置页**：目录名走 `formatRootLabel(r, lang)`，英文模式不再显示中文目录名；本轮重新跑通 typecheck/build/smoke。
+- **地图名**：转写页 Demo 下拉 sublabel、AI 会话标题/历史 sublabel/Demo 下拉统一走 `formatMapName`，避免 `de_dust2` 与 `Dust II` 混排。
+- **语音索引缓存**：`VOICE_INDEX_CACHE_VERSION 1→2`，缓存记录 `demoPath`；删除资料库条目时同步删除对应缓存，启动时清理孤儿/旧版缓存；父目录离线时保留缓存，避免误删。
+- **AI 提示词**：把“击杀记录完整可信”改为“可能缺漏，冲突时以统计/回合结果为准，不得编造”，降低模型误判。
+- **文档**：`AGENTS.md` 旧 CSS 残留标记更新为已删除。
+- **验证**：`npm run typecheck` ✓、`npm run build` ✓、`npm run smoke` ✓（renderer loaded OK）；`npm run dist:zip` 重新打包。
+- **最终复核（2026-10-20 22:44）**：设置页最后一行补丁后重新执行 `npm run typecheck` ✓、`npm run build` ✓、`npm run smoke` ✓（renderer loaded OK）、`npm run dist:zip` ✓；便携包已刷新（149.7 MB），addon 5 个文件已确认进入 `resources/panorama/addon/dsh_voice_hud`。
+
+## 本轮二十八（全量审查后修复：A 安全/资料库/设置/响应式、B 正确性、C 可访问性/i18n、D0 addon HUD、D1 静音 HUD）⏳
+- **范围**：A1-A5、B1-B6、C1-C4、D0（非侵入式 addon + Steam 自检）、D1（静音 badge/hide）已完成；D2（Valve 原生面板增量）与 deadem 4.0.2 升级未做，等待真机验证。
+- **安全**：`cleanAll` 只删本项目 VPK/SearchPath/备份/cfg/log，不再整目录删 overrides、不覆盖 gameinfo、不碰 steam_appid/_toolsettings/tools_thumbnail_cache/pak01/bin；暂存 demo 清单化并清理旧文件 120 个/12.19GB（保留 2026-10-18 的 dsh-9889db0ce8.dem）。
+- **资料库/设置**：索引损坏/根目录离线不删条目与转写；`PARSER_VERSION 8→9`；设置写入串行化 + 文本 300ms 防抖；语音索引缓存 `userData/voice-index`。
+- **正确性**：槽位未知不再猜、击杀流 UID 判空、回合胜负只看 endTick 前击杀、tickrate 从 demo 头读取、CS2 固定 12 回合半场、pending demo 自动解析、per-job ASR 取消、ASR 失败可见、AI 会话绑定、转写页清空、统一启动语音掩码。
+- **前端**：1080 响应式、对比度 4.5:1+、键盘/focus、EN 资料库/地图名、i18n 收口、版本号 v1.0.0、外链/导出/Modal/设置页居中/ErrorBoundary/最大化状态。
+- **HUD**：默认 addon（`-addon dsh_voice_hud`，只写 game/csgo_addons），Steam 安全自检/一键清理，Inject 二次确认；静音 badge/hide 从 `tvVoiceIndices` 推导 `mutedSlots`。
+- **验证**：`npm run typecheck`、`npm run build`、`npm run dist:zip` 通过；便携包 `dist/CS2-Demo-Analyst-1.0.0-win64-portable.zip`；当前 gameinfo 0 条 dsh 行、无备份、无 overrides。
+- **待办**：用户真机验证 addon HUD / badge-hide / Steam 完整性；D2 仅在原生控件缺失时做；deadem 4.0.2 单独分支；改动未 commit/push。
+
 ## 本轮二十七（细节体验精修：麦克风按钮去除 S 标识、长 ID 击杀记录防穿模、语音列表去除[语音片段]填充、投掷伤害更名道具伤害）✅
 - **用户反馈与诊断**:
   1. **按钮上的 S 是什么意思**: 用户询问开闭麦按钮上的 `S3`、`S4` 是否是时间，容易误导为秒数或造成疑惑；实际是游戏底层槽位编号 Slot，对普通玩家来说直接显示在按钮上显得多余且拥挤；

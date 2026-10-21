@@ -2,6 +2,7 @@
  * 比分走势时间轴：上半为比分差折线（正=T 领先，负=CT 领先），
  * 下半为简化回合胜败色块条。点击色块/走势点可选中回合。
  */
+import type { KeyboardEvent } from 'react'
 import type { RoundInfo } from '@shared/types'
 
 interface TimelineProps {
@@ -13,6 +14,14 @@ interface TimelineProps {
 const W = 100
 const H = 44
 const MID = H / 2
+
+/** Enter / Space 激活可聚焦的自定义按钮，避免键盘用户无法选中回合。 */
+function activateOnKey(e: KeyboardEvent<Element>, action: () => void) {
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+    e.preventDefault()
+    action()
+  }
+}
 
 export function Timeline({ rounds, selectedRound, onSelectRound }: TimelineProps) {
   // 每回合结束后的比分与分差
@@ -42,7 +51,13 @@ export function Timeline({ rounds, selectedRound, onSelectRound }: TimelineProps
             cy={py(p.diff)}
             r={1.2}
             className={`trend-dot ${selectedRound === p.r ? 'on' : ''}`}
+            role="button"
+            tabIndex={0}
+            focusable="true"
+            aria-label={`第 ${p.r} 回合，分差 ${p.diff > 0 ? '+' : ''}${p.diff}`}
+            aria-pressed={selectedRound === p.r}
             onClick={() => onSelectRound(p.r)}
+            onKeyDown={(e) => activateOnKey(e, () => onSelectRound(p.r))}
           >
             <title>{`R${p.r} · 分差 ${p.diff > 0 ? '+' : ''}${p.diff}`}</title>
           </circle>
@@ -56,7 +71,12 @@ export function Timeline({ rounds, selectedRound, onSelectRound }: TimelineProps
               selectedRound === r.roundNum ? 'active' : ''
             }`}
             style={{ left: `${(r.roundNum - 1) / rounds.length * 100}%`, width: `${100 / rounds.length}%` }}
+            role="button"
+            tabIndex={0}
+            aria-label={`第 ${r.roundNum} 回合，${r.winner === 'T' ? 'T 胜' : r.winner === 'CT' ? 'CT 胜' : '结果未知'}，${r.kills.length} 击杀`}
+            aria-pressed={selectedRound === r.roundNum}
             onClick={() => onSelectRound(r.roundNum)}
+            onKeyDown={(e) => activateOnKey(e, () => onSelectRound(r.roundNum))}
             title={`R${r.roundNum} · ${r.winner === 'T' ? 'T' : r.winner === 'CT' ? 'CT' : '-'} · ${r.kills.length} 击杀`}
           />
         ))}
