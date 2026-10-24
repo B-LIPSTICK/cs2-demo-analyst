@@ -676,3 +676,12 @@
 - **方向决策（用户拍板）**: 方案A 完全走普通模式 + 内置播放器（放弃 VConsole 注入控制，跳转功能会失效，但播放正常+内置语音显示）；方案B 保留 -tools 注入（控制好用但视角闪烁/慢/外挂显示）；方案C 普通模式播放 + 想办法另建控制通道。**用户倾向 A（"不要外挂的了"）**，待确认后：详情页播放改 toolsMode:false + +playdemo 参数（需验证普通模式能否播）；overlay 悬浮/大屏入口移除或隐藏；转写文字展示保留在应用内（详情页/转写页），跳转按钮在普通模式下列为不可用或提示需 -tools。
 - **待办**: ①验证普通模式 +playdemo（直接 spawn 数组传参）能否播放 demo；②若能 → 默认普通模式播放 + 内置显示，移除 overlay 入口；③若不能 → 研究完美/5E 具体怎么让 CS2 加载 demo（可能用 CS2 内置 demos 目录 + 播放器界面引导，或它们的启动参数）。
 - **重要参考**: SwiftDemoUIPro（nicedayzhu）用 `-insecure` + VPK 注入 Panorama UI 做游戏内控制；cs-demo-manager 用普通模式 +playdemo；完美/5E 均为普通模式。
+
+## 本轮二十九（2026-10-25）：标题栏换回真实应用图标
+- **问题**: 用户指出新 UI 左上角是自绘的蓝色方块 + 旋转菱形占位，不是项目真实 logo。
+- **根因**: `apple.css` 用 `.titlebar .brand::before`（渐变方块）和 `::after`（45° 菱形描边）画了一个假标志；`TitleBar.tsx` 里也没有 `<img>`。
+- **修复**: `TitleBar.tsx` 引入 `src/renderer/src/assets/logo.png`（来自 `assets/logo/csicon-512.png`，512×512 RGBA）渲染 `<img class="brand-logo">`；`apple.css` 删除两条伪元素规则，改为 28×28、8px 圆角、1px 发丝描边 + 柔和投影；浅色主题单独给深色描边/更淡投影。
+- **验证**: 打包版 `dist/win-unpacked` 实测 —— `naturalWidth=512`、`::before/::after content = "none"`、深色与浅色截图均正确；真实资料库 profile 下四个页面截图无回归。
+- **产物**: `dist/CS2-Demo-Analyst-1.0.0-win64-portable.zip`（150 MB，2026-10-25 02:04）；开始菜单快捷方式已指向 `dist/win-unpacked`。
+- **版本控制**: commit `3d902a4`，已 push 到 `origin/frontend-apple`；旧可回滚版本仍在 tag `working-2026-10-21`。
+- **注意**: 打包前必须先退出正在运行的 `CS2 Demo Analyst.exe`，否则 electron-builder 会因 `d3dcompiler_47.dll` 被占用而 EPERM 失败。

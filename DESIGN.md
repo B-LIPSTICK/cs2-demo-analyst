@@ -39,6 +39,10 @@ No coral, magenta, purple, or olive. Blue is the accent; amber is reserved for t
 - Increase breathing room, not the number of containers. Avoid nested cards and decorative section numbers.
 - The library should read as a set of match tickets; the detail page as one continuous analysis desk; settings as calm grouped rows.
 
+## Brand mark
+- The titlebar mark is the shipped application icon (`assets/logo/csicon-512.png`, copied to `src/renderer/src/assets/logo.png`), rendered at 28×28 with an 8px radius, a 1px hairline ring and one soft drop shadow. Light theme uses a dark hairline and a lighter shadow.
+- Never draw a substitute mark in CSS. The previous gradient square with a rotated diamond was a placeholder; `TitleBar.tsx` now renders `<img class="brand-logo">` and the `::before`/`::after` rules are deleted.
+
 ## Non-negotiables
 - Keep every existing control, IPC call, state, and data contract.
 - 1080px must remain usable without horizontal page scrolling.
