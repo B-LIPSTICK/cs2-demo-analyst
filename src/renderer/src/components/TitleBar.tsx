@@ -1,3 +1,4 @@
+import logoUrl from '../assets/logo.png'
 import { Led, IcGithub } from './ui'
 import type { LiveStatus } from '@shared/types'
 import { useTKey } from '@/i18n'
@@ -19,6 +20,7 @@ export function TitleBar({
   return (
     <header className="titlebar">
       <div className="brand">
+        <img src={logoUrl} alt="CS2 Demo Analyst" className="brand-logo" />
         <div className="wordmark">
           Demo Analyst
           <span className="ver">{t('titlebar.version')}{version}</span>

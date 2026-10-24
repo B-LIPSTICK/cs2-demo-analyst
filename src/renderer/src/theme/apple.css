@@ -745,36 +745,29 @@ textarea.input {
 
 /* ─── Shell polish ───────────────────────────────────────────────────────── */
 
-.titlebar .brand::before {
-  content: '';
-  width: 26px;
-  height: 26px;
-  flex: none;
-  border-radius: 9px;
-  background:
-    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.58), transparent 42%),
-    linear-gradient(145deg, #409cff 0%, #0a84ff 52%, #007aff 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.42),
-    0 7px 20px -10px rgba(10, 132, 255, 0.75);
-}
-
 .titlebar .brand {
   position: relative;
   gap: 10px;
 }
 
-.titlebar .brand::after {
-  content: '';
-  position: absolute;
-  left: 9px;
-  top: 50%;
-  width: 8px;
-  height: 8px;
-  transform: translateY(-50%) rotate(45deg);
-  border: 1.5px solid rgba(255, 255, 255, 0.92);
-  border-radius: 2px;
+/* 应用真实图标（assets/logo.png），不再用 CSS 画菱形占位 */
+.titlebar .brand-logo {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 8px;
+  object-fit: contain;
   pointer-events: none;
+  user-select: none;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 4px 12px -4px rgba(0, 0, 0, 0.55);
+}
+
+:root[data-theme='light'] .titlebar .brand-logo {
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 3px 10px -4px rgba(0, 0, 0, 0.25);
 }
 
 .page-scroll {
