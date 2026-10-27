@@ -295,6 +295,13 @@ export interface SteamSafetyReport {
   gameinfoExists: boolean
   /** gameinfo.gi 是否含本项目或其他 dsh SearchPath 行 */
   gameinfoHasDsh: boolean
+  /**
+   * gameinfo.gi 实际换行风格。官方文件为 CRLF；历史上注入器硬编码 LF 会把它永久降级，
+   * 导致 Steam 校验命中「1 个文件不匹配」。'unknown' 表示文件不存在或读取失败。
+   */
+  gameinfoNewline?: 'crlf' | 'lf' | 'unknown'
+  /** gameinfo.gi 换行是否可疑（存在但为 LF）——为 true 时 officialClean 为 false */
+  gameinfoNewlineSuspect?: boolean
   /** gameinfo.gi.dsh_inject.bak 是否残留 */
   backupExists: boolean
   /** overrides 下检测到的本项目 VPK 文件名 */

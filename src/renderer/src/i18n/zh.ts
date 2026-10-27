@@ -401,6 +401,8 @@ export const zh = {
   'settings.steamSafetyNotClean': '存在 dsh 残留',
   'settings.steamSafetyRunning': 'CS2 运行中',
   'settings.steamSafetyGameinfo': 'gameinfo.gi 含 dsh 行',
+  'settings.steamSafetyNewline':
+    'gameinfo.gi 换行已被改成 LF（官方为 CRLF）——Steam 仍会提示验证文件完整性，请跑一次「验证游戏文件完整性」修复',
   'settings.steamSafetyBackup': 'dsh_inject.bak',
   'settings.steamSafetyVpk': 'overrides 本项目 VPK',
   'settings.steamSafetyAddon': 'addon 目录',

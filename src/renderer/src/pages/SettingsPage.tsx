@@ -1410,6 +1410,11 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                         ? t.t('settings.steamSafetyYes')
                         : t.t('settings.steamSafetyNo')}
                     </div>
+                    {steamSafety.gameinfoNewlineSuspect && (
+                      <div style={{ color: '#ff9f0a' }}>
+                        {t.t('settings.steamSafetyNewline')}
+                      </div>
+                    )}
                     <div>
                       {t.t('settings.steamSafetyBackup')}：
                       {steamSafety.backupExists

@@ -311,12 +311,14 @@ export class DemoInjector {
 
     let gameinfoExists = false
     let gameinfoHasDsh = false
+    let gameinfoNewline: 'crlf' | 'lf' | 'unknown' = 'unknown'
     let error: string | undefined
     try {
       const tf = await readTextPreservingStrict(gameInfo)
       if (tf) {
         gameinfoExists = true
         gameinfoHasDsh = GAME_DSH_RE.test(tf.text)
+        gameinfoNewline = tf.newline === '\r\n' ? 'crlf' : 'lf'
       }
     } catch (err) {
       error = `无法读取 gameinfo.gi：${errorText(err)}`
@@ -350,13 +352,23 @@ export class DemoInjector {
     }
     const addonComplete = addonPresent && addonFiles.length > 0 && addonFiles.every((f) => f.exists)
     const activeInjection = gameinfoHasDsh || overridesHasProjectVpk
+    // 官方 gameinfo.gi 是 CRLF（Steam depot manifest 的 26,056 B / SHA1 e345a2ed…）。
+    // 曾因 addSearchPaths 硬编码 LF 导致注入一次就永久降级为 LF，且 cleanAll 无法还原，
+    // 表现为「自检说干净但 Steam 仍要求验证文件完整性」。这里把换行状态纳入判定。
+    const gameinfoNewlineSuspect = gameinfoExists && gameinfoNewline === 'lf'
     const officialClean =
-      gameinfoExists && !gameinfoHasDsh && !backupExists && !overridesHasProjectVpk
+      gameinfoExists &&
+      !gameinfoHasDsh &&
+      !backupExists &&
+      !overridesHasProjectVpk &&
+      !gameinfoNewlineSuspect
 
     return {
       installPath,
       gameinfoExists,
       gameinfoHasDsh,
+      gameinfoNewline,
+      gameinfoNewlineSuspect,
       backupExists,
       projectVpks,
       overridesHasProjectVpk,

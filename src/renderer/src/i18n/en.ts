@@ -395,6 +395,8 @@ export const en: Record<keyof ZhDict, string> = {
   'settings.steamSafetyNotClean': 'dsh residue detected',
   'settings.steamSafetyRunning': 'CS2 running',
   'settings.steamSafetyGameinfo': 'gameinfo.gi contains dsh lines',
+  'settings.steamSafetyNewline':
+    'gameinfo.gi line endings were downgraded to LF (official is CRLF) — Steam will still ask to verify files; run "Verify integrity of game files" to repair',
   'settings.steamSafetyBackup': 'dsh_inject.bak',
   'settings.steamSafetyVpk': 'Project VPKs in overrides',
   'settings.steamSafetyAddon': 'addon directory',
