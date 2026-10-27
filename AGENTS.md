@@ -1,6 +1,6 @@
 # AGENTS.md — 给接手本项目的 AI/开发者
 
-> ⚠️ **2026-10-27 更新**：本项目最新、最完整的交接文档是 `docs/HANDOFF-2026-10-27.md`（含全部绝对路径、当前配置、HUD/Steam 风险、回滚方式）。本文件部分架构描述已过时（例如仍提到 `LivePage`、`0.1.0` 包名、旧目录结构），**冲突时以新文档为准**。
+> ⚠️ **2026-10-27 更新**：本项目最新、最完整的交接文档是 `docs/HANDOFF-2026-10-27.md`（含全部绝对路径、当前配置、HUD/Steam 风险、回滚方式）。本文件的架构描述已于同期核对修正（`LivePage` 已删除、包名 1.0.0、`--vcon-mock` 已废弃），**冲突时仍以新文档为准**。
 
 > 本文件是**任何新会话（新 agent）开工前必读**的交接文档，目标：读完后能独立修改、构建、验证、交付。
 > 配套资料（越新越优先）：
@@ -30,11 +30,11 @@
 | `npm run dev` | electron-vite 开发（HMR；主进程改动需重启） |
 | `npm run typecheck` | TS 双工程检查（node + web），**改完必跑** |
 | `npm run build` | 产出 `out/`（main/renderer/preload） |
-| `powershell -ExecutionPolicy Bypass -File scripts/make-zip.ps1` | 离线打包 → `dist/win-unpacked/CS2 Demo Analyst.exe` + `dist/CS2-Demo-Analyst-0.1.0-win64-portable.zip`（~147MB，electron-builder 用本地 node_modules 的 electron，离线可用） |
+| `powershell -ExecutionPolicy Bypass -File scripts/make-zip.ps1` | 离线打包 → `dist/win-unpacked/CS2 Demo Analyst.exe` + `dist/CS2-Demo-Analyst-1.0.0-win64-portable.zip`（~150MB，electron-builder 用本地 node_modules 的 electron，离线可用） |
 | `npm run dist` | 等价 dist:zip |
 | 启动/重启应用 | `Get-Process 'CS2 Demo Analyst' \| Stop-Process -Force; Start-Process "dist\win-unpacked\CS2 Demo Analyst.exe"` |
 
-开发调试入口（`electron out/main/index.js` 或 exe 加参数）：`--vcon-mock`、`--route=<page>`、`--screenshot`、`--transcribe=<id>`、`--eval-js=<code>`（渲染进程执行 JS）。
+开发调试入口（`electron out/main/index.js` 或 exe 加参数）：`--route=<page>`、`--screenshot`、`--shot-delay=<ms>`、`--transcribe=<id>`、`--eval-js=<code>`（渲染进程执行 JS）、`--ai-mock`、`--overlay-demo`、`--fullpanel-demo`。**注意 `--vcon-mock` 已不存在**（早期 VConsole mock 已废弃）。
 
 ## 3. 架构（当前真实形态）
 
@@ -52,9 +52,9 @@ src/
 │       ├── voiceIndex.ts    # SVC_VOICE_DATA → {tick, slot} 语音脉冲索引
 │       ├── engines.ts       # 侧车下载（csgove/whisper-cli/ggml 模型，镜像回退）
 │       ├── ai.ts / settings.ts / download.ts / favorites.ts / vconsole.ts
-├── renderer/src/            # React 19 UI（五页面：library/detail、transcript、live、ai、settings）
+├── renderer/src/            # React 19 UI（四页面：library/detail、transcript、ai、settings）
 │   ├── App.tsx              # 页面常驻（display 显隐切换，不卸载！）+ route{demoId}+navSeq 导航
-│   ├── pages/*.tsx          # LibraryPage(卡片+详情)/TranscriptPage/AiPage/SettingsPage/LivePage
+│   ├── pages/*.tsx          # LibraryPage(卡片+详情)/DemoDetailPage/TranscriptPage/AiPage/SettingsPage（**无 LivePage**，已删除）
 │   ├── components/ui.tsx    # 设计系统（Btn/Tag/Panel/Avatar/Modal…）
 │   ├── theme/hud.css        # 全部样式（近黑玻璃 + iOS 蓝 #0a84ff 强调；金=阵营T 蓝=CT）
 │   └── i18n/{zh,en}.ts      # 双语 key（新增文案必须双份都加）
@@ -118,8 +118,10 @@ build/                       # electron-builder 图标（icon-256.png / icon.ico
 - **发布**：确认 typecheck/build → make-zip → git commit（中文 message）→ push（代理需在线）→ README 版本号/截图可选更新。
 - **验证脚本入库**：一次性诊断脚本用后可留（回归工具惯例）或删，参考 scripts/ 现有命名。
 
-## 6. 状态与开放问题（写文档时刻快照）
+## 6. 状态与开放问题（2026-10-27 复核后快照）
 
-- 最近交付：`4ac8296 feat(parser+asr): 手枪局保留、转写链路优化、demo not found 修复`（已 push origin/main）。此后工作区新增改动：卡片布局改版/转写页 navSeq 联动/聊天头像（本轮十四补4，**未提交**）+ 本 AGENTS.md。
-- 开放问题：① 游戏内 HUD 头像左裁（待截图）；② winner 推导 vs 实体比分偏差；③ README 截图与最新 UI 有出入（apple-* 是老风格）；④ 旧版残留 `scripts/hud/dsh_voice.css` 已于 2026-10-20 删除。
-- 每次开工：读 progress.md 顶部最新几轮 → 核对 git status 未提交内容 → 再动手。
+- 当前分支 `frontend-apple`，HEAD 见 `git log -1`；工作区应保持干净（有改动就是在做新轮次）。
+- **最近交付**：`7d3dd33 fix(injector+settings): Steam 自检纳入 gameinfo.gi 换行状态`、`71d08ea fix(injector): 注入 SearchPath 保留原换行`、`48d29a4 docs: 新增 2026-10-27 交接文档与三线并行核验报告`。
+- **⚠️ 最重要的一条**：`gameinfo.gi` 曾被 `injector.ts` 的硬编码 LF 永久降级（25,166 B / LF vs 官方 26,056 B / CRLF），**这才是「Steam 每次要求验证完整性」的真正根因**（不是「清理失败」）。代码已修，但**已污染的文件需用户手动跑一次 Steam「验证游戏文件完整性」才能修回官方字节**。详见 `docs/HANDOFF-2026-10-27.md` R14 与 §14 P0。
+- 开放问题：① 游戏内 HUD 头像左裁（待用户截图）；② winner 推导 vs 实体比分偏差（R4）；③ README 截图与最新 UI 有出入；④ 游戏目录 addon 仍是 4,176 B 旧版 → **Shift+F2 当前是坏的**，需重新部署；⑤ `steam_appid.txt` 存在（非官方文件，待用户删除）。
+- 每次开工：读 `docs/HANDOFF-2026-10-27.md` §14 P0 → 读 `progress.md` 顶部最新几轮 → 核对 `git status` → 再动手。
