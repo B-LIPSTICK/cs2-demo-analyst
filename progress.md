@@ -1,5 +1,20 @@
 # progress.md — 会话日志
 
+## 本轮三十五（三线并行核验交接文档 + 修复 gameinfo.gi 永久 LF 化 bug）✅
+
+- **方式**：用 Agent Teams 起 3 个 verifier（verifier-code / verifier-cs2 / verifier-docs）并行只读核验 `docs/HANDOFF-2026-10-27.md`，Lead 汇总。全程未启动 CS2、未改游戏文件、未跑 build。
+- **产出**：`docs/handoff-verify-2026-10-27/`（README 总报告 170 行 + code-build 420 行 + cs2-steam 416 行 + docs-artifacts 332 行）；结论已回写 HANDOFF（新增 R14–R17、P0 阻断项重排、§2.4/§10.6/§10.7 复核修正）。
+- **核验结论（文档可信）**：§5.1/§5.3 的 39 个文件行数 **39/39 精确相等**；§4.1 版本表 11/11 一致；§6.2 的 63 个 IPC 通道 + §6.3 的 21 个 MainEvent 双向差集为空；便携 zip SHA256 逐字符吻合 `1A3A6966…91E1`；asar 15,141,999 B；`npm run typecheck` 通过（1.6 s）。**真正过时的是 `AGENTS.md`**（`LivePage`/`0.1.0`/`--vcon-mock`/「五页面」四项均已不存在）。
+- **🔴 最重要发现（R14，文档原来没记）**：`gameinfo.gi` 只是「无 dsh 行」，**字节层面已不是 Steam 官方文件** —— 磁盘 25,166 B / **纯 LF** / SHA1 `ad658bd8…`，官方 depot 2347770 manifest 要求 26,056 B / **CRLF** / SHA1 `e345a2ed…`。Lead 独立复算：`\n→\r\n` 后大小 26,056 B、SHA1 逐字节还原官方值（差额 890 B = 890 个换行丢掉的 `\r`）。
+  - **根因**：`injector.ts:128` `addSearchPaths` 用 `lines.join('\n')` 硬编码 LF，丢弃了 `readTextPreserving` 探测到的 `newline`；`removeSearchPaths` 只按「当前探测到的」换行回写，此时文件已是 LF → **inject 一次即永久降级，cleanAll 永远还不回 CRLF**。文件 mtime 正好是上次 inject 会话退出后 1 秒。
+  - **这才是 R2「Steam 每次要求验证文件完整性」的真正根因**，不是「清理失败」。应用 `officialClean`（`injector.ts:343`）只查 dsh 行/备份/VPK、**不比对 manifest 哈希**，所以一直误报「官方纯净」；本轮三十三「cleanAll 后 hash 不变」是循环论证（比的是被自己改过的文件）。
+  - **修复**：`addSearchPaths(text, newline)` 按原换行回写，调用点传 `tf.newline`（+14/−4，仅 injector.ts）。
+  - **验证**：`npm run typecheck` ✓ exit 0；等价实现往返测试 —— 官方 CRLF 文本注入 2 行再清理后**与原文逐字节一致**；旧实现注入后 CRLF 数归零（精确复现磁盘现状）；对已 LF 化的现有文件不再加剧破坏。
+  - **未做**：未重新打包（`out/main/index.js` 仍是旧逻辑）；未动游戏目录。**修回官方 CRLF 需用户手动跑一次 Steam「验证文件完整性」**（验收：26,056 B / SHA1 `e345a2ed…` / `\r\n`=890）。
+- **其他文档未记录的事实**：R15 `game\bin\win64\steam_appid.txt` **实际存在**（5 B `730\n\0`，文档 2.4 原写「不存在」；本项目 addon/inject/native 模式直接 spawn cs2.exe 会再生成，清理逻辑只在 tools 模式删）；R10 后果更重 —— 游戏目录 4,176 B 旧版 addon **缺 `PlayerList`/`RoundMenu`/`TimeScale`/`message_arrow`**，即「Shift+F2 必坏」那版；§10.6 的 `Death` 节点是文档记录错误（实际在 `huddemoplayback.vxml_c`）；10-23 CS2 更新**未改 Demo UI 布局**（现行 vxml_c 5,026 B，与 10-20 存档仅差 35 B 图标哈希），真正风险是旧 addon 不是版本兼容。
+- **git**：`48d29a4 docs: 新增 2026-10-27 交接文档与三线并行核验报告` + `71d08ea fix(injector): 注入 SearchPath 保留原换行…`；提交前已确认 HEAD 与 `origin/frontend-apple` 同步（0/0）、`git fsck` 无输出、离线备份包与 150 MB 便携 zip 均在 → 可随时回退。**未 push**。
+- **下一步**：① 用户跑 Steam 验证完整性修回 gameinfo.gi；② 删 `steam_appid.txt`；③ `hudMode` inject→addon；④ 重新打包让修复进 `out/main/index.js`；⑤ 真机验证 HUD/Shift+F2。
+
 ## 本轮三十四（修复 Shift+F2 原生 Demo UI 打不开：用当前 Valve 布局重建 HUD 覆盖层）✅
 - **根因**：项目 `huddemocontroller.xml` 基于 2026-08-24 的旧 Valve 布局，缺少当前 CS2（2026-10-16 build）脚本引用的 `PlayerList`、`RoundMenu`、`PlayerControls`、`CameraButton`、`message_arrow` 等节点；原生 `HudDemoController` 初始化失败，Shift+F2 进度条无法打开。这正是审查 F-01。
 - **修复**：用自写 VPK 解析器从当前 `game/csgo/pak01_dir.vpk` 提取 `huddemocontroller.vxml_c`/`.vts_c`/`.vcss_c`，用 Source2Viewer 20.1 反编译成 XML；以当前 Valve 布局为基准，仅追加 `dsh_voice` 样式/脚本、`DshSpeakingRow` snippet 和 `DshVoiceDock`/`DshVoiceList`，保留全部原生节点。
