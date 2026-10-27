@@ -108,8 +108,18 @@ async function writeTextPreserving(file: string, tf: TextFile, text: string): Pr
   }
 }
 
-/** 注入两行 SearchPath（幂等）；返回是否发生了修改 */
-function addSearchPaths(text: string): { text: string; changed: boolean } {
+/**
+ * 注入两行 SearchPath（幂等）；返回是否发生了修改。
+ *
+ * ⚠️ 换行风格必须沿用调用方探测到的 `newline`：历史上这里硬编码 `join('\n')`，
+ * 而 `removeSearchPaths` 只按「当前文本」探测换行，导致 gameinfo.gi 被 inject 一次
+ * 就从官方 CRLF 永久降级成 LF（Steam 校验会命中 1 个文件不匹配），且 cleanAll 无法还原。
+ * 见 docs/handoff-verify-2026-10-27/cs2-steam.md 与交接文档 R14。
+ */
+function addSearchPaths(
+  text: string,
+  newline: TextFile['newline']
+): { text: string; changed: boolean } {
   const lines = text.split(/\r\n|\n/)
   const hasOverride = lines.some((l) => SEARCH_RE.test(l))
   if (hasOverride) return { text, changed: false }
@@ -125,7 +135,7 @@ function addSearchPaths(text: string): { text: string; changed: boolean } {
   }
   if (index < 0) return { text, changed: false }
   lines.splice(index, 0, indentation + searchLine(SESSION_VPK), indentation + searchLine(STATIC_VPK))
-  return { text: lines.join('\n'), changed: true }
+  return { text: lines.join(newline), changed: true }
 }
 
 /** 移除自己的 SearchPath 行（保留原换行风格）；返回是否发生了修改 */
@@ -192,7 +202,7 @@ export class DemoInjector {
       await rollbackVpks()
       return '无法读取 gameinfo.gi'
     }
-    const { text, changed } = addSearchPaths(tf.text)
+    const { text, changed } = addSearchPaths(tf.text, tf.newline)
     if (!changed) return null // 已注入过（幂等）
     try {
       await writeTextPreserving(gameInfo, tf, text)
