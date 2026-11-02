@@ -228,6 +228,63 @@ function voicesDir(demoId: string): string {
 }
 
 /**
+ * 删除某个 demo 的语音缓存目录（voices/<demoId>，含整轨 WAV 与残留的 .compact.wav）。
+ * demo 从资料库里移除/源文件消失时调用，避免 userData 里堆积再也用不到的音频。
+ * 不存在或删除失败都静默忽略——缓存清理不能影响移除流程本身。
+ */
+export async function removeVoicesCache(demoId: string): Promise<void> {
+  if (!demoId) return
+  await fs.rm(voicesDir(demoId), { recursive: true, force: true }).catch(() => {})
+}
+
+/**
+ * 清理孤儿语音缓存：voices/ 下目录名即 demoId，凡是不在 keep 集合里的都删掉。
+ * 这些音频对应的 demo 已经不在资料库，永远不可能再被播放，留着只占磁盘（一局几百 MB）。
+ * keep 由调用方传入「当前资料库里所有 demo id」。返回删除的目录数与释放的字节数。
+ */
+export async function pruneVoicesCache(keep: Set<string>): Promise<{ dirs: number; bytes: number }> {
+  const root = join(app.getPath('userData'), 'voices')
+  let entries: string[]
+  try {
+    entries = await fs.readdir(root)
+  } catch {
+    return { dirs: 0, bytes: 0 }
+  }
+  let dirs = 0
+  let bytes = 0
+  for (const name of entries) {
+    if (keep.has(name)) continue
+    const full = join(root, name)
+    const size = await dirSize(full)
+    await fs.rm(full, { recursive: true, force: true }).catch(() => {})
+    dirs++
+    bytes += size
+  }
+  return { dirs, bytes }
+}
+
+/** 递归统计目录字节数（失败按 0 计，只用于汇报） */
+async function dirSize(dir: string): Promise<number> {
+  let total = 0
+  let items: string[]
+  try {
+    items = await fs.readdir(dir)
+  } catch {
+    return 0
+  }
+  for (const it of items) {
+    const full = join(dir, it)
+    try {
+      const st = await fs.stat(full)
+      total += st.isDirectory() ? await dirSize(full) : st.size
+    } catch {
+      /* noop */
+    }
+  }
+  return total
+}
+
+/**
  * 语音切片播放：从该玩家整轨 WAV（48kHz/16bit 单声道，extractVoice 产物）中
  * 切出 [startSec, endSec) 时间段，返回独立的小 WAV Buffer（供 renderer 播放）。
  * 找不到对应文件 / 越界时返回 null。
@@ -749,6 +806,9 @@ export async function transcribeDemo(
       items.length
     )
     let segs: WhisperSeg[]
+    // 紧凑临时文件在 finally 里删：取消/报错走 catch 时同样要清掉，
+    // 否则 voices/<demoId> 下会堆积几百 MB 的 .compact.wav
+    let compact: { path: string; offsets: number[] } | null = null
     try {
       // 阶段①：语音切分。★优先复用「语音分割」的结果（detail.voice 中无文字的段，
       //   跳过 VAD 重新检测）；没有分割过才做 VAD 静音裁剪
@@ -773,7 +833,6 @@ export async function transcribeDemo(
       }
       const totalSec = chunks.reduce((s, c) => s + (c.end - c.start), 0)
       const speechRatio = totalSec / Math.max(1, (await fs.stat(item.path)).size / (48000 * 2))
-      let compact: { path: string; offsets: number[] } | null = null
       if (chunks.length > 1 || chunks[0].start > 1 || speechRatio < 0.9) {
         compact = await buildCompactWav(item.path, chunks)
       }
@@ -804,9 +863,6 @@ export async function transcribeDemo(
         )
         effective = compact ? mapCompactSegments(raw, chunks, compact.offsets) : raw
       }
-      if (compact) {
-        await fs.unlink(compact.path).catch(() => {})
-      }
       segs = effective
     } catch (err) {
       if (signal?.aborted) break
@@ -821,6 +877,8 @@ export async function transcribeDemo(
         `${item.playerName} · 转写失败：${message}`
       )
       continue
+    } finally {
+      if (compact) await fs.unlink(compact.path).catch(() => {})
     }
     for (const s of segs) {
       const tick = Math.round(s.start * tickRate)

@@ -142,6 +142,7 @@ export const en: Record<keyof ZhDict, string> = {
   'library.removeOnlyHint': 'Source file stays on disk',
   'library.removeWithFile': 'Delete local files too',
   'library.removeWithFileHint': 'Deletes the source file (zip demos: deletes the archive too)',
+  'library.removeVoiceHint': 'Both options also delete this demo\'s extracted voice cache (about 300–500 MB per game); it can be re-extracted later.',
 
   'detail.hud.rating': 'RATING',
   'detail.hud.adr': 'ADR',

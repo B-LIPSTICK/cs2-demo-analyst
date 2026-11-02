@@ -629,6 +629,15 @@ textarea.input {
   color: var(--text-1);
 }
 
+/* 删除弹窗里的附加说明（如「语音缓存也会一并删除」）
+   .modal-body 自带 16px 下边距（hud.css），这里用负上边距把说明拉近正文 */
+.modal-note {
+  margin: -10px 0 14px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
 .modal-choice {
   border-radius: 14px;
   transition:

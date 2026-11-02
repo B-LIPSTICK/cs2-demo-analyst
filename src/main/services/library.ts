@@ -13,7 +13,13 @@ import type { DemoDetail, DemoMeta, DetectedPlatformRoot, Settings } from '@shar
 import { parseDemo, cleanPlayerName } from './parser'
 import { getMockDetail, getMockLibrary } from './mock'
 import { updateSettings } from './settings'
-import { extractVoice as asrExtract, splitVoice as asrSplit, transcribeDemo } from './asr'
+import {
+  extractVoice as asrExtract,
+  pruneVoicesCache,
+  removeVoicesCache,
+  splitVoice as asrSplit,
+  transcribeDemo
+} from './asr'
 import { extractVoiceIndex, pruneVoiceIndexCache, removeVoiceIndexCache } from './voiceIndex'
 
 export interface LibraryService {
@@ -954,6 +960,8 @@ export function createLibraryService(
         delete store.index[id]
         store.details.delete(id)
         fs.unlink(detailPath(id)).catch(() => {})
+        // 源文件已消失/条目失效：该 demo 的整轨语音（voices/<id>，通常几百 MB）再也用不到，一并删除
+        void removeVoicesCache(id).catch(() => {})
         if (meta.containerPath) {
           fs.rm(join(zipCacheDir(), id), { recursive: true, force: true }).catch(() => {})
           delete zipCache[normPath(meta.containerPath)]
@@ -1106,6 +1114,15 @@ export function createLibraryService(
         if (store.indexLoadOk) {
           // 清理历史遗留的语音索引缓存（demo 已删除/旧缓存版本）
           void pruneVoiceIndexCache().catch(() => {})
+          // 清理孤儿整轨语音缓存：voices/ 下对应的 demo 已不在资料库，音频再也用不到，
+          // 一局几百 MB，长期累积能到几十 GB
+          void pruneVoicesCache(new Set(Object.keys(store.index)))
+            .then((r) => {
+              if (r.dirs > 0) {
+                dbg(`prune voices cache: ${r.dirs} dir(s), ${(r.bytes / 1024 / 1024).toFixed(1)} MB`)
+              }
+            })
+            .catch(() => {})
         }
         dbg(`init index loaded: ${Object.keys(store.index).length} indexLoadOk=${store.indexLoadOk}`)
         // 校验缓存文件仍存在
@@ -1121,6 +1138,8 @@ export function createLibraryService(
               if (demoid(meta.path, st.size, st.mtimeMs) !== id) {
                 // 普通 demo 指纹变化：文件确实可访问但内容已变，旧条目失效，交给 scan 重建
                 delete store.index[id]
+                // 旧 id 的整轨语音同样是孤儿（重建后是新 id），一并清掉
+                void removeVoicesCache(id).catch(() => {})
                 indexUpdated = true
                 continue
               }
@@ -1367,6 +1386,8 @@ export function createLibraryService(
         void fs.unlink(detailPath(did)).catch(() => {})
         // 语音索引缓存按 demo 路径命名：条目移除后一并清掉，避免 userData 堆积孤儿缓存
         void removeVoiceIndexCache(m.path).catch(() => {})
+        // 整轨语音（voices/<id>，一局几百 MB）随条目一起删：文件都移走了，音频再也用不上
+        void removeVoicesCache(did).catch(() => {})
         if (m.containerPath) {
           void fs.rm(join(zipCacheDir(), did), { recursive: true, force: true }).catch(() => {})
           delete zipCache[normPath(m.containerPath)]

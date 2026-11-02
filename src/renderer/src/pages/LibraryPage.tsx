@@ -693,6 +693,7 @@ function LibraryPageInner({
             <div className="modal-body">
               {t('library.removeBody').replace('{n}', String(removeModal.ids.length))}
             </div>
+            <div className="modal-note">{t('library.removeVoiceHint')}</div>
             <div className="modal-actions">
               <button
                 type="button"

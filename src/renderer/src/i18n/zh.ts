@@ -144,6 +144,7 @@ export const zh = {
   'library.removeOnlyHint': '源文件保留在磁盘上',
   'library.removeWithFile': '同时删除本地文件',
   'library.removeWithFileHint': '彻底删除源文件（zip 内的 demo：连同压缩包一起删）',
+  'library.removeVoiceHint': '两种方式都会一并删除该 demo 已提取的语音缓存（一局约 300–500 MB），之后需要时可重新提取。',
 
   // 详情
   'detail.hud.rating': 'Rating',
