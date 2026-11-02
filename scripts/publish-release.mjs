@@ -45,6 +45,25 @@ if (checkRes.status === 200) {
   releaseId = existing.id
   htmlUrl = existing.html_url
   console.log(`>>> Release 已存在: ID ${releaseId}, ${htmlUrl}`)
+  const bodyChanged = (existing.body || '').trim() !== bodyText.trim()
+  const nameChanged = existing.name !== releaseName
+  if (bodyChanged || nameChanged) {
+    console.log(
+      `>>> 正在更新 Release 说明${bodyChanged ? ' (body)' : ''}${nameChanged ? ' (name)' : ''}...`
+    )
+    const patchRes = await fetch(`https://api.github.com/repos/${repo}/releases/${releaseId}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ name: releaseName, body: bodyText })
+    })
+    if (!patchRes.ok) {
+      const errText = await patchRes.text()
+      throw new Error(`更新 Release 说明失败 (${patchRes.status}): ${errText}`)
+    }
+    console.log('>>> Release 说明已更新')
+  } else {
+    console.log('>>> Release 说明无变化，跳过更新')
+  }
 } else {
   console.log(`>>> 正在创建 GitHub Release (${tag})...`)
   const createRes = await fetch(`https://api.github.com/repos/${repo}/releases`, {
