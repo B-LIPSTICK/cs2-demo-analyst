@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Btn, CustomSelect, IcFolder, IcMicOff, IcPlus, IcRadar, IcRefresh, Led, Panel, SectionHead, Tag, useFloatingPosition, useToast } from '@/components/ui'
+import { Btn, CustomSelect, IcFolder, IcMicOff, IcPlus, IcRadar, IcRefresh, Led, Panel, SectionHead, Tag, Toggle, useFloatingPosition, useToast } from '@/components/ui'
 import { useT, type Lang } from '@/i18n'
 import type { Settings, SteamSafetyReport } from '@shared/types'
 import { formatRootLabel } from './LibraryPage'
@@ -456,6 +456,8 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
   const [steamSafety, setSteamSafety] = useState<SteamSafetyReport | null>(null)
   const [safetyLoading, setSafetyLoading] = useState(false)
   const [showInjectConfirm, setShowInjectConfirm] = useState(false)
+  const [updateChecking, setUpdateChecking] = useState(false)
+  const [updateMsg, setUpdateMsg] = useState<{ text: string; ok: boolean } | null>(null)
 
   // 外部 settings 变化：仅在非编辑、无待保存/在途请求时同步 draft，
   // 避免自己保存后的 settings:changed 覆盖正在输入的内容。
@@ -863,7 +865,7 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
     }
   }
 
-  const hudMode = draft.cs2.hudMode ?? 'addon'
+  const hudMode = draft.cs2.hudMode ?? 'inject'
   const muteHudMode = draft.overlay?.muteHudMode ?? 'badge'
 
   return (
@@ -1321,19 +1323,8 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                 {t.t('settings.hudModeInjectWarning')}
               </div>
             )}
-            {hudMode === 'addon' && (
-              <div className="d" style={{ marginTop: 6 }}>
-                {t.t('settings.hudModeAddonHint')}
-              </div>
-            )}
           </div>
           <div className="seg">
-            <span
-              className={`seg-item ${hudMode === 'addon' ? 'on' : ''}`}
-              onClick={() => setCs2({ hudMode: 'addon' })}
-            >
-              {t.t('settings.hudModeAddon')}
-            </span>
             <span
               className={`seg-item ${hudMode === 'inject' ? 'on' : ''}`}
               onClick={() => {
@@ -1665,6 +1656,84 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           <div className="flex" style={{ gap: 8, marginTop: 10 }}>
             <Tag tone="ghost">v{version ?? '1.0.0'}</Tag>
             <Tag tone="ghost">MIT</Tag>
+          </div>
+        </div>
+      </Panel>
+
+      <SectionHead idx={8}>{t.t('update.sectionTitle')}</SectionHead>
+      <Panel>
+        <div className="set-row">
+          <div className="info">
+            <div className="t">{t.t('update.checkOnStartup')}</div>
+            <div className="d">{t.t('update.checkOnStartupHint')}</div>
+          </div>
+          <Toggle
+            on={draft.update?.checkOnStartup ?? true}
+            onChange={(on) => set({ update: { ...draftRef.current.update, checkOnStartup: on } })}
+          />
+        </div>
+        <div className="set-row" style={{ alignItems: 'flex-start' }}>
+          <div className="info">
+            <div className="t">{t.t('update.manualTitle')}</div>
+            <div className="d">
+              {updateMsg
+                ? updateMsg.text
+                : t.t('update.manualHint').replace('{ver}', version ?? '1.0.0')}
+            </div>
+            {draft.update?.skipVersion && (
+              <div className="d" style={{ marginTop: 6 }}>
+                {t.t('update.skippedVersion').replace('{ver}', draft.update.skipVersion)}
+              </div>
+            )}
+          </div>
+          <div className="flex" style={{ gap: 8, flexWrap: 'wrap' }}>
+            {draft.update?.skipVersion && (
+              <Btn
+                variant="ghost"
+                size="sm"
+                onClick={() => set({ update: { ...draftRef.current.update, skipVersion: '' } })}
+              >
+                {t.t('update.clearSkip')}
+              </Btn>
+            )}
+            <Btn
+              variant="secondary"
+              size="sm"
+              disabled={updateChecking}
+              onClick={async () => {
+                setUpdateChecking(true)
+                setUpdateMsg(null)
+                try {
+                  const r = await window.api.update.check({ force: true })
+                  if (!r.ok) {
+                    setUpdateMsg({
+                      text: t.t('update.checkFailed').replace('{err}', r.error ?? ''),
+                      ok: false
+                    })
+                  } else if (r.hasUpdate) {
+                    setUpdateMsg({
+                      text: t.t('update.available').replace('{ver}', r.version ?? ''),
+                      ok: true
+                    })
+                  } else {
+                    setUpdateMsg({ text: t.t('update.upToDate'), ok: true })
+                  }
+                } catch (err) {
+                  setUpdateMsg({
+                    text: t.t('update.checkFailed').replace(
+                      '{err}',
+                      err instanceof Error ? err.message : String(err)
+                    ),
+                    ok: false
+                  })
+                } finally {
+                  setUpdateChecking(false)
+                }
+              }}
+            >
+              <IcRefresh size={12} />
+              {updateChecking ? t.t('update.checking') : t.t('update.checkNow')}
+            </Btn>
           </div>
         </div>
       </Panel>

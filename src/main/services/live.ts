@@ -1,5 +1,5 @@
 /**
- * CS2 回放与进程服务：CS2 进程检测、纯净原生回放（+exec cfg）、游戏内语音 HUD（addon 优先 / inject fallback）。
+ * CS2 回放与进程服务：CS2 进程检测、纯净原生回放（+exec cfg）、游戏内语音 HUD（inject 唯一路径）。
  */
 import { execFile, spawn } from 'node:child_process'
 import { promises as fs } from 'node:fs'
@@ -9,7 +9,7 @@ import { shell } from 'electron'
 import type { HudMode, LaunchResult, LiveStatus, MuteHudMode, SteamSafetyReport } from '@shared/types'
 import { extractVoiceIndexCached } from './voiceIndex'
 import { buildVjsResource, buildVoiceDataJs, buildVpk } from './vpk'
-import { demoInjector, VOICE_HUD_ADDON } from './injector'
+import { demoInjector } from './injector'
 import { VConsoleClient } from './vconsole'
 import {
   cleanupStagedDemo,
@@ -360,147 +360,7 @@ export class LiveService {
   }
 
   /**
-   * 查找随应用分发的静态 addon 资源目录。
-   * 开发态：assets/panorama/addon/dsh_voice_hud
-   * 打包态：resources/panorama/addon/dsh_voice_hud（electron-builder extraResources）
-   */
-  private async findVoiceHudAddonSource(): Promise<string | null> {
-    const candidates = [
-      join(process.cwd(), 'assets', 'panorama', 'addon', VOICE_HUD_ADDON),
-      join(process.resourcesPath ?? '', 'panorama', 'addon', VOICE_HUD_ADDON)
-    ]
-    for (const dir of candidates) {
-      try {
-        if ((await fs.stat(dir)).isDirectory()) return dir
-      } catch {
-        /* 下一个候选 */
-      }
-    }
-    return null
-  }
-
-  /**
-   * 用 CS2 自带的 resourcecompiler 把运行时 JS 编译成合法的 .vjs_c。
-   * addon 直接读文件，必须使用完整资源头；手写 48B 头只有 VPK 路径能容忍。
-   * 失败返回 null（调用方回退到旧格式，不阻塞 Demo 播放）。
-   */
-  private async compileVjsResource(install: string, source: string): Promise<Uint8Array | null> {
-    const compiler = join(install, 'game', 'bin', 'win64', 'resourcecompiler.exe')
-    try {
-      await fs.access(compiler)
-    } catch {
-      return null
-    }
-    const tag = `dsh_runtime_${process.pid}_${Date.now()}`
-    const contentDir = join(install, 'content', 'csgo_addons', tag)
-    const gameDir = join(install, 'game', 'csgo_addons', tag)
-    const vjsRel = join('panorama', 'scripts', 'hud', 'dsh_voice_data.vjs')
-    try {
-      await fs.mkdir(dirname(join(contentDir, vjsRel)), { recursive: true })
-      await fs.writeFile(join(contentDir, vjsRel), source, 'utf-8')
-      await fs.mkdir(join(contentDir, 'panorama'), { recursive: true })
-      await fs.writeFile(
-        join(contentDir, 'panorama', 'preprocessor_config.txt'),
-        '"PanzipCfg"\n{\n    "BlockDefs"\n    {\n    }\n}\n',
-        'ascii'
-      )
-      await new Promise<void>((resolve, reject) => {
-        execFile(
-          compiler,
-          [
-            '-game',
-            join(install, 'game', 'csgo'),
-            '-i',
-            join(contentDir, vjsRel),
-            '-f',
-            '-nop4',
-            '-v'
-          ],
-          { timeout: 120000, windowsHide: true },
-          (err, _stdout, stderr) => {
-            if (err) reject(new Error(stderr || err.message))
-            else resolve()
-          }
-        )
-      })
-      return await fs.readFile(join(gameDir, vjsRel + '_c'))
-    } catch (err) {
-      if (process.env['DEBUG_LIVE'] === '1') {
-        console.warn('[live] compile vjs failed', err)
-      }
-      return null
-    } finally {
-      await fs.rm(contentDir, { recursive: true, force: true }).catch(() => {})
-      await fs.rm(gameDir, { recursive: true, force: true }).catch(() => {})
-    }
-  }
-
-  /**
-   * 非侵入式 addon HUD 准备：
-   *  1. 把静态 addon 资源复制到 game/csgo_addons/dsh_voice_hud/
-   *  2. 运行时用 resourcecompiler 生成会话 dsh_voice_data.vjs_c
-   *  3. 不修改 gameinfo.gi、不写 overrides、不碰官方 manifest
-   * 返回错误信息或 null；任何失败都不会静默回退到注入。
-   */
-  async prepareVoiceHudAddon(
-    demoPath: string,
-    install: string,
-    tvVoiceIndices?: { low: number; high: number } | null,
-    muteMode: MuteHudMode = 'badge'
-  ): Promise<string | null> {
-    const source = await this.findVoiceHudAddonSource()
-    if (!source) {
-      return 'addon HUD 资源缺失：请先运行 node scripts/build-panorama.mjs --keep-addon 重新生成（未修改 gameinfo.gi）'
-    }
-    const dest = join(install, 'game', 'csgo_addons', VOICE_HUD_ADDON)
-    try {
-      await copyDirContents(source, dest)
-      // 语音索引按 demo 指纹缓存，重复播放 HUD 时优先命中缓存
-      const index = await extractVoiceIndexCached(demoPath)
-      const mutedSlots = deriveMutedSlots(index.pulsesBySlot, tvVoiceIndices)
-      const js = buildVoiceDataJs({
-        voicePacketCount: index.voicePacketCount,
-        pulsesBySlot: index.pulsesBySlot,
-        players: {},
-        mutedSlots,
-        muteMode
-      })
-      // addon 直接读文件，必须用 resourcecompiler 生成完整资源头；
-      // 手写 48B 头（buildVjsResource）只适合 VPK 路径，addon 会加载失败导致 HUD 不显示。
-      const compiled = await this.compileVjsResource(install, js)
-      const dataFile = join(dest, 'panorama', 'scripts', 'hud', 'dsh_voice_data.vjs_c')
-      await fs.mkdir(dirname(dataFile), { recursive: true })
-      await fs.writeFile(dataFile, compiled ?? buildVjsResource(js))
-      if (!compiled && process.env['DEBUG_LIVE'] === '1') {
-        console.warn('[live] addon vjs compile failed; fallback to legacy header (HUD may not load)')
-      }
-
-      const required = [
-        'addoninfo.txt',
-        'panorama/layout/hud/huddemocontroller.vxml_c',
-        'panorama/scripts/hud/dsh_voice.vjs_c',
-        'panorama/styles/hud/dsh_voice.vcss_c',
-        'panorama/scripts/hud/dsh_voice_data.vjs_c'
-      ]
-      const missing: string[] = []
-      for (const rel of required) {
-        try {
-          await fs.access(join(dest, ...rel.split('/')))
-        } catch {
-          missing.push(rel)
-        }
-      }
-      if (missing.length > 0) {
-        return `addon HUD 资源不完整：${missing.join('、')}（未修改 gameinfo.gi）`
-      }
-      return null
-    } catch (err) {
-      return `addon HUD 准备失败：${err instanceof Error ? err.message : String(err)}（未修改 gameinfo.gi）`
-    }
-  }
-
-  /**
-   * 游戏内语音 HUD 准备（显式 fallback / 实验模式）：
+   * 游戏内语音 HUD 准备（唯一路径）：
    * 提取语音说话者索引 → 生成会话 VPK（vjs_c 内嵌数据）
    * → 部署静态 VPK + 会话 VPK + gameinfo.gi SearchPath 注入。
    */
@@ -558,10 +418,10 @@ export class LiveService {
 
     const finish = () => {
       if (cleanupInjection) {
-        // 仅显式 inject 会话才调用 cleanAll（会移除本项目 SearchPath/VPK/备份）。
+        // inject 会话才调用 cleanAll（会移除本项目 SearchPath/VPK/备份）。
         void demoInjector.cleanAll(install).catch(() => {})
       } else {
-        // addon / 原生模式只清理本次播放 cfg 与日志，不触碰 gameinfo.gi。
+        // 纯原生回放只清理本次播放 cfg 与日志，不触碰 gameinfo.gi。
         void fs.unlink(join(install, 'game', 'csgo', 'cfg', 'dsh-play.cfg')).catch(() => {})
         void fs.unlink(join(install, 'game', 'csgo', 'dsh_hud.log')).catch(() => {})
       }
@@ -633,7 +493,7 @@ export class LiveService {
   ): Promise<LaunchResult> {
     const toolsMode = opts?.toolsMode ?? false
     const demoPath = opts?.playDemoPath
-    const hudMode: HudMode = opts?.hudMode ?? 'addon'
+    const hudMode: HudMode = opts?.hudMode ?? 'inject'
     const muteHudMode: MuteHudMode = opts?.muteHudMode === 'hide' ? 'hide' : 'badge'
     const hudEnabled = hudMode !== 'off'
     const startTick = typeof opts?.startTick === 'number' && opts.startTick > 0 ? opts.startTick : undefined
@@ -717,7 +577,7 @@ export class LiveService {
             return { ok: true, url: '', direct: true, exe, demoFile: name, starting: true }
           }
 
-          // 2.2 普通原生模式 / addon HUD / inject fallback：+exec dsh-play.cfg 秒播
+          // 2.2 普通原生模式 / inject HUD：+exec dsh-play.cfg 秒播
           const staged = await this.stageDemoForPlayNoSpace(demoPath, install)
           if (!staged) {
             return {
@@ -726,8 +586,8 @@ export class LiveService {
               error: '无法准备 demo 文件（写入暂存目录失败）。请检查磁盘空间或 CS2 路径设置。'
             }
           }
-          // 启动前只读检查：addon/off 不允许静默带着本项目注入残留启动。
-          // 这里不调用 cleanAll，避免原生/addon 模式在启动阶段修改 gameinfo.gi。
+          // 启动前只读检查：hudMode=off 时不允许静默带着本项目注入残留启动。
+          // 这里不调用 cleanAll，避免纯原生模式在启动阶段修改 gameinfo.gi。
           const safety = await demoInjector.inspect(install)
           if (hudMode !== 'inject' && safety.activeInjection) {
             return {
@@ -737,17 +597,8 @@ export class LiveService {
                 '检测到本项目注入残留（gameinfo.gi SearchPath 或 overrides VPK）。请先在 设置 → Steam 安全自检 执行“一键清理”，再启动。'
             }
           }
-          if (hudMode === 'addon') {
-            // 非侵入式：只写 game/csgo_addons/dsh_voice_hud/，不修改 gameinfo.gi
-            const err = await this.prepareVoiceHudAddon(
-              demoPath,
-              install,
-              opts?.tvVoiceIndices,
-              muteHudMode
-            )
-            if (err) return { ok: false, url: '', error: err }
-          } else if (hudMode === 'inject') {
-            // 显式 fallback / 实验模式：部署 VPK + gameinfo.gi SearchPath
+          if (hudMode === 'inject') {
+            // 唯一 HUD 路径：部署 VPK + gameinfo.gi SearchPath
             const err = await this.prepareVoiceHud(
               demoPath,
               install,
@@ -776,13 +627,9 @@ export class LiveService {
           const tickArgs = startTick ? ['+demo_gototick', String(startTick)] : []
 
           // 直接启动 cs2.exe 传参（完美/5E同款：cs2.exe 原生接收 +exec 启动参数秒进 Demo）
-          // -insecure 仅影响本次播放会话，不修改任何游戏文件；addon 模式额外加 -addon。
+          // -insecure 仅影响本次播放会话，不修改任何游戏文件。
           const hudArgs =
-            hudMode === 'inject'
-              ? ['-insecure', '-consolelog', 'dsh_hud.log']
-              : hudMode === 'addon'
-                ? ['-insecure', '-addon', VOICE_HUD_ADDON]
-                : []
+            hudMode === 'inject' ? ['-insecure', '-consolelog', 'dsh_hud.log'] : []
           const playArgs: string[] = [
             ...hudArgs,
             '+exec',
@@ -810,11 +657,7 @@ export class LiveService {
             return {
               ok: false,
               url: '',
-              error: `语音 HUD 启动失败：${detail}。${
-                hudMode === 'inject'
-                  ? 'Inject 可能已部分部署，请在 设置 → Steam 安全自检 执行“一键清理”。'
-                  : '未修改 gameinfo.gi；可重试或切换 Inject 实验模式。'
-              }`
+              error: `语音 HUD 启动失败：${detail}。Inject 可能已部分部署，请在 设置 → Steam 安全自检 执行“一键清理”。`
             }
           }
           /* 原生模式回退 steam:// */
@@ -962,7 +805,7 @@ export class LiveService {
       return {
         ok: false,
         message:
-          '已移除本项目 SearchPath/VPK/备份，但仍检测到其他 dsh 注入行；未改动第三方内容，请手动检查 gameinfo.gi。'
+          '已移除本工具的 SearchPath/VPK/备份，但仍检测到其他注入行；未改动第三方内容，请手动检查 gameinfo.gi。'
       }
     }
     const addonNote = report.addonPresent ? ' addon 目录作为额外内容保留，未改动官方文件。' : ''
@@ -985,22 +828,6 @@ export class LiveService {
 }
 
 // ─── 工具 ──────────────────────────────────────────────────────────────────
-
-/** 递归复制目录内容（不删除目标目录中已有文件，避免误删用户/第三方内容）。 */
-async function copyDirContents(src: string, dest: string): Promise<void> {
-  await fs.mkdir(dest, { recursive: true })
-  const entries = await fs.readdir(src, { withFileTypes: true })
-  for (const entry of entries) {
-    const from = join(src, entry.name)
-    const to = join(dest, entry.name)
-    if (entry.isDirectory()) {
-      await copyDirContents(from, to)
-    } else if (entry.isFile()) {
-      await fs.mkdir(dirname(to), { recursive: true })
-      await fs.copyFile(from, to)
-    }
-  }
-}
 
 function runCmd(cmd: string, args: string[]): Promise<string> {
   return new Promise((resolve) => {

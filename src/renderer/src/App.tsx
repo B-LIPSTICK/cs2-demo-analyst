@@ -1,8 +1,9 @@
 import { Component, Fragment, useCallback, useEffect, useState, type ReactNode } from 'react'
-import { I18nProvider, useTKey, type Lang } from './i18n'
+import { I18nProvider, type Lang } from './i18n'
 import { ToastProvider } from './components/ui'
 import { TitleBar } from './components/TitleBar'
 import { NavRail, type Page } from './components/NavRail'
+import { UpdateDialog, type UpdateInfo } from './components/UpdateDialog'
 import { LibraryPage } from './pages/LibraryPage'
 import { TranscriptPage } from './pages/TranscriptPage'
 import { AiPage } from './pages/AiPage'
@@ -81,7 +82,6 @@ function initialRoute(): Route {
 }
 
 export default function App() {
-  const t = useTKey()
   const [route, setRoute] = useState<Route>(initialRoute)
   // 导航序号（navigate 每次 +1）：页面常驻下重复跳转同一 demo 时目标页也能感知
   const [navSeq, setNavSeq] = useState(0)
@@ -94,7 +94,7 @@ export default function App() {
   })
   const [version, setVersion] = useState('1.0.0')
   const [maximized, setMaximized] = useState(false)
-  const [update, setUpdate] = useState<{ version: string; url: string } | null>(null)
+  const [update, setUpdate] = useState<UpdateInfo | null>(null)
 
   // 初始数据
   useEffect(() => {
@@ -122,9 +122,18 @@ export default function App() {
       setSettings((s) => e.settings ?? s)
     })
     const offLive = window.api.onEvent('live:status', (e) => setLive(e.status))
-    const offUpd = window.api.onEvent('update:available', (e) =>
-      setUpdate({ version: e.version, url: e.url })
-    )
+    // 这个事件只由「启动自动检查」发出（设置页手动检查走 IPC 返回值，就地展示结果）。
+    // 主进程已过滤 checkOnStartup / snoozeUntil / skipVersion，能到这里就该弹窗。
+    const offUpd = window.api.onEvent('update:result', (e) => {
+      const r = e.result
+      if (!r.ok || !r.hasUpdate || !r.version) return
+      setUpdate({
+        version: r.version,
+        url: r.url ?? '',
+        notes: r.notes,
+        currentVersion: r.currentVersion
+      })
+    })
     return () => {
       offSettings()
       offLive()
@@ -172,17 +181,7 @@ export default function App() {
       <I18nProvider lang={settings.language} onLangChange={onLangChange}>
         <ToastProvider>
           <div className="app">
-            {update && (
-              <div className="update-banner">
-                <span className="ub-txt">{t('update.available').replace('{ver}', update.version)}</span>
-                <button className="btn primary" style={{ height: 24, fontSize: 12 }} onClick={() => window.api.app.openUrl(update.url)}>
-                  {t('update.go')}
-                </button>
-                <button className="icon-btn" style={{ width: 24, height: 24 }} onClick={() => setUpdate(null)} title={t('update.dismiss')}>
-                  ✕
-                </button>
-              </div>
-            )}
+            {update && <UpdateDialog info={update} onClose={() => setUpdate(null)} />}
             <TitleBar
               status={live}
               version={version}

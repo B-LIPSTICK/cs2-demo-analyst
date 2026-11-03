@@ -650,6 +650,67 @@ textarea.input {
   transform: translateY(-1px);
 }
 
+/* ─── 更新提示弹窗 ──────────────────────────────────────────────────────── */
+
+.update-modal {
+  width: 640px;
+  max-width: calc(100vw - 80px);
+}
+
+.update-meta {
+  margin: -6px 0 10px;
+}
+
+.update-notes {
+  max-height: min(46vh, 380px);
+  overflow-y: auto;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-1);
+  border-radius: 12px;
+  background: var(--bg-2);
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.update-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.update-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-1);
+  cursor: pointer;
+  user-select: none;
+}
+
+.update-check input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.update-check input[type='checkbox']:disabled + span {
+  color: var(--text-2);
+  opacity: 0.6;
+}
+
+.update-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .toast {
   border-radius: 16px;
   background: var(--glass-toast);

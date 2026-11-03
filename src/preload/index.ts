@@ -109,6 +109,11 @@ const api: ApiWithEvents = {
     openUrl: (url: string) => ipcRenderer.invoke('app:openUrl', url),
     dataDir: () => ipcRenderer.invoke('app:dataDir')
   },
+  update: {
+    check: (opts?: { force?: boolean }) => ipcRenderer.invoke('update:check', opts),
+    snooze: (hours: number) => ipcRenderer.invoke('update:snooze', hours),
+    skip: (version: string) => ipcRenderer.invoke('update:skip', version)
+  },
   onEvent: <T extends MainEventType>(
     type: T,
     cb: (e: Extract<MainEvent, { type: T }>) => void

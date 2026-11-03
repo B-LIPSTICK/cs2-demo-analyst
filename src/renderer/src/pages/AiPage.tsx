@@ -365,7 +365,7 @@ export function AiPage({ onGoSettings }: { onGoSettings: () => void }) {
     }
     if (detail?.meta.path) {
       const s = await window.api.settings.get()
-      const hudMode = s.cs2?.hudMode ?? 'addon'
+      const hudMode = s.cs2?.hudMode ?? 'inject'
       if (hudMode !== 'off') toast.push(t('detail.voiceHudPreparing'))
       // 与详情页一致：按静音名单计算 GOTV 语音位掩码，保证各入口启动行为统一
       const voiceIndices = computeVoiceMask(

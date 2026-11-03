@@ -4,7 +4,7 @@
 import { app, BrowserWindow, dialog, ipcMain, net, shell } from 'electron'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { HudMode, MuteHudMode, Settings } from '@shared/types'
+import type { HudMode, MuteHudMode, Settings, UpdateCheckResult } from '@shared/types'
 import { createLibraryService } from './services/library'
 import { getSettings, updateSettings } from './services/settings'
 
@@ -257,7 +257,7 @@ function registerIpc(): void {
         {
           ...opts,
           toolsMode: opts?.toolsMode ?? (s.cs2.playMode === 'tools'),
-          hudMode: opts?.hudMode ?? s.cs2.hudMode ?? 'addon',
+          hudMode: opts?.hudMode ?? s.cs2.hudMode ?? 'inject',
           // 静态 per-launch：播放中修改设置，下次启动才生效
           muteHudMode: opts?.muteHudMode ?? s.overlay.muteHudMode ?? 'badge'
         },
@@ -352,6 +352,24 @@ function registerIpc(): void {
     if (typeof url === 'string' && /^https?:\/\//.test(url)) return shell.openExternal(url)
   })
   ipcMain.handle('app:dataDir', () => app.getPath('userData'))
+
+  // ─── 更新检测 IPC ───
+  ipcMain.handle('update:check', (_e, opts?: { force?: boolean }) => checkForUpdate(opts))
+  ipcMain.handle('update:snooze', async (_e, hours: number) => {
+    const h = Number.isFinite(hours) && hours > 0 ? Math.min(hours, 24 * 365) : 24
+    const cur = (await getSettings()).update
+    await updateSettings({
+      update: { ...cur, snoozeUntil: new Date(Date.now() + h * 3600_000).toISOString() }
+    })
+    updateCache = null
+  })
+  ipcMain.handle('update:skip', async (_e, version: string) => {
+    const cur = (await getSettings()).update
+    await updateSettings({
+      update: { ...cur, skipVersion: String(version ?? '').replace(/^v/, '') }
+    })
+    updateCache = null
+  })
   // 目录选择（设置页选 CS2 安装路径等）
   ipcMain.handle('app:pickDirectory', async () => {
     const res = await dialog.showOpenDialog(mainWindow!, {
@@ -365,6 +383,9 @@ function registerIpc(): void {
 // ─── 更新检测（GitHub Releases）─────────────────────────────────────────────
 
 const UPDATE_REPO = 'B-LIPSTICK/cs2-demo-analyst'
+/** 内存缓存：6 小时内不重复请求 GitHub（手动强制检查除外） */
+const UPDATE_CACHE_MS = 6 * 60 * 60 * 1000
+let updateCache: { at: number; result: UpdateCheckResult } | null = null
 
 /** 'v1.2.3' / '1.2.3' → [1,2,3]；解析失败返回 null */
 function parseVer(v: string): number[] | null {
@@ -380,22 +401,63 @@ function newerVer(a: number[], b: number[]): boolean {
   return false
 }
 
-/** 启动后延迟检查 GitHub 最新 Release；有新版 → 发 update:available（离线/被墙静默） */
-async function checkForUpdate(): Promise<void> {
+/**
+ * 拉取 GitHub 最新 Release 并比较版本。
+ * - force=false 且内存缓存未过期 → 直接返回缓存，不发请求
+ * - notes 取 Release body 原文（Markdown），由渲染层按纯文本展示
+ * - 网络失败/被墙返回 ok:false（渲染层据此静默，不打扰用户）
+ */
+async function checkForUpdate(opts?: { force?: boolean }): Promise<UpdateCheckResult> {
+  const currentVersion = getDisplayVersion()
+  if (!opts?.force && updateCache && Date.now() - updateCache.at < UPDATE_CACHE_MS) {
+    return updateCache.result
+  }
+  const fail = (error: string): UpdateCheckResult => ({ ok: false, hasUpdate: false, currentVersion, error })
   try {
     const res = await net.fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
       headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'cs2-demo-analyst' },
       signal: AbortSignal.timeout(8000)
     })
-    if (!res.ok) return
-    const data = (await res.json()) as { tag_name?: string; html_url?: string }
+    if (!res.ok) return fail(`GitHub API ${res.status}`)
+    const data = (await res.json()) as {
+      tag_name?: string
+      html_url?: string
+      body?: string
+      published_at?: string
+    }
     const latest = parseVer(data.tag_name ?? '')
-    const cur = parseVer(app.getVersion())
-    if (!latest || !cur || !newerVer(latest, cur)) return
-    mainWindow?.webContents.send('update:available', {
-      version: String(data.tag_name).replace(/^v/, ''),
-      url: data.html_url ?? `https://github.com/${UPDATE_REPO}/releases`
-    })
+    const cur = parseVer(currentVersion)
+    if (!latest || !cur) return fail('无法解析版本号')
+    const version = String(data.tag_name ?? '').replace(/^v/, '')
+    const result: UpdateCheckResult = {
+      ok: true,
+      hasUpdate: newerVer(latest, cur),
+      currentVersion,
+      version,
+      url: data.html_url ?? `https://github.com/${UPDATE_REPO}/releases`,
+      notes: typeof data.body === 'string' ? data.body : '',
+      publishedAt: data.published_at
+    }
+    updateCache = { at: Date.now(), result }
+    return result
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : String(err))
+  }
+}
+
+/**
+ * 启动时自动检查：尊重设置里的 checkOnStartup / snoozeUntil / skipVersion。
+ * 三个条件任一命中都不弹窗；用户手动检查（设置页按钮）绕过这些条件。
+ */
+async function autoCheckForUpdate(): Promise<void> {
+  try {
+    const s = await getSettings()
+    if (!s.update.checkOnStartup) return
+    const result = await checkForUpdate()
+    if (!result.ok || !result.hasUpdate) return
+    if (s.update.skipVersion && s.update.skipVersion === result.version) return
+    if (s.update.snoozeUntil && Date.parse(s.update.snoozeUntil) > Date.now()) return
+    mainWindow?.webContents.send('update:result', { result, auto: true })
   } catch {
     /* 静默 */
   }
@@ -417,8 +479,8 @@ if (!gotLock) {
   app.whenReady().then(() => {
     registerIpc()
     createWindow()
-    // 启动 8s 后检查更新（避开启动高峰；版本相同/无网都静默）
-    setTimeout(() => void checkForUpdate(), 8000)
+    // 启动 8s 后自动检查更新（避开启动高峰；尊重用户设置，离线/被墙静默）
+    setTimeout(() => void autoCheckForUpdate(), 8000)
     void library.init()
     void getSettings().then((s) => {
       live.setInstallPath(s.cs2.installPath)

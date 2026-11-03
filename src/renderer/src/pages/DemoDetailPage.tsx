@@ -437,7 +437,7 @@ export function DemoDetailPage({
       return
     }
     const s = await window.api.settings.get()
-    const hudMode = s.cs2?.hudMode ?? 'addon'
+    const hudMode = s.cs2?.hudMode ?? 'inject'
     if (hudMode !== 'off') toast.push(t('detail.voiceHudPreparing'))
     const voiceIndices = computeVoiceMask(detail.meta.players ?? [], mutedSet)
     if (voiceIndices.unknownSlots.length > 0) {

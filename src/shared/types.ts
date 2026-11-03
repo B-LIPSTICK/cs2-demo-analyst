@@ -281,8 +281,35 @@ export interface LaunchResult {
 
 export type LocalWhisperModel = 'base' | 'small' | 'medium'
 
-/** 游戏内语音 HUD 的加载方式：addon 为非侵入式额外内容；inject 为实验性 VPK 注入。 */
-export type HudMode = 'addon' | 'inject' | 'off'
+/**
+ * 游戏内语音 HUD 的加载方式。
+ *
+ * 只剩 inject：addon 路线在引擎层就走不通（2026-11-03 实测 CS2 build 判定）。
+ * - panorama.dll 明写 `Addons can only add layouts in the panorama/layout/custom_game/
+ *   subdirectory` 与 `Addons cannot add ui scripts`，官方 HUD 布局不允许被 addon 覆盖；
+ * - `-addon <name>` 在 cs2.exe / engine2.dll / tier0.dll 里均无对应开关字符串，
+ *   历史上从没有一次 `Mounting addon 'dsh_voice_hud'` 出现在 pwa_*.log。
+ * inject（overrides VPK + gameinfo.gi SearchPath）是唯一真正生效的路径。
+ */
+export type HudMode = 'inject' | 'off'
+
+/** 更新检查结果（手动检查与启动自动检查共用） */
+export interface UpdateCheckResult {
+  /** 检查请求本身是否成功（网络失败为 false） */
+  ok: boolean
+  /** 是否存在比当前版本更高的新版本 */
+  hasUpdate: boolean
+  currentVersion: string
+  /** 新版本号（不含前导 v） */
+  version?: string
+  /** 发布页地址 */
+  url?: string
+  /** Release 说明（Markdown 原文，UI 以纯文本展示） */
+  notes?: string
+  publishedAt?: string
+  /** 网络/解析失败原因（仅 ok=false 时有值） */
+  error?: string
+}
 
 /** 游戏内 HUD 中静音选手的显示方式：badge=显示禁言标志，hide=完全隐藏说话者。 */
 export type MuteHudMode = 'hide' | 'badge'
@@ -352,7 +379,7 @@ export interface Settings {
     launchArgs?: string
     playMode?: 'tools' | 'native'
     playResolution?: string
-    /** 游戏内语音 HUD 模式：默认 addon（非侵入式额外内容），inject 为实验性 VPK 注入，off 关闭 */
+    /** 游戏内语音 HUD 模式（仅 inject / off；addon 已被引擎否决，见 HudMode 注释） */
     hudMode?: HudMode
   }
   overlay: {
@@ -368,6 +395,14 @@ export interface Settings {
     showMutedSpeakers?: boolean
     /** 游戏内 HUD 中静音选手的显示方式；静态 per-launch，播放中修改下次启动生效 */
     muteHudMode?: MuteHudMode
+  }
+  update: {
+    /** 启动时自动检查更新 */
+    checkOnStartup: boolean
+    /** 用户点「稍后提醒」后，到这个时间点之前不再弹窗（ISO 时间字符串） */
+    snoozeUntil?: string
+    /** 用户勾了「不再提示这个版本」：该版本号永久跳过 */
+    skipVersion?: string
   }
 }
 
@@ -400,7 +435,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cs2: {
     launchArgs: '',
     playMode: 'native',
-    hudMode: 'addon'
+    hudMode: 'inject'
   },
   overlay: {
     enabled: false,
@@ -410,6 +445,9 @@ export const DEFAULT_SETTINGS: Settings = {
     mutedPlayers: [],
     showMutedSpeakers: true,
     muteHudMode: 'badge'
+  },
+  update: {
+    checkOnStartup: true
   }
 }
 
@@ -523,6 +561,14 @@ export interface Api {
     /** 应用数据目录（userData，ErrorBoundary 打开数据目录用） */
     dataDir: () => Promise<string>
   }
+  update: {
+    /** 手动/启动检查 GitHub 最新 Release（带 6 小时内存缓存） */
+    check: (opts?: { force?: boolean }) => Promise<UpdateCheckResult>
+    /** 用户选择「稍后提醒」：hours 小时后重新允许弹窗 */
+    snooze: (hours: number) => Promise<void>
+    /** 用户选择「不再提示这个版本」：该版本永久跳过；空字符串清除 */
+    skip: (version: string) => Promise<void>
+  }
 }
 
 export type EngineKind = 'csgove' | 'whisper' | 'model-base' | 'model-small' | 'model-medium'
@@ -549,7 +595,7 @@ export type MainEvent =
   | { type: 'overlay:state'; state: OverlayState }
   | { type: 'voice:detected'; id: string; hasVoice: boolean; voiceSec: number }
   | { type: 'settings:changed'; settings: Settings }
-  | { type: 'update:available'; version: string; url: string }
+  | { type: 'update:result'; result: UpdateCheckResult; auto?: boolean }
 
 export type MainEventType = MainEvent['type']
 

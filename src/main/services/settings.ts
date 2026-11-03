@@ -43,12 +43,27 @@ export async function getSettings(): Promise<Settings> {
     if (process.env['DEBUG_LIBRARY'] === '1') {
       console.log(`[settings] path=${settingsPath()} rawLen=${raw.length} roots=${JSON.stringify((parsed as { libraryRoots?: string[] }).libraryRoots)}`)
     }
-    cache = deepMerge(DEFAULT_SETTINGS, parsed)
+    cache = migrate(deepMerge(DEFAULT_SETTINGS, parsed))
   } catch (err) {
     console.error('[settings] load failed', err)
     cache = structuredClone(DEFAULT_SETTINGS)
   }
   return cache
+}
+
+/**
+ * 旧配置迁移。
+ * hudMode 曾支持 'addon'，但该模式在引擎层不生效（Panorama 不允许 addon 覆盖官方 HUD 布局、
+ * 也不允许 addon 提供 ui script，cs2.exe 更没有 -addon 开关）。留着旧值会让 HUD 静默消失，
+ * 所以读到 'addon' 一律纠正为 'inject'。
+ */
+function migrate(s: Settings): Settings {
+  const mode = s.cs2?.hudMode as string | undefined
+  if (mode !== 'inject' && mode !== 'off') {
+    s.cs2 = { ...s.cs2, hudMode: 'inject' }
+  }
+  if (!s.update) s.update = { checkOnStartup: true }
+  return s
 }
 
 let writeChain: Promise<void> = Promise.resolve()

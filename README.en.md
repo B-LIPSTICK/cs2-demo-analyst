@@ -8,7 +8,7 @@
 *Voice Transcription · Panorama Voice HUD · Lead-In Live Jump · Official Dual-Track Round Timeline · AI Match Post-Mortem*
 
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-blue?logo=windows)](https://github.com/B-LIPSTICK/cs2-demo-analyst/releases)
-[![Version](https://img.shields.io/badge/version-v1.0.0-007aff)](https://github.com/B-LIPSTICK/cs2-demo-analyst/releases/tag/v1.0.0)
+[![Version](https://img.shields.io/badge/version-v1.0.1-007aff)](https://github.com/B-LIPSTICK/cs2-demo-analyst/releases/tag/v1.0.1)
 [![Electron](https://img.shields.io/badge/Electron-43.4-47848F?logo=electron)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -28,7 +28,9 @@
 Grab the latest release from the [Releases Page](https://github.com/B-LIPSTICK/cs2-demo-analyst/releases):
 
 - **Portable Green Build (Recommended)**:
-  Download `CS2-Demo-Analyst-1.0.0-win64-portable.zip`, extract to any directory, and double-click `CS2 Demo Analyst.exe` to start immediately. No installation required.
+  Download `CS2-Demo-Analyst-1.0.1-win64-portable.zip`, extract to any directory, and double-click `CS2 Demo Analyst.exe` to start immediately. No installation required.
+
+> **Prerequisite**: demos downloaded from Valve official matchmaking contain no voice data, so no tool can show who is speaking in them — the data simply is not in the file. Voice data ships with demos from third-party platforms such as FACEIT, 5E, and Wanmei.
 
 ### Basic Workflow
 

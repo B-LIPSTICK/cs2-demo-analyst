@@ -16,7 +16,12 @@ import type { SteamSafetyReport } from '@shared/types'
 export const STATIC_VPK = 'dsh_voice_override.vpk'
 export const SESSION_VPK = 'dsh_voice_session.vpk'
 export const INJECT_BACKUP = 'gameinfo.gi.dsh_inject.bak'
-/** 非侵入式 addon 目录名（game/csgo_addons/<name>） */
+/**
+ * 旧版本使用的 addon 目录名（game/csgo_addons/<name>）。
+ * addon HUD 已被引擎否决（panorama 只允许 addon 在 layout/custom_game/ 下新增布局、
+ * 且不允许 addon 提供 ui script；`-addon` 也不是 cs2.exe 的启动开关），
+ * 此常量仅用于识别并清理历史残留目录，不再参与启动。
+ */
 export const VOICE_HUD_ADDON = 'dsh_voice_hud'
 
 function searchLine(vpk: string): string {
