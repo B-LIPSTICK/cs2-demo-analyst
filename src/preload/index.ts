@@ -113,7 +113,9 @@ const api: ApiWithEvents = {
   update: {
     check: (opts?: { force?: boolean }) => ipcRenderer.invoke('update:check', opts),
     snooze: (hours: number) => ipcRenderer.invoke('update:snooze', hours),
-    skip: (version: string) => ipcRenderer.invoke('update:skip', version)
+    skip: (version: string) => ipcRenderer.invoke('update:skip', version),
+    install: (assetUrl: string, version: string) =>
+      ipcRenderer.invoke('update:install', assetUrl, version)
   },
   onEvent: <T extends MainEventType>(
     type: T,

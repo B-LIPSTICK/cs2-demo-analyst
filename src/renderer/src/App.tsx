@@ -130,6 +130,7 @@ export default function App() {
       setUpdate({
         version: r.version,
         url: r.url ?? '',
+        assetUrl: r.assetUrl,
         notes: r.notes,
         currentVersion: r.currentVersion
       })

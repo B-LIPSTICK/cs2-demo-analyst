@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useT } from '../i18n'
+import type { UpdateProgress } from '@shared/types'
 
 export interface UpdateInfo {
   /** 新版本号（不含 v 前缀） */
   version: string
   /** Release 页面地址 */
   url: string
+  /** 便携 zip 下载地址；为空表示这次发布没有可自动安装的资产 */
+  assetUrl?: string
   /** Release body 原文（Markdown） */
   notes?: string
   /** 当前运行版本，仅用于展示 */
@@ -63,7 +66,11 @@ export function UpdateDialog({
   const t = useT()
   const [snooze, setSnooze] = useState(false)
   const [skip, setSkip] = useState(false)
+  const [progress, setProgress] = useState<UpdateProgress | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState<string | null>(null)
   const notes = useMemo(() => plainNotes(info.notes ?? ''), [info.notes])
+  const canAutoUpdate = Boolean(info.assetUrl)
 
   /** 记住用户的选择（不关窗） */
   const remember = useCallback(() => {
@@ -76,14 +83,26 @@ export function UpdateDialog({
     onClose()
   }, [remember, onClose])
 
-  // Esc 关闭（等同稍后）
+  // Esc 关闭（等同稍后）；更新进行中不响应，避免把正在下载的流程关掉
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') applyAndClose()
+      if (e.key === 'Escape' && !busy) applyAndClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [applyAndClose])
+  }, [applyAndClose, busy])
+
+  // 下载/解压进度
+  useEffect(() => {
+    const off = window.api.onEvent('update:progress', (e) => {
+      setProgress(e.progress)
+      if (e.progress.phase === 'error') {
+        setBusy(false)
+        setFailed(e.progress.message ?? '')
+      }
+    })
+    return off
+  }, [])
 
   const goDownload = () => {
     remember()
@@ -91,8 +110,46 @@ export function UpdateDialog({
     onClose()
   }
 
+  const autoUpdate = async () => {
+    if (!info.assetUrl || busy) return
+    setBusy(true)
+    setFailed(null)
+    setProgress({ phase: 'download', received: 0, total: 0 })
+    // 成功后应用会自行退出并由脚本重启，这里不需要做别的
+    const r = await window.api.update.install(info.assetUrl, info.version).catch((err) => ({
+      ok: false,
+      error: err instanceof Error ? err.message : String(err)
+    }))
+    if (!r.ok) {
+      setBusy(false)
+      setFailed(r.error ?? '')
+    }
+  }
+
+  const pct = progress && progress.total > 0 ? Math.min(100, Math.round((progress.received / progress.total) * 100)) : 0
+  const progressText = (() => {
+    if (!progress) return ''
+    switch (progress.phase) {
+      case 'download':
+        if (progress.total > 0) {
+          const mb = (progress.received / 1024 / 1024).toFixed(1)
+          const all = (progress.total / 1024 / 1024).toFixed(1)
+          return t.t('update.downloading').replace('{pct}', String(pct)).replace('{got}', mb).replace('{all}', all)
+        }
+        return t.t('update.downloadingUnknown')
+      case 'extract':
+        return t.t('update.extracting')
+      case 'verify':
+        return t.t('update.verifying')
+      case 'ready':
+        return t.t('update.restarting')
+      default:
+        return ''
+    }
+  })()
+
   return createPortal(
-    <div className="modal-overlay" onClick={applyAndClose}>
+    <div className="modal-overlay" onClick={() => (busy ? undefined : applyAndClose())}>
       <div className="modal update-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-title">{t.t('update.dialogTitle').replace('{ver}', info.version)}</div>
         {info.currentVersion && (
@@ -101,27 +158,55 @@ export function UpdateDialog({
           </div>
         )}
         <div className="update-notes">{notes || t.t('update.noNotes')}</div>
+
+        {busy && progress && (
+          <div className="update-progress">
+            <div className="update-bar">
+              <div className="update-bar-fill" style={{ width: `${pct}%` }} />
+            </div>
+            <div className="update-progress-text">{progressText}</div>
+          </div>
+        )}
+        {!busy && failed && (
+          <div className="update-progress-text error">
+            {t.t('update.installFailed').replace('{msg}', failed)}
+          </div>
+        )}
+
         <div className="update-checks">
           <label className="update-check">
-            <input type="checkbox" checked={skip} onChange={(e) => setSkip(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={skip}
+              disabled={busy}
+              onChange={(e) => setSkip(e.target.checked)}
+            />
             <span>{t.t('update.skipVersion')}</span>
           </label>
           <label className="update-check">
             <input
               type="checkbox"
               checked={snooze}
-              disabled={skip}
+              disabled={skip || busy}
               onChange={(e) => setSnooze(e.target.checked)}
             />
             <span>{t.t('update.snoozeOneDay')}</span>
           </label>
         </div>
         <div className="update-actions">
-          <button className="btn ghost" onClick={applyAndClose}>
+          <button className="btn ghost" onClick={applyAndClose} disabled={busy}>
             {t.t('update.later')}
           </button>
-          <button className="btn primary" onClick={goDownload}>
+          <button className="btn ghost" onClick={goDownload} disabled={busy}>
             {t.t('update.go')}
+          </button>
+          <button
+            className="btn primary"
+            onClick={() => void autoUpdate()}
+            disabled={busy || !canAutoUpdate}
+            title={canAutoUpdate ? undefined : t.t('update.noAsset')}
+          >
+            {busy ? t.t('update.updating') : t.t('update.installNow')}
           </button>
         </div>
       </div>

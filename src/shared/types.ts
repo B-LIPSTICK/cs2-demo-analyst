@@ -307,7 +307,29 @@ export interface UpdateCheckResult {
   /** Release 说明（Markdown 原文，UI 以纯文本展示） */
   notes?: string
   publishedAt?: string
+  /** 便携 zip 的下载地址（一键更新用；该 Release 没有 zip 资产时为空） */
+  assetUrl?: string
+  /** zip 的字节数，用于显示进度与下载后校验 */
+  assetSize?: number
   /** 网络/解析失败原因（仅 ok=false 时有值） */
+  error?: string
+}
+
+/** 一键更新的阶段与进度 */
+export interface UpdateProgress {
+  phase: 'download' | 'extract' | 'verify' | 'ready' | 'error'
+  /** 已下载字节数 */
+  received: number
+  /** 总字节数（未知时为 0） */
+  total: number
+  /** 失败原因（phase='error' 时有值） */
+  message?: string
+}
+
+/** 一键更新结果 */
+export interface UpdateInstallResult {
+  ok: boolean
+  /** 失败原因（ok=false 时有值） */
   error?: string
 }
 
@@ -572,6 +594,8 @@ export interface Api {
     snooze: (hours: number) => Promise<void>
     /** 用户选择「不再提示这个版本」：该版本永久跳过；空字符串清除 */
     skip: (version: string) => Promise<void>
+    /** 一键更新：下载 zip、解压到临时目录、写更新脚本，然后退出应用由脚本覆盖并重启 */
+    install: (assetUrl: string, version: string) => Promise<UpdateInstallResult>
   }
 }
 
@@ -600,6 +624,7 @@ export type MainEvent =
   | { type: 'voice:detected'; id: string; hasVoice: boolean; voiceSec: number }
   | { type: 'settings:changed'; settings: Settings }
   | { type: 'update:result'; result: UpdateCheckResult; auto?: boolean }
+  | { type: 'update:progress'; progress: UpdateProgress }
 
 export type MainEventType = MainEvent['type']
 

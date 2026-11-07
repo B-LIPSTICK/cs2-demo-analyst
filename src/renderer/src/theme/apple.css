@@ -711,6 +711,35 @@ textarea.input {
   gap: 10px;
 }
 
+/* 一键更新的下载/解压进度 */
+.update-progress {
+  margin-bottom: 14px;
+}
+
+.update-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--line-1);
+  overflow: hidden;
+}
+
+.update-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.18s ease-out;
+}
+
+.update-progress-text {
+  margin-top: 7px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.update-progress-text.error {
+  color: var(--danger, #d13b3b);
+}
+
 .toast {
   border-radius: 16px;
   background: var(--glass-toast);

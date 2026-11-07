@@ -521,6 +521,15 @@ export const zh = {
   'update.checkFailed': '检查失败：{err}',
   'update.skippedVersion': '已跳过的版本：v{ver}',
   'update.clearSkip': '恢复提示',
+  'update.installNow': '一键更新',
+  'update.updating': '更新中…',
+  'update.noAsset': '这次发布没有提供便携包，请用「前往下载」',
+  'update.downloading': '正在下载 {pct}%（{got} / {all} MB）',
+  'update.downloadingUnknown': '正在下载…',
+  'update.extracting': '正在解压…',
+  'update.verifying': '正在校验文件…',
+  'update.restarting': '即将自动重启完成更新',
+  'update.installFailed': '一键更新失败：{msg}',
   'settings.save': '保存',
 
   // 悬浮层位置

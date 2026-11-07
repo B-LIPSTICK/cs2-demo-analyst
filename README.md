@@ -8,7 +8,7 @@
 *语音转写 · 游戏内语音显示 · 精准直跳 · 官方双轨回合走势图 · AI 智能复盘*
 
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-blue?logo=windows)](https://github.com/B-LIPSTICK/cs2-demo-analyst/releases)
-[![Version](https://img.shields.io/badge/version-v1.0.2-007aff)](https://github.com/B-LIPSTICK/cs2-demo-analyst/releases/tag/v1.0.2)
+[![Version](https://img.shields.io/badge/version-v1.0.3-007aff)](https://github.com/B-LIPSTICK/cs2-demo-analyst/releases/tag/v1.0.3)
 [![Electron](https://img.shields.io/badge/Electron-43.4-47848F?logo=electron)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -28,7 +28,7 @@
 前往 [Releases 页面](https://github.com/B-LIPSTICK/cs2-demo-analyst/releases) 获取最新发布包：
 
 - **绿色便携版（推荐）**：
-  下载 `CS2-Demo-Analyst-1.0.2-win64-portable.zip`，解压至任意无特殊符号的英文文件夹，双击 `CS2 Demo Analyst.exe` 即可使用，无需安装、开箱即用。
+  下载 `CS2-Demo-Analyst-1.0.3-win64-portable.zip`，解压至任意无特殊符号的英文文件夹，双击 `CS2 Demo Analyst.exe` 即可使用，无需安装、开箱即用。
 
 > **前提**：Valve 官方匹配下载的 demo 不带语音数据，这类文件无法显示说话者——数据不在文件里。带语音的是 FACEIT、5E、完美世界等第三方平台的 demo。
 

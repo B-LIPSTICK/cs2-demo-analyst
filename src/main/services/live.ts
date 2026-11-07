@@ -10,6 +10,7 @@ import type { HudMode, LaunchResult, LiveStatus, MuteHudMode, SteamSafetyReport 
 import { extractVoiceIndexCached } from './voiceIndex'
 import { buildVjsResource, buildVoiceDataJs, buildVpk } from './vpk'
 import { demoInjector } from './injector'
+import { copyDemoForPlay, repairStagedDemo } from './demoSeal'
 import { VConsoleClient } from './vconsole'
 import {
   cleanupStagedDemo,
@@ -305,8 +306,10 @@ export class LiveService {
       const dest = join(destDir, name)
       try {
         await fs.access(dest)
+        // 上一版程序可能复制过一个尾被截断的 demo 过来，就地补好。
+        await repairStagedDemo(dest)
       } catch {
-        await fs.copyFile(demoPath, dest)
+        await copyDemoForPlay(demoPath, dest)
       }
       // 复制/复用后登记清单，供会话退出或启动时清理。
       await this.registerStagedDemoSafe(dest, demoPath, install)
@@ -332,8 +335,10 @@ export class LiveService {
       const dest = join(dir, name)
       try {
         await fs.access(dest)
+        // 上一版程序可能复制过一个尾被截断的 demo 过来，就地补好。
+        await repairStagedDemo(dest)
       } catch {
-        await fs.copyFile(demoPath, dest)
+        await copyDemoForPlay(demoPath, dest)
       }
       // 复制/复用后登记清单，供会话退出或启动时清理。
       await this.registerStagedDemoSafe(dest, demoPath, install)

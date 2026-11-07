@@ -42,6 +42,7 @@ const live = new LiveService({
     mainWindow?.webContents.send('live:console', { channel, text })
 })
 import { AiService } from './services/ai'
+import { prepareUpdate, pruneOldUpdateDirs } from './services/updater'
 const ai = new AiService({
   delta: (demoId, chunk, sessionId, requestId) =>
     mainWindow?.webContents.send('ai:delta', { demoId, chunk, sessionId, requestId }),
@@ -394,6 +395,13 @@ function registerIpc(): void {
     })
     updateCache = null
   })
+  ipcMain.handle('update:install', async (_e, assetUrl: string, version: string) =>
+    prepareUpdate({
+      assetUrl: String(assetUrl ?? ''),
+      version: String(version ?? ''),
+      onProgress: (p) => mainWindow?.webContents.send('update:progress', { progress: p })
+    })
+  )
   // 目录选择（设置页选 CS2 安装路径等）
   ipcMain.handle('app:pickDirectory', async () => {
     if (!mainWindow) return null
@@ -463,11 +471,17 @@ async function checkForUpdate(opts?: { force?: boolean }): Promise<UpdateCheckRe
       html_url?: string
       body?: string
       published_at?: string
+      assets?: { name?: string; browser_download_url?: string; size?: number }[]
     }
     const latest = parseVer(data.tag_name ?? '')
     const cur = parseVer(currentVersion)
     if (!latest || !cur) return fail('无法解析版本号')
     const version = String(data.tag_name ?? '').replace(/^v/, '')
+    // 一键更新用便携 zip：优先匹配「win64-portable.zip」，退而取第一个 .zip 资产。
+    const assets = Array.isArray(data.assets) ? data.assets : []
+    const zipAsset =
+      assets.find((a) => typeof a.name === 'string' && /win64-portable\.zip$/i.test(a.name)) ??
+      assets.find((a) => typeof a.name === 'string' && /\.zip$/i.test(a.name))
     const result: UpdateCheckResult = {
       ok: true,
       hasUpdate: newerVer(latest, cur),
@@ -475,7 +489,9 @@ async function checkForUpdate(opts?: { force?: boolean }): Promise<UpdateCheckRe
       version,
       url: data.html_url ?? `https://github.com/${UPDATE_REPO}/releases`,
       notes: typeof data.body === 'string' ? data.body : '',
-      publishedAt: data.published_at
+      publishedAt: data.published_at,
+      assetUrl: zipAsset?.browser_download_url,
+      assetSize: typeof zipAsset?.size === 'number' ? zipAsset.size : undefined
     }
     updateCache = { at: Date.now(), result }
     return result
@@ -520,6 +536,8 @@ if (!gotLock) {
     createWindow()
     // 启动 8s 后自动检查更新（避开启动高峰；尊重用户设置，离线/被墙静默）
     setTimeout(() => void autoCheckForUpdate(), 8000)
+    // 顺便清掉上一轮一键更新留下的临时目录
+    void pruneOldUpdateDirs()
     void library.init()
     void getSettings().then((s) => {
       live.setInstallPath(s.cs2.installPath)
