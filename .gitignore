@@ -10,11 +10,12 @@ true/
 
 NUL
 
-# ÑéÖ¤/×¥È¡½Å±¾µÄ±¾µØ½á¹û£¨²»Èë¿â£©
+# ï¿½ï¿½Ö¤/×¥È¡ï¿½Å±ï¿½ï¿½Ä±ï¿½ï¿½Ø½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½â£©
 scripts/*result*.txt
 scripts/capture-cs2-cmdline-result.txt
 
-# ²Î¿¼ÏîÄ¿¿ËÂ¡£¨²»Èë¿â£©
+# ï¿½Î¿ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½Â¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½â£©
 research/
 .tmp-cdp/
 apply_logo.py
+dist-build/
