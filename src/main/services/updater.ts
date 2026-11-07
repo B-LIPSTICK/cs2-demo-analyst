@@ -13,6 +13,18 @@ import { tmpdir } from 'node:os'
 import AdmZip from 'adm-zip'
 import type { UpdateInstallResult, UpdateProgress } from '@shared/types'
 
+/**
+ * 绕过 Electron 的 asar 层。
+ *
+ * Electron 会给 fs 打补丁：任何以 `.asar` 结尾的路径都会被当成「asar 归档内部路径」解析，
+ * 于是 `fs.promises.access('.../resources/app.asar')` 返回
+ * `ENOENT, not found in <app.asar>`，`fs.promises.open` 同理，`stat` 则返回 size 0。
+ * 一键更新要解压并校验别人目录里的 app.asar，必须用 original-fs 才能看到真实文件。
+ */
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const originalFs = require('original-fs') as typeof import('node:fs')
+const ofs = originalFs.promises
+
 /** zip 内顶层目录名（scripts/make-zip.ps1 打的包固定是这个） */
 const ZIP_ROOT = 'CS2-Demo-Analyst'
 /** 便携版主程序文件名 */
@@ -76,7 +88,8 @@ async function download(url: string, path: string, onProgress: UpdateInstallOpti
 
 /** 从 app.asar 头里读出包内 package.json 的 version（不加载 asar，只读头与文件） */
 async function readAsarVersion(asarPath: string): Promise<string | null> {
-  const fh = await fs.open(asarPath, 'r')
+  // 必须用 original-fs：Electron 的 fs 补丁会把 .asar 路径当成归档内部路径
+  const fh = await ofs.open(asarPath, 'r')
   try {
     const head = Buffer.alloc(16)
     await fh.read(head, 0, 16, 0)
@@ -103,6 +116,40 @@ async function readAsarVersion(asarPath: string): Promise<string | null> {
   }
 }
 
+/**
+ * 自己逐个条目解压，不用 AdmZip 的 extractAllTo。
+ *
+ * 原因：extractAllTo 在 Windows 上会按 zip 里的 Unix 权限位去 chmod，
+ * 而它在解 app.asar 这类大文件时报 `ENOENT ... chmod '...app.asar'`（文件刚写出来却 chmod 失败），
+ * 整个更新就卡在解压阶段。这里只做「读数据 → 建目录 → 写文件」，不碰权限位。
+ */
+async function extractManually(
+  zip: AdmZip,
+  destDir: string,
+  onProgress: UpdateInstallOptions['onProgress']
+): Promise<void> {
+  const entries = zip.getEntries()
+  report(onProgress, 'extract', 0, entries.length)
+  let done = 0
+  for (const entry of entries) {
+    // 统一成 posix 分隔符，并挡掉绝对路径与 .. 穿越
+    const rel = entry.entryName.replace(/\\/g, '/')
+    if (!rel || rel.startsWith('/') || rel.split('/').includes('..')) continue
+    const target = join(destDir, ...rel.split('/'))
+    if (entry.isDirectory) {
+      await ofs.mkdir(target, { recursive: true })
+      continue
+    }
+    await ofs.mkdir(dirname(target), { recursive: true })
+    // 同样走 original-fs：目标可能是 app.asar，Electron 的 fs 会把它当成归档内部路径
+    await ofs.writeFile(target, entry.getData())
+    done += 1
+    if (done % 5 === 0 || done === entries.length) {
+      report(onProgress, 'extract', done, entries.length)
+    }
+  }
+}
+
 /** 解压并校验：版本号必须匹配，主程序必须存在 */
 async function extractAndVerify(
   zipPath: string,
@@ -110,9 +157,8 @@ async function extractAndVerify(
   version: string,
   onProgress: UpdateInstallOptions['onProgress']
 ): Promise<string> {
-  report(onProgress, 'extract', 0, 0)
   const zip = new AdmZip(zipPath)
-  zip.extractAllTo(destDir, true)
+  await extractManually(zip, destDir, onProgress)
 
   const root = join(destDir, ZIP_ROOT)
   report(onProgress, 'verify', 0, 0)
@@ -122,7 +168,8 @@ async function extractAndVerify(
     throw new Error(`解压结果里没有 ${APP_EXE}`)
   })
   const asar = join(root, 'resources', 'app.asar')
-  await fs.access(asar).catch(() => {
+  // 用 original-fs 判断：Electron 的 fs.access('...app.asar') 会当成归档内部路径而报 ENOENT
+  await ofs.access(asar).catch(() => {
     throw new Error('解压结果里没有 resources\\app.asar')
   })
 
@@ -137,17 +184,20 @@ async function extractAndVerify(
 /**
  * 生成退出后执行的更新脚本（cmd + robocopy）。
  *
- * 两个要点：
+ * 三个要点：
  * - 等的是「同名进程全部消失」而不是单个 PID：Electron 退出时渲染/GPU 子进程
  *   可能比主进程晚一点点放手文件句柄。
  * - robocopy 的退出码 0–7 都算正常（1 表示「有文件被复制」），只有 ≥8 才是失败。
+ * - 收尾要清掉临时目录：脚本自己就在这个目录里，删不掉自己，所以另起一个
+ *   放在 %TEMP% 根下的 cleanup.cmd 延时删除，不阻塞重启。
  */
 function buildUpdateScript(opts: {
   srcDir: string
   destDir: string
   exePath: string
+  cleanupPath: string
 }): string {
-  const { srcDir, destDir, exePath } = opts
+  const { srcDir, destDir, exePath, cleanupPath } = opts
   return [
     '@echo off',
     'setlocal',
@@ -168,23 +218,46 @@ function buildUpdateScript(opts: {
     ':copy',
     'robocopy "%SRC%" "%DST%" /E /NFL /NDL /NJH /NJS /R:5 /W:2 >nul',
     'start "" "%EXE%"',
-    'exit /b 0',
+    `start "" /min "${cleanupPath}"`,
+    // 必须用 exit 而不是 exit /b：start 启动的脚本外层是一个 cmd /K 壳，
+    // exit /b 只退出批处理，那个壳会一直挂在后台；exit 才会把它一起关掉。
+    'exit 0',
     ''
   ].join('\r\n')
 }
 
-/** 清理历史上遗留的更新临时目录（超过 1 小时的），在启动时调用。 */
+/**
+ * 延时删除更新临时目录的收尾脚本。
+ *
+ * 注意不要在这里 `del "%~f0"` 自删：实测自删会让 start 拉起的那个 cmd 壳
+ * 变成残留进程挂在后台（脚本没了但它还在）。脚本文件本身留给
+ * pruneOldUpdateDirs() 在下次启动时清。
+ */
+function buildCleanupScript(workDir: string): string {
+  return [
+    '@echo off',
+    'timeout /t 6 /nobreak >nul',
+    `rmdir /s /q "${workDir}"`,
+    'exit 0',
+    ''
+  ].join('\r\n')
+}
+
+/** 清理历史上遗留的更新临时目录与收尾脚本（超过 1 小时的），在启动时调用。 */
 export async function pruneOldUpdateDirs(): Promise<void> {
   try {
     const root = tmpdir()
     const names = await fs.readdir(root)
     const cutoff = Date.now() - 60 * 60 * 1000
     for (const name of names) {
-      if (!name.startsWith('cs2-demo-analyst-update-')) continue
+      const isWorkDir = name.startsWith('cs2-demo-analyst-update-')
+      const isCleanupScript =
+        name.startsWith('cs2-demo-analyst-cleanup-') && name.endsWith('.cmd')
+      if (!isWorkDir && !isCleanupScript) continue
       const full = join(root, name)
-      const st = await fs.stat(full).catch(() => null)
-      if (st && st.isDirectory() && st.mtimeMs < cutoff) {
-        await fs.rm(full, { recursive: true, force: true }).catch(() => {})
+      const st = await ofs.stat(full).catch(() => null)
+      if (st && st.mtimeMs < cutoff) {
+        await ofs.rm(full, { recursive: true, force: true }).catch(() => {})
       }
     }
   } catch {
@@ -222,10 +295,13 @@ export async function prepareUpdate(opts: UpdateInstallOptions): Promise<UpdateI
     const root = await extractAndVerify(zipPath, extractDir, version, onProgress)
 
     const scriptPath = join(workDir, 'apply-update.cmd')
+    const cleanupPath = join(tmpdir(), `cs2-demo-analyst-cleanup-${Date.now()}.cmd`)
+    await fs.writeFile(cleanupPath, buildCleanupScript(workDir), 'utf8')
     const script = buildUpdateScript({
       srcDir: root,
       destDir,
-      exePath
+      exePath,
+      cleanupPath
     })
     await fs.writeFile(scriptPath, script, 'utf8')
 
@@ -247,7 +323,9 @@ export async function prepareUpdate(opts: UpdateInstallOptions): Promise<UpdateI
     setTimeout(() => app.quit(), 600)
     return { ok: true }
   } catch (err) {
-    await fs.rm(workDir, { recursive: true, force: true }).catch(() => {})
+    // 清理也必须用 original-fs：workDir 里有解出来的 app.asar，
+    // 走 Electron 的 fs.rm 会删不掉它们，临时目录就会一直留在 %TEMP% 里。
+    await ofs.rm(workDir, { recursive: true, force: true }).catch(() => {})
     const message = err instanceof Error ? err.message : String(err)
     report(onProgress, 'error', 0, 0, message)
     return { ok: false, error: message }
