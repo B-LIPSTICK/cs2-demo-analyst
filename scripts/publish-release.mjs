@@ -127,50 +127,57 @@ if (checkRes.status === 200) {
   console.log(`>>> Release 创建成功! ID: ${releaseId}, URL: ${htmlUrl}`)
 }
 
-// 检查资产
-const stats = fs.statSync(zipPath)
-const sizeMB = (stats.size / (1024 * 1024)).toFixed(1)
-const fileName = path.basename(zipPath)
+// ─── 资产：便携 zip 必有，安装版 setup.exe 存在就一起传 ───
+const setupPath = path.join(rootDir, 'dist', `CS2-Demo-Analyst-${version}-setup.exe`)
+const artifacts = [{ path: zipPath, contentType: 'application/zip' }]
+if (fs.existsSync(setupPath)) {
+  artifacts.push({ path: setupPath, contentType: 'application/octet-stream' })
+} else {
+  console.warn(`>>> 提示：没有找到安装包 ${path.basename(setupPath)}，本次只上传便携版`)
+}
 
-console.log(`>>> 正在上传 Release 资产: ${fileName} (${sizeMB} MB)...`)
+for (const artifact of artifacts) {
+  const stats = fs.statSync(artifact.path)
+  const sizeMB = (stats.size / (1024 * 1024)).toFixed(1)
+  const fileName = path.basename(artifact.path)
+  console.log(`>>> 正在上传 Release 资产: ${fileName} (${sizeMB} MB)...`)
 
-// 检查是否已有同名资产，若有则先删除
-const assetsRes = await fetch(`https://api.github.com/repos/${repo}/releases/${releaseId}/assets`, {
-  headers: readHeaders
-})
-
-if (assetsRes.ok) {
-  const assets = await assetsRes.json()
-  const existingAsset = assets.find((a) => a.name === fileName)
-  if (existingAsset) {
-    console.log(`>>> 发现同名旧资产 (ID: ${existingAsset.id})，正在删除...`)
-    await fetch(`https://api.github.com/repos/${repo}/releases/assets/${existingAsset.id}`, {
-      method: 'DELETE',
-      headers: readHeaders
-    })
+  // 已有同名资产先删掉，否则 GitHub 会拒绝重名上传
+  const assetsRes = await fetch(
+    `https://api.github.com/repos/${repo}/releases/${releaseId}/assets`,
+    { headers: readHeaders }
+  )
+  if (assetsRes.ok) {
+    const assets = await assetsRes.json()
+    const existingAsset = assets.find((a) => a.name === fileName)
+    if (existingAsset) {
+      console.log(`>>> 发现同名旧资产 (ID: ${existingAsset.id})，正在删除...`)
+      await fetch(`https://api.github.com/repos/${repo}/releases/assets/${existingAsset.id}`, {
+        method: 'DELETE',
+        headers: readHeaders
+      })
+    }
   }
+
+  const uploadUrl = `https://uploads.github.com/repos/${repo}/releases/${releaseId}/assets?name=${encodeURIComponent(fileName)}`
+  console.log('>>> 开始通过 curl 流式上传...')
+  const curl = spawnSync(
+    'curl.exe',
+    [
+      '-X', 'POST',
+      '-H', `Authorization: token ${token}`,
+      '-H', `Content-Type: ${artifact.contentType}`,
+      '--data-binary', `@${artifact.path}`,
+      '--fail',
+      '--show-error',
+      uploadUrl
+    ],
+    { stdio: 'inherit' }
+  )
+  if (curl.status !== 0) {
+    throw new Error(`curl 上传失败（${fileName}），退出码: ${curl.status}`)
+  }
+  console.log(`>>> 资产上传成功: ${fileName}`)
 }
 
-const uploadUrl = `https://uploads.github.com/repos/${repo}/releases/${releaseId}/assets?name=${encodeURIComponent(fileName)}`
-
-console.log('>>> 开始通过 curl 流式上传...')
-const curl = spawnSync(
-  'curl.exe',
-  [
-    '-X', 'POST',
-    '-H', `Authorization: token ${token}`,
-    '-H', 'Content-Type: application/zip',
-    '--data-binary', `@${zipPath}`,
-    '--fail',
-    '--show-error',
-    uploadUrl
-  ],
-  { stdio: 'inherit' }
-)
-
-if (curl.status !== 0) {
-  throw new Error(`curl 上传失败，退出码: ${curl.status}`)
-}
-
-console.log('>>> 资产上传成功!')
 console.log(`>>> 🎉 发布成功! ${tag} → ${htmlUrl}`)
