@@ -3,6 +3,8 @@
  */
 import { app, BrowserWindow, dialog, ipcMain, net, shell } from 'electron'
 import { readFileSync } from 'node:fs'
+import { stat } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import type { HudMode, MuteHudMode, Settings, UpdateCheckResult } from '@shared/types'
 import { createLibraryService } from './services/library'
@@ -348,6 +350,28 @@ function registerIpc(): void {
   ipcMain.handle('app:revealInFolder', (_e, path: string) => {
     shell.showItemInFolder(path)
   })
+  /** 直接打开某个目录的窗口（资料库目录行右侧的「打开文件夹」按钮） */
+  ipcMain.handle('app:openFolder', async (_e, path: string) => {
+    if (typeof path !== 'string' || !path) return false
+    try {
+      const st = await stat(path)
+      if (!st.isDirectory()) return false
+    } catch {
+      return false
+    }
+    // 首选 Electron 的 shell.openPath；它在少数环境下会返回 "Failed to open path"
+    // （例如父进程受作业对象管辖时 ShellExecute 启动的资源管理器被连带结束），
+    // 这时退回到直接拉起 explorer.exe，用户看到的效果一样。
+    const err = await shell.openPath(path)
+    if (!err) return true
+    try {
+      const child = spawn('explorer.exe', [path], { detached: true, stdio: 'ignore' })
+      child.unref()
+      return true
+    } catch {
+      return false
+    }
+  })
   ipcMain.handle('app:openUrl', (_e, url: string) => {
     if (typeof url === 'string' && /^https?:\/\//.test(url)) return shell.openExternal(url)
   })
@@ -372,11 +396,26 @@ function registerIpc(): void {
   })
   // 目录选择（设置页选 CS2 安装路径等）
   ipcMain.handle('app:pickDirectory', async () => {
-    const res = await dialog.showOpenDialog(mainWindow!, {
+    if (!mainWindow) return null
+    // 默认定位到上次确认过的目录，用户不必每次从默认位置重新找
+    const remembered = (await getSettings()).lastPickDir
+    let defaultPath: string | undefined
+    if (remembered) {
+      try {
+        if ((await stat(remembered)).isDirectory()) defaultPath = remembered
+      } catch {
+        /* 目录已不存在 → 用系统默认位置 */
+      }
+    }
+    const res = await dialog.showOpenDialog(mainWindow, {
       title: '选择目录',
-      properties: ['openDirectory']
+      properties: ['openDirectory'],
+      ...(defaultPath ? { defaultPath } : {})
     })
-    return res.canceled ? null : (res.filePaths[0] ?? null)
+    if (res.canceled) return null
+    const picked = res.filePaths[0] ?? null
+    if (picked) await updateSettings({ lastPickDir: picked }).catch(() => {})
+    return picked
   })
 }
 

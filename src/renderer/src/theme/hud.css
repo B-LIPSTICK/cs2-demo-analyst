@@ -1932,6 +1932,12 @@ a:focus-visible,
   color: var(--red);
 }
 
+/* 「打开文件夹」按钮：与移除按钮同尺寸，但悬停不变红 */
+.root-open-btn:hover {
+  background: var(--accent-dim, rgba(0, 122, 255, 0.14));
+  color: var(--accent);
+}
+
 .root-menu-actions {
   display: flex;
   flex-direction: column;

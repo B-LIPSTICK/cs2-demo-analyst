@@ -3,6 +3,7 @@ import {
   Btn,
   CustomSelect,
   Empty,
+  IcFolder,
   IcPlus,
   IcRadar,
   IcRefresh,
@@ -85,7 +86,7 @@ function LibraryPageInner({
   const [loading, setLoading] = useState(true)
   const [favIds, setFavIds] = useState<Set<string>>(new Set())
   const [roots, setRoots] = useState<string[]>([])
-  // 目录过滤：默认记住上次选择的目录（localStorage），「全部目录」需手动点
+  // 目录过滤：记住上次选择的目录（localStorage）；记住的目录已不存在时回到「全部目录」
   const [rootFilter, setRootFilter] = useState<string>(() => {
     try {
       return localStorage.getItem('lib.rootFilter') ?? ''
@@ -172,10 +173,10 @@ function LibraryPageInner({
     window.api.settings.get().then((s) => {
       const rs = s.libraryRoots ?? []
       setRoots(rs)
-      // 记住的目录已不存在 → 回退到第一个目录（而不是全部）
+      // 记住的目录已不存在 → 回到「全部目录」，而不是自动切到第一个目录
       setRootFilter((cur) => {
         if (cur && rs.includes(cur)) return cur
-        return rs[0] ?? ''
+        return ''
       })
     }).catch(() => {})
   }, [])
@@ -487,6 +488,18 @@ function LibraryPageInner({
                               {info.subtitle}
                             </div>
                           </div>
+                          <button
+                            type="button"
+                            className="root-del-btn root-open-btn"
+                            title={t('library.openFolder')}
+                            aria-label={`${t('library.openFolder')}：${info.title}`}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              void window.api.app.openFolder(r)
+                            }}
+                          >
+                            <IcFolder size={13} />
+                          </button>
                           <button
                             type="button"
                             className="root-del-btn"

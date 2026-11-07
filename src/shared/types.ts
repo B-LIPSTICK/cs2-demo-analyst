@@ -353,6 +353,8 @@ export interface SteamSafetyReport {
 export interface Settings {
   language: 'zh' | 'en'
   libraryRoots: string[]
+  /** 上一次在目录选择框里确认的目录：下次弹框直接定位到这里 */
+  lastPickDir?: string
   ui: {
     theme: 'dark' | 'light'
   }
@@ -555,6 +557,8 @@ export interface Api {
   app: {
     version: () => Promise<string>
     revealInFolder: (path: string) => Promise<void>
+    /** 用资源管理器打开该目录；目录不存在或打开失败返回 false */
+    openFolder: (path: string) => Promise<boolean>
     pickDirectory: () => Promise<string | null>
     /** 用系统浏览器打开外部链接（更新下载页等） */
     openUrl: (url: string) => Promise<void>

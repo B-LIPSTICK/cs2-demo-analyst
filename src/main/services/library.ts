@@ -5,9 +5,11 @@
  * - MOCK_LIBRARY=1 时使用确定性 mock 数据（开发预览用）
  */
 import { app, dialog, BrowserWindow } from 'electron'
-import { promises as fs } from 'node:fs'
+import { createReadStream, createWriteStream, promises as fs } from 'node:fs'
 import { basename, dirname, join, extname } from 'node:path'
 import { createHash } from 'node:crypto'
+import { constants as zlibConstants, createInflateRaw } from 'node:zlib'
+import { pipeline } from 'node:stream/promises'
 import AdmZip from 'adm-zip'
 import type { DemoDetail, DemoMeta, DetectedPlatformRoot, Settings } from '@shared/types'
 import { parseDemo, cleanPlayerName } from './parser'
@@ -73,6 +75,122 @@ interface ZipCacheEntry {
 
 function demoid(path: string, size: number, mtimeMs: number): string {
   return createHash('sha1').update(`${path}|${size}|${mtimeMs}`).digest('hex').slice(0, 16)
+}
+
+/**
+ * 半截 zip：中央目录没写完（对战平台在 demo 还在写盘时就打包、或下载中断）。
+ * AdmZip 遇到这种包会直接抛 "No END header found"，但本地文件头与数据段是完整的，
+ * 因此退化成顺序扫描本地文件头，仍能把里面的 .dem 解出来。
+ */
+interface LooseZipEntry {
+  entryName: string
+  name: string
+  /** 声明的解压后大小（数据被截断时会大于实际可取到的字节） */
+  size: number
+  /** 声明的压缩后大小 */
+  csize: number
+  dataOffset: number
+  method: number
+  timeMs?: number
+}
+
+/** DOS 时间戳（zip 本地文件头里的 date/time）转毫秒 */
+function dosTimeToMs(date: number, time: number): number | undefined {
+  const y = 1980 + ((date >> 9) & 0x7f)
+  const mo = (date >> 5) & 0x0f
+  const d = date & 0x1f
+  if (!mo || !d) return undefined
+  const ms = new Date(y, mo - 1, d, (time >> 11) & 0x1f, (time >> 5) & 0x3f, (time & 0x1f) * 2).getTime()
+  return Number.isFinite(ms) && ms > 0 ? ms : undefined
+}
+
+/** 只读扫描 zip 本地文件头；返回 null 表示认不出这是 zip */
+async function readLooseZipEntries(zipPath: string): Promise<LooseZipEntry[] | null> {
+  let fh: Awaited<ReturnType<typeof fs.open>> | null = null
+  try {
+    fh = await fs.open(zipPath, 'r')
+    const total = (await fh.stat()).size
+    const out: LooseZipEntry[] = []
+    const head = Buffer.alloc(30)
+    let off = 0
+    while (off + 30 <= total) {
+      const { bytesRead } = await fh.read(head, 0, 30, off)
+      if (bytesRead < 30) break
+      if (head.readUInt32LE(0) !== 0x04034b50) break
+      const flags = head.readUInt16LE(6)
+      // 大小写在 data descriptor 里的流式包无法定位下一条起点
+      if (flags & 0x0008) break
+      const method = head.readUInt16LE(8)
+      const timeMs = dosTimeToMs(head.readUInt16LE(12), head.readUInt16LE(10))
+      const csize = head.readUInt32LE(18)
+      const usize = head.readUInt32LE(22)
+      const nameLen = head.readUInt16LE(26)
+      const extraLen = head.readUInt16LE(28)
+      if (csize <= 0 || off + 30 + nameLen + extraLen > total) break
+      const nameBuf = Buffer.alloc(nameLen)
+      if (nameLen > 0) await fh.read(nameBuf, 0, nameLen, off + 30)
+      const entryName = nameBuf.toString()
+      const dataOffset = off + 30 + nameLen + extraLen
+      out.push({
+        entryName,
+        name: basename(entryName.replace(/\\/g, '/')),
+        size: usize,
+        csize,
+        dataOffset,
+        method,
+        timeMs
+      })
+      off = dataOffset + csize
+    }
+    return out.length > 0 ? out : null
+  } catch {
+    return null
+  } finally {
+    await fh?.close().catch(() => {})
+  }
+}
+
+/**
+ * 从半截 zip 里流式解压单个条目。
+ * 数据不足时按 Z_SYNC_FLUSH 收尾，保留已经解出来的部分 —— demo 是顺序数据，前段仍然可用。
+ */
+async function extractLooseZipEntry(
+  zipPath: string,
+  entry: LooseZipEntry,
+  destPath: string
+): Promise<void> {
+  const total = (await fs.stat(zipPath)).size
+  const avail = total - entry.dataOffset
+  if (avail <= 0) throw new Error('压缩包内没有可用数据')
+  const take = Math.min(entry.csize, avail)
+  await fs.mkdir(dirname(destPath), { recursive: true })
+  const tmp = `${destPath}.part`
+  const src = createReadStream(zipPath, { start: entry.dataOffset, end: entry.dataOffset + take - 1 })
+  try {
+    if (entry.method === 8) {
+      await pipeline(src, createInflateRaw({ finishFlush: zlibConstants.Z_SYNC_FLUSH }), createWriteStream(tmp))
+    } else if (entry.method === 0) {
+      await pipeline(src, createWriteStream(tmp))
+    } else {
+      throw new Error(`不支持的压缩方式：${entry.method}`)
+    }
+    const written = (await fs.stat(tmp)).size
+    if (written < 1024) throw new Error('解压结果为空')
+    // 校验 demo 魔数，避免把别的文件当 demo 收进库
+    const fh = await fs.open(tmp, 'r')
+    const magic = Buffer.alloc(8)
+    try {
+      await fh.read(magic, 0, 8, 0)
+    } finally {
+      await fh.close()
+    }
+    if (magic.toString('latin1') !== 'PBDEMS2\u0000') throw new Error('解压结果不是 demo 文件')
+    await fs.rename(tmp, destPath)
+  } catch (err) {
+    src.destroy()
+    await fs.rm(tmp, { force: true }).catch(() => {})
+    throw err
+  }
 }
 
 const MOCK = process.env['MOCK_LIBRARY'] === '1'
@@ -696,6 +814,43 @@ export function createLibraryService(
     return destPath
   }
 
+  /** 半截 zip 条目提取：流式解压，已存在的缓存直接复用 */
+  async function ensureLooseZipEntry(
+    zipPath: string,
+    entry: LooseZipEntry,
+    id: string,
+    timeMs?: number
+  ): Promise<string> {
+    const destPath = join(zipCacheDir(), id, entry.name)
+    let exists = false
+    try {
+      await fs.access(destPath)
+      exists = true
+    } catch {
+      /* 缓存不存在 → 提取 */
+    }
+    // 上次是从被截断的包解出来的（大小小于声明值）？如果平台后来把包补全了，重新解一份完整的。
+    // 注意不能拿 mtime 判断：缓存文件的 mtime 会被下面 utimes 改成比赛时间，必然比 zip 旧。
+    if (exists) {
+      try {
+        const [ds, zs] = await Promise.all([fs.stat(destPath), fs.stat(zipPath)])
+        const nowAvail = zs.size - entry.dataOffset
+        const wasTruncated = ds.size < entry.size
+        if (wasTruncated && nowAvail >= entry.csize) exists = false
+      } catch {
+        exists = false
+      }
+    }
+    if (!exists) await extractLooseZipEntry(zipPath, entry, destPath)
+    if (typeof timeMs === 'number' && Number.isFinite(timeMs) && timeMs > 0) {
+      const rawTime = new Date(timeMs)
+      try {
+        await fs.utimes(destPath, rawTime, rawTime)
+      } catch {}
+    }
+    return destPath
+  }
+
   const scan = async () => {
     let scanTotalZips = 0
     try {
@@ -794,6 +949,8 @@ export function createLibraryService(
         // 未变化的 zip 直接使用持久化中央目录缓存，避免每次 rescan 都同步读取整个压缩包
         let entries: ZipEntryMeta[] | null = getCachedZipEntries(zp, zst.size, zst.mtimeMs)
         let zip: AdmZip | null = null
+        /** 半截 zip（中央目录缺失）时按本地文件头顺序解析出的条目，提取时走流式解压 */
+        let loose: LooseZipEntry[] | null = null
         if (!entries) {
           // 打开新/变化的压缩包前先让出事件循环，避免连续同步读盘把窗口卡住
           await yieldToLoop()
@@ -822,8 +979,22 @@ export function createLibraryService(
               })
             setCachedZipEntries(zp, zst.size, zst.mtimeMs, entries)
           } catch {
-            unreadableContainers.add(normPath(zp))
-            continue
+            // 中央目录没写完（平台边写边打包 / 下载中断）：退化成顺序扫描本地文件头。
+            // 这类包的中央目录缓存不可复用，因此不写入 zipCache，每次扫描只读几十字节的头。
+            zip = null
+            const looseAll = await readLooseZipEntries(zp)
+            const dems = (looseAll ?? []).filter((e) => /\.dem$/i.test(e.entryName))
+            if (dems.length === 0) {
+              unreadableContainers.add(normPath(zp))
+              continue
+            }
+            loose = looseAll
+            entries = dems.map((e) => ({
+              entryName: e.entryName,
+              name: e.name,
+              size: e.size,
+              timeMs: e.timeMs
+            }))
           }
           await yieldToLoop()
         }
@@ -835,6 +1006,20 @@ export function createLibraryService(
             zip = new AdmZip(zp)
           }
           return zip
+        }
+
+        /** 按条目名取缓存文件；半截 zip 走流式解压，正常包走 AdmZip */
+        const ensureEntry = async (
+          entryName: string,
+          id: string,
+          timeMs?: number
+        ): Promise<string> => {
+          const hit = loose
+            ? loose.find((x) => x.entryName === entryName) ??
+              loose.find((x) => x.name === basename(entryName.replace(/\\/g, '/')))
+            : undefined
+          if (hit) return ensureLooseZipEntry(zp, hit, id, timeMs)
+          return ensureZipEntry(await ensureZip(), entryName, id, timeMs)
         }
 
         for (const e of entries) {
@@ -870,12 +1055,7 @@ export function createLibraryService(
               cacheOk = true
             } catch {
               try {
-                existing.path = await ensureZipEntry(
-                  await ensureZip(),
-                  e.entryName,
-                  id,
-                  validEntryTime
-                )
+                existing.path = await ensureEntry(e.entryName, id, validEntryTime)
                 cacheOk = true
               } catch (err) {
                 dbg(
@@ -891,12 +1071,7 @@ export function createLibraryService(
             continue
           }
           try {
-            const cachePath = await ensureZipEntry(
-              await ensureZip(),
-              e.entryName,
-              id,
-              validEntryTime
-            )
+            const cachePath = await ensureEntry(e.entryName, id, validEntryTime)
             store.index[id] = {
               id,
               path: cachePath,
@@ -1301,11 +1476,31 @@ export function createLibraryService(
     async addRoot() {
       const win = getWindow()
       if (!win) return []
+      // 对话框默认定位：上次确认过的目录 → 已添加的第一个目录
+      const s = await getSettings()
+      const remembered = s.lastPickDir
+      let defaultPath: string | undefined
+      for (const cand of [remembered, store.roots[0]]) {
+        if (!cand) continue
+        try {
+          const st = await fs.stat(cand)
+          if (st.isDirectory()) {
+            defaultPath = cand
+            break
+          }
+        } catch {
+          /* 目录已不存在 → 试下一个 */
+        }
+      }
       const res = await dialog.showOpenDialog(win, {
         title: '选择 Demo 目录',
-        properties: ['openDirectory', 'multiSelections']
+        properties: ['openDirectory', 'multiSelections'],
+        ...(defaultPath ? { defaultPath } : {})
       })
       if (res.canceled) return []
+      // 记住这次选择的目录（取所在文件夹，便于下次从这里继续找）
+      const picked = res.filePaths[res.filePaths.length - 1]
+      if (picked) await updateSettings({ lastPickDir: picked }).catch(() => {})
       const merged = [...new Set([...store.roots, ...res.filePaths])]
       // 用户主动添加目录：清理所选目录下的忽略黑名单，确保新添加的目录可以完整扫描入库
       unignoreUnder(res.filePaths)

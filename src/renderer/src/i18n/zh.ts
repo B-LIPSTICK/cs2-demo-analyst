@@ -120,6 +120,7 @@ export const zh = {
   'library.sortDate': '按日期',
   'library.sortAdded': '按加入时间',
   'library.removeDir': '移除目录',
+  'library.openFolder': '打开文件夹',
   'library.rootRemoved': '目录已移除',
   'library.parseNow': '解析',
   'library.parseAll': '全部解析',
