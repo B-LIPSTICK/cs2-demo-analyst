@@ -285,7 +285,10 @@ export function createLibraryService(
   // 解析器版本：解析逻辑变更（如击杀阵营实时跟踪）时 +1，旧详情缓存自动失效重解析
   // v8: 修复控制器实体索引与 USER_INFO 偏移导致的选手错位与机器人污染，修正语音槽位
   // v9: 收尾优化提升详情缓存版本，使旧缓存失效并按当前解析器重解析（本次未改解析逻辑）
-  const PARSER_VERSION = 9
+  // v10: @deademx 引擎 3.4.1 → 5.0.0（新增 fixed8 字段解码、svc_UserCmdKeyframe），
+  //      修复较新 demo 报 "Unable to find an entity with index" 而完全无法解析；
+  //      旧缓存必须失效，否则升级后已入库的 demo 仍复用失败/旧结果
+  const PARSER_VERSION = 10
 
   /** 源文件暂时不可访问时的统一标记（目录离线/网络盘未挂载等），scan 恢复后清除 */
   const OFFLINE_ERROR = '文件不可用（目录可能离线）'
