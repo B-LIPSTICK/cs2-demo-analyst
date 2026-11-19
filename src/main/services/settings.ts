@@ -63,6 +63,12 @@ function migrate(s: Settings): Settings {
     s.cs2 = { ...s.cs2, hudMode: 'inject' }
   }
   if (!s.update) s.update = { checkOnStartup: true }
+  // Groq 曾被当作「推荐免费转写」写进默认配置，但它对国内 IP 是 Cloudflare 整段 403
+  // （连不带 key 的请求都 403，换 UA、走代理也一样），留着只会让用户以为转写坏了。
+  // 读到这个地址就退回本地引擎并清空地址，让用户自己去填可用的兼容 Whisper 服务。
+  if (s.asr?.cloudBaseUrl && s.asr.cloudBaseUrl.includes('groq.com')) {
+    s.asr = { ...s.asr, engine: 'local', cloudBaseUrl: '' }
+  }
   return s
 }
 

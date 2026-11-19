@@ -121,14 +121,6 @@
   color: #9a5d12;
 }
 
-.transcript-hint {
-  flex: 0 1 248px;
-  max-width: 248px;
-  font-size: 12.3px;
-  line-height: 1.55;
-  color: var(--text-2);
-}
-
 /* ─── Filter deck ────────────────────────────────────────────────────────── */
 
 .transcript-filters {
@@ -876,13 +868,6 @@
 
   .transcript-toolbar {
     padding: 9px;
-  }
-
-  .transcript-toolbar .transcript-hint {
-    flex: 1 1 100%;
-    max-width: none;
-    order: 8;
-    padding: 1px 3px 2px;
   }
 
   .transcript-filters {

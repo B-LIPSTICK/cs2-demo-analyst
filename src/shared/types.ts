@@ -446,9 +446,11 @@ export const DEFAULT_SETTINGS: Settings = {
   asr: {
     engine: 'local',
     localModel: 'small',
-    cloudBaseUrl: 'https://api.groq.com/openai/v1',
+    // 云端只保留「自定义 API」入口：之前推荐的 Groq 在国内被 Cloudflare 整段 403（连无 key 请求都 403），
+    // 留着它只会让人以为功能坏了，所以默认不再指任何服务商，由用户自己填兼容 Whisper 的地址。
+    cloudBaseUrl: '',
     cloudApiKey: '',
-    cloudModel: 'whisper-large-v3-turbo',
+    cloudModel: 'whisper-1',
     language: 'auto'
   },
   ai: {

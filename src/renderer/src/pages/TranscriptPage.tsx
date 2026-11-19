@@ -49,7 +49,6 @@ export function TranscriptPage({
   const [transcribing, setTranscribing] = useState(false)
   const [splitting, setSplitting] = useState(false)
   const [progress, setProgress] = useState<{ stage: string; done: number; total: number; message?: string } | null>(null)
-  const [hasCloudKey, setHasCloudKey] = useState(false)
 
   const [settings, setSettings] = useState<Settings | null>(null)
 
@@ -76,10 +75,11 @@ export function TranscriptPage({
   useEffect(() => {
     window.api.settings.get().then((s) => {
       setSettings(s)
-      setHasCloudKey(Boolean(s.asr?.cloudApiKey))
     }).catch(() => {})
     const off = window.api.onEvent('settings:changed', (e) => {
-      if (e.settings) setSettings(e.settings)
+      if (e.settings) {
+        setSettings(e.settings)
+      }
     })
     return () => off()
   }, [])
@@ -395,9 +395,6 @@ export function TranscriptPage({
             <IcMic size={13} />
             {transcribing ? t('library.transcribing') : t('library.transcribe')}
           </Btn>
-          {!hasCloudKey && (
-            <span className="muted transcript-hint">{t('transcript.localSlowHint')}</span>
-          )}
           <Btn variant="ghost" onClick={exportText} disabled={filteredVoice.length === 0}>
             <IcDownload size={13} />
             {t('transcript.export')}

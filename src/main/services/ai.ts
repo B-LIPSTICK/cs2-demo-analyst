@@ -35,6 +35,11 @@ export interface BuildContextOptions {
   maxChats?: number
   /** 语音明细上限（默认 250） */
   maxVoiceLines?: number
+  /**
+   * 本轮问题点名的玩家。给出时击杀明细只保留与这些人相关的行，
+   * 避免模型把整段击杀记录当成答案原样抄出来。
+   */
+  focus?: string[]
 }
 
 interface KillLine {
@@ -165,6 +170,125 @@ function markKeyKills(d: DemoDetail, kills: KillEvent[], rate: number): Set<stri
   return key
 }
 
+/** 从提问里找出被点名的玩家（用于收窄击杀明细，见 buildContext 的 focus） */
+function detectFocusPlayers(question: string, d: DemoDetail): string[] {
+  const players = (d.meta.players ?? []).map((p) => p.name).filter(Boolean)
+  const hits: string[] = []
+  for (const name of players) {
+    if (question.includes(name)) {
+      hits.push(name)
+      continue
+    }
+    // 玩家名常带装饰字符（如 🗲LIPSTICK🗲），提问里只会写核心部分：
+    // 去掉首尾非字母数字的装饰后再匹配，且要求长度 ≥ 3 防止误命中。
+    const core = name.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
+    if (core.length >= 3 && question.toLowerCase().includes(core.toLowerCase())) hits.push(name)
+  }
+  return hits
+}
+
+/**
+ * 提问里隐含的武器线索（「电」= 电击枪、「狙」= AWP 等）。
+ * 用于把「谁被 X 电了」这类问法落到具体武器上，而不是只给总击杀数。
+ */
+const WEAPON_HINTS: { keys: string[]; weapon: string; label: string }[] = [
+  { keys: ['电击枪', '电击', '电', 'zeus', 'taser'], weapon: 'Zeus x27', label: '电击枪（Zeus x27）' },
+  { keys: ['刀', 'knife'], weapon: 'Knife', label: '刀' },
+  { keys: ['大狙', 'awp'], weapon: 'AWP', label: 'AWP' },
+  { keys: ['鸟狙', 'ssg'], weapon: 'SSG 08', label: '鸟狙（SSG 08）' }
+]
+
+/** 从提问里猜出用户问的是哪种武器；没有线索返回 null */
+function detectWeaponHint(question: string): { weapon: string; label: string } | null {
+  const q = question.toLowerCase()
+  for (const h of WEAPON_HINTS) {
+    if (h.keys.some((k) => q.includes(k))) return { weapon: h.weapon, label: h.label }
+  }
+  return null
+}
+
+/**
+ * 事实类提问（「谁被 X 电了」「X 杀了几个」「X 死几次」）用本地计算直接作答。
+ *
+ * 为什么不让模型答：实测 glm-4-flash 在这类带前提的问题上会把击杀方向读反、
+ * 把 Zeus 意译成「电击」后安到别人头上，而且只要历史里有过错答就会照着抄。
+ * 提示词写到 14 条仍然压不住（同一问题三次运行三种结果），
+ * 所以这里改成「能从数据算出来的问题就不问模型」——答案永远正确、也更快。
+ *
+ * 只在同时满足以下条件时接管：提问点名了玩家，且问的是击杀/阵亡这类可枚举事实。
+ * 其它问题（战术分析、谁打得最好、为什么输）仍交给模型。
+ */
+export function buildFactAnswer(question: string, d: DemoDetail): string | null {
+  const rate = d.meta.tickRate ?? 64
+  const focus = detectFocusPlayers(question, d)
+  if (focus.length === 0) return null
+
+  const eventWords = ['被', '杀', '电', '死', '击杀', '人头']
+  const q = question.toLowerCase()
+  if (!eventWords.some((w) => q.includes(w))) return null
+
+  const allKills: KillEvent[] = d.rounds.flatMap((r) => r.kills).sort((a, b) => a.tick - b.tick)
+  const hint = detectWeaponHint(question)
+  const out: string[] = []
+
+  for (const name of focus) {
+    const asAttacker = allKills.filter((k) => (k.attackerName ?? '') === name)
+    const asVictim = allKills.filter((k) => (k.victimName ?? '') === name)
+    const short = name.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '') || name
+
+    // ── 先给结论：直接回答「电了几个」这类问题 ──────────────────────────
+    if (hint) {
+      const withWeapon = asAttacker.filter((k) => k.weapon === hint.weapon)
+      if (withWeapon.length === 0) {
+        out.push(`## ${short} 没有用${hint.label}击杀任何人`)
+        out.push(
+          `本局 ${name} 共 ${asAttacker.length} 杀，用到的武器：${
+            asAttacker.length === 0
+              ? '无'
+              : [...new Set(asAttacker.map((k) => k.weapon))].join('、')
+          }。`
+        )
+      } else {
+        out.push(`## ${short} 用${hint.label}击杀 ${withWeapon.length} 人`)
+        for (const k of withWeapon) {
+          out.push(
+            `- [${fmtClock(k.tick, rate)}] R${k.roundNum} 击杀 ${k.victimName ?? '?'}${k.headshot ? '（爆头）' : ''}`
+          )
+        }
+      }
+      out.push('')
+    } else {
+      out.push(`## ${short} 本局 ${asAttacker.length} 杀 / ${asVictim.length} 死`)
+      out.push('')
+    }
+
+    // ── 明细：作为攻击者 ────────────────────────────────────────────────
+    if (asAttacker.length > 0) {
+      out.push(`### ${short} 的击杀（${asAttacker.length} 次）`)
+      for (const k of asAttacker) {
+        out.push(
+          `- [${fmtClock(k.tick, rate)}] R${k.roundNum} 用 ${k.weapon} 击杀 ${k.victimName ?? '?'}${k.headshot ? '（爆头）' : ''}`
+        )
+      }
+      out.push('')
+    }
+
+    // ── 明细：作为受害者（这是用户真正在问的「谁把 X 杀了」）────────────
+    if (asVictim.length > 0) {
+      out.push(`### ${short} 的阵亡（${asVictim.length} 次）`)
+      for (const k of asVictim) {
+        out.push(
+          `- [${fmtClock(k.tick, rate)}] R${k.roundNum} 被 ${k.attackerName ?? '?'} 用 ${k.weapon} 击杀${k.headshot ? '（爆头）' : ''}`
+        )
+      }
+      out.push('')
+    }
+  }
+
+  out.push('_以上数字直接取自 demo 解析结果，可用界面上的击杀流逐条核对。_')
+  return out.join('\n')
+}
+
 /** 把 demo 数据压缩成给 LLM 的上下文文本（时间统一 mm:ss + R回合，便于引用） */
 export function buildContext(d: DemoDetail, opts: BuildContextOptions = {}): string {
   const rate = d.meta.tickRate ?? 64
@@ -218,11 +342,64 @@ export function buildContext(d: DemoDetail, opts: BuildContextOptions = {}): str
     selectedKills = [...keyKills, ...pickEvenly(normalKills, slots)].sort((a, b) => a.tick - b.tick)
   }
 
+  // 问题里点了名字：击杀明细只保留与这些人相关的行。
+  // 只靠提示词约束不住 —— 实测模型会把整段击杀记录原样抄成答案，
+  // 从数据层面先收窄，模型就没有可抄的无关内容。
+  const focusNames = (opts.focus ?? []).map((s) => s.trim()).filter(Boolean)
+  let focusFiltered = false
+  if (focusNames.length > 0) {
+    const related = selectedKills.filter((k) =>
+      focusNames.some((n) => (k.attackerName ?? '').includes(n) || (k.victimName ?? '').includes(n))
+    )
+    if (related.length > 0) {
+      selectedKills = related
+      focusFiltered = true
+    }
+  }
+
+  // 用「A 用 W 击杀 B」的中文句式，而不是「A -W-> B」的箭头简写：
+  // 实测 glm-4-flash 在「谁被 X 电了」这类带前提的问题上会把箭头两端读反，
+  // 把受害者当成攻击者、并把 Zeus 意译成「电击」后安到别人头上。
   const killLines: KillLine[] = selectedKills.map((k) => ({
     key: keySet.has(killKey(k)),
     tick: k.tick,
-    text: `[${fmtClock(k.tick, rate)}] R${k.roundNum} ${k.attackerName ?? '?'} -${k.weapon}-> ${k.victimName ?? '?'}${k.headshot ? ' HS' : ''}${k.throughSmoke ? ' 穿烟' : ''}`
+    text: `[${fmtClock(k.tick, rate)}] R${k.roundNum} ${k.attackerName ?? '?'} 用 ${k.weapon} 击杀 ${k.victimName ?? '?'}${k.headshot ? '（爆头）' : ''}${k.throughSmoke ? '（穿烟）' : ''}`
   }))
+
+  // ─── 玩家武器统计：回答「某人用某武器杀了多少人」时的事实基线 ─────────────
+  // 只统计跨阵营击杀以外也用「—」（自杀/环境）与 C4（炸弹）区分，不做额外过滤。
+  const weaponLines: string[] = (d.meta.players ?? []).map((p) => {
+    const mine = allKills.filter((k) => k.attackerName === p.name)
+    if (mine.length === 0) return `${p.name}：本局无击杀记录`
+    const byW = new Map<string, number>()
+    for (const k of mine) byW.set(k.weapon, (byW.get(k.weapon) ?? 0) + 1)
+    const list = [...byW.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([w, n]) => `${w}×${n}`)
+      .join(' ')
+    return `${p.name}：共 ${mine.length} 杀 · ${list}`
+  })
+
+  // ─── 点名玩家事实核对：直接给「杀了几个 / 被谁杀」的硬数字 ────────────────
+  // 模型自己数行容易数错，也不愿意承认用户前提有误；这里把答案先算好摆在最前面。
+  const focusFacts: string[] = focusNames.map((n) => {
+    const asAttacker = allKills.filter((k) => (k.attackerName ?? '').includes(n))
+    const asVictim = allKills.filter((k) => (k.victimName ?? '').includes(n))
+    const byWeapon = new Map<string, number>()
+    for (const k of asAttacker) byWeapon.set(k.weapon, (byWeapon.get(k.weapon) ?? 0) + 1)
+    const weaponText =
+      asAttacker.length === 0
+        ? '本局没有击杀'
+        : [...byWeapon.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .map(([w, c]) => `${w} ${c} 次`)
+            .join('、')
+    const killList =
+      asAttacker.length === 0
+        ? ''
+        : `（${asAttacker.map((k) => `[${fmtClock(k.tick, rate)}] R${k.roundNum} 杀 ${k.victimName ?? '?'} 用 ${k.weapon}`).join('；')}）`
+    return `${n}：作为攻击者共 ${asAttacker.length} 杀 —— ${weaponText}${killList}；作为受害者共死 ${asVictim.length} 次`
+  })
 
   // ─── 语音：保持原有 250 条上限；总预算紧张时再均匀裁剪 ─────────────────
   const allVoices: VoiceSegment[] = d.voice
@@ -254,6 +431,7 @@ export function buildContext(d: DemoDetail, opts: BuildContextOptions = {}): str
 
   // ─── 可裁剪状态：初始为单节上限后的结果 ───────────────────────────────
   let retainedPlayers = [...playerLines]
+  let retainedWeapons = [...weaponLines]
   let retainedRounds = [...roundLines]
   let retainedKills = [...killLines]
   let retainedVoices = [...voiceLines]
@@ -261,6 +439,7 @@ export function buildContext(d: DemoDetail, opts: BuildContextOptions = {}): str
 
   const hasOmission = (): boolean =>
     retainedPlayers.length < playerLines.length ||
+    retainedWeapons.length < weaponLines.length ||
     retainedRounds.length < roundLines.length ||
     retainedKills.length < killTotal ||
     retainedVoices.length < voiceTotal ||
@@ -275,12 +454,24 @@ export function buildContext(d: DemoDetail, opts: BuildContextOptions = {}): str
       out.push('> 预算说明：本上下文已按优先级省略部分记录（数量见各节）；未展示不代表未发生，请勿据此断言“没有”。')
     }
     out.push('')
+    if (focusFacts.length > 0) {
+      out.push('# 提问点名玩家的事实核对（此处是算好的准确数字，回答以它为准）')
+      out.push(...focusFacts)
+      out.push('')
+    }
 
     out.push('# 选手数据（姓名 阵营 K-D 爆头率 MVP）')
     if (retainedPlayers.length < playerLines.length) {
       out.push(`（已省略 ${playerLines.length - retainedPlayers.length} 名选手）`)
     }
     out.push(...retainedPlayers)
+    out.push('')
+
+    out.push('# 玩家武器统计（每名玩家本局的击杀数与其使用的武器；用于核对“谁用某武器击杀”这类问题）')
+    if (retainedWeapons.length < weaponLines.length) {
+      out.push(`（已省略 ${weaponLines.length - retainedWeapons.length} 名玩家的武器统计）`)
+    }
+    out.push(...retainedWeapons)
     out.push('')
 
     out.push('# 回合时间线')
@@ -291,11 +482,15 @@ export function buildContext(d: DemoDetail, opts: BuildContextOptions = {}): str
     out.push('')
 
     out.push(
-      retainedKills.length < killTotal
-        ? '# 击杀记录（预算筛选版；时间 R回合 攻击者 -武器-> 受害者 爆头）'
-        : '# 击杀记录（时间 R回合 攻击者 -武器-> 受害者 爆头）'
+      retainedKills.length < killTotal || focusFiltered
+        ? '# 击杀记录（预算筛选版；格式：时间 R回合 攻击者 用 武器 击杀 受害者）'
+        : '# 击杀记录（格式：时间 R回合 攻击者 用 武器 击杀 受害者）'
     )
-    if (retainedKills.length < killTotal) {
+    if (focusFiltered) {
+      out.push(
+        `（已按提问点名的玩家 ${focusNames.join('、')} 过滤：只列出他作为攻击者或受害者的击杀，共 ${retainedKills.length} 条；其余玩家之间的击杀未列出，也不要回答）`
+      )
+    } else if (retainedKills.length < killTotal) {
       const keyRetained = retainedKills.filter((k) => k.key).length
       const keyPart = keyTotal > 0 ? `；关键击杀保留 ${keyRetained}/${keyTotal} 条` : ''
       out.push(
@@ -326,7 +521,7 @@ export function buildContext(d: DemoDetail, opts: BuildContextOptions = {}): str
   }
 
   // ─── 总字符预算：按“低优先级先裁”的顺序逐节收缩 ───────────────────────
-  // 裁剪顺序（从低到高）：聊天明细 → 普通击杀 → 语音 → 关键击杀 → 回合 → 选手
+  // 裁剪顺序（从低到高）：聊天明细 → 普通击杀 → 语音 → 关键击杀 → 回合 → 选手 → 玩家武器统计
   const fits = (): boolean => render().length <= maxChars
 
   /** 先清空该节；若清空后能放下，再二分查找最多保留多少条 */
@@ -406,6 +601,14 @@ export function buildContext(d: DemoDetail, opts: BuildContextOptions = {}): str
     if (done) return render()
   }
 
+  // 7) 玩家武器统计（事实基线，放在最后才让位）
+  if (retainedWeapons.length > 0) {
+    const done = fitArray(weaponLines, (items) => {
+      retainedWeapons = items
+    })
+    if (done) return render()
+  }
+
   // 极端兜底：默认 60000 字符下不会走到这里；保留概览并做硬截断，避免请求超限
   const out = render()
   return out.length <= maxChars ? out : out.slice(0, maxChars)
@@ -416,6 +619,8 @@ const SYSTEM_PROMPT = `你是一名顶级的 CS2（反恐精英 2）职业级比
 
 ## 数据说明
 - 时间统一为比赛时钟 [mm:ss]，回合用 R# 表示（如 R12）。
+- **击杀记录的方向固定为「攻击者 用 武器 击杀 受害者」**：第一个名字是杀人者，最后一个名字是死者。用户问「谁被 X 杀了」时，要找的是「X 用 … 击杀 某人」这种行，受害者是行尾那个名字，不要把方向读反。
+- **玩家武器统计一节是核对武器归属的事实基线**：每人一行，列出本局击杀总数与每种武器的击杀次数。若某人某武器的次数是 0，就说明他这一局没用该武器杀人，绝不能凭印象罗列。
 - 语音转写中的 [BLANK_AUDIO] 已剔除；语音转写可能有误，判断"破防/情绪"时优先采信聊天与语气明确的语音。
 - 击杀记录来自 demo 解析，可能因解析版本或异常事件存在缺漏；若与选手统计或回合结果冲突，以统计/回合结果为准，不要编造数据中不存在的事件。
 
@@ -425,6 +630,15 @@ const SYSTEM_PROMPT = `你是一名顶级的 CS2（反恐精英 2）职业级比
 3. 结构：开头先用一句话给直接结论（可以是最重要的 1-3 个片段），再列要点。
 4. 引用任何时刻必须给出 [mm:ss]；涉及回合给出 R#。数据里没有的事件一律不许编造，信息不足一句话说明即可。
 5. 输出用 Markdown：「##」分节（每节标题下 1-3 行）、「-」列表、「**加粗**」强调最值得看的部分。
+6. **数据优先于对话历史**：如果前面几轮的回答和本轮给出的数据冲突，以本轮数据为准，并直接按数据重答，不要沿用之前的错答。
+7. **数量必须自洽**：回答里列出的事件条数，不能超过数据里该事件的真实条数；不确定时先数一遍再写。
+8. **只答所问，不要复述全场**：用户问某名玩家时，只列「他是攻击者的行」和「他是受害者的行」，其余玩家之间的击杀一律不要出现在回答里。数据里共有上百行击杀记录，把它们抄一遍等于没回答。
+9. **禁止推断性因果**：数据里只有直接击杀，没有「谁的死导致了谁的死」。不许写「间接导致」「连带」「因此」这类因果推断；用户没问就直接不提。
+10. **时间必须照抄**：引用 [mm:ss] 时把数据行里的时间原样抄下来，不要自己换算、估算或凭印象写。
+11. **提问里的前提可能是错的，数据才是准的**：用户常带着印象提问（例如「LIPSTICK 一局能电那么多人？」）。先在心里拿数据核一遍——把该玩家作为攻击者的行挑出来数一数。如果前提不成立，**第一句就直接纠正**（例：「这局 LIPSTICK 只电死过 1 个人（[04:56] R4 愚昧5555），他自己被杀了 4 次」），然后再列真实的行。绝不能顺着提问的前提编答案。
+12. **武器名照抄数据**：数据写 USP-S 就是 USP-S，写 MP9 就是 MP9。不许把别的武器改写成提问里提到的武器（提问说「电」不代表所有击杀都是电击枪）。
+13. **「事实核对」一节是唯一权威**：如果上下文里有「提问点名玩家的事实核对」，那一节的杀人数、武器次数、死亡次数都是程序算好的准确值。你的回答里每一个数字都必须和它一致；不一致就是错的。用户的前提和它冲突时，直接指出用户记错了，并给出这一节的数字。
+14. **只写上下文里出现过的击杀行**：回答里每一条 [mm:ss] 事件，都必须在「击杀记录」一节里逐字存在。找不到就不要写——宁可只给统计数字，也不要凑一条看起来合理的事件。
 
 ## 分析框架（按需裁剪，不要每节都写满）
 - 高光/转折：只给**最值得的 3-5 个片段**，每条格式一行：「[mm:ss] R# 事件一句话」（如「[12:34] R14 Patsi 三杀翻盘 1v3」）。
@@ -592,7 +806,25 @@ export class AiService {
     const base = cfg.baseUrl.replace(/\/+$/, '')
     const controller = new AbortController()
     this.controller = controller
-    const context = buildContext(detail)
+
+    // 能从数据里算出来的事实类问题，直接本地作答，不经过模型。
+    // 理由见 buildFactAnswer 的注释：弱模型在带前提的问题上会读反击杀方向，
+    // 而且只要历史里有过错答就会照着抄，提示词压不住。
+    const factAnswer = language === 'zh' ? buildFactAnswer(question, detail) : null
+    if (factAnswer) {
+      // 仍然分块推送，保持界面上的流式观感与「可取消」语义一致
+      const chunks = factAnswer.match(/[\s\S]{1,48}/g) ?? []
+      for (const chunk of chunks) {
+        if (controller.signal.aborted) break
+        this.cb.delta(demoId, chunk, sessionId, reqId)
+        await new Promise((r) => setTimeout(r, 12))
+      }
+      this.cb.done(demoId, factAnswer, sessionId, reqId)
+      this.controller = null
+      return { started: true }
+    }
+
+    const context = buildContext(detail, { focus: detectFocusPlayers(question, detail) })
     const langHint = language === 'zh' ? '请用中文回答。' : 'Answer in English.'
     try {
       const res = await net.fetch(`${base}/chat/completions`, {
@@ -604,7 +836,13 @@ export class AiService {
         body: JSON.stringify({
           model: cfg.model,
           stream: true,
-          temperature: 0.4,
+          // 0.2 而不是 0.4：这个场景是「按数据如实复述」，不是创作。
+          // 实测 0.4 时模型会在「谁被 X 杀了」这类问题上补出不存在的情节。
+          temperature: 0.2,
+          // 硬上限：规则要求 300 字以内（中文约 450-600 token），给到 900 足够写完结论，
+          // 又能物理上挡住「把上百行击杀记录原样抄一遍」这种失控输出——
+          // 实测 2000 时模型会抄满上下文里的全部击杀行，撞不到上限就停不下来。
+          max_tokens: 900,
           messages: [
             { role: 'system', content: SYSTEM_PROMPT },
             // 多轮记忆：只回放最近 12 条，控制 token

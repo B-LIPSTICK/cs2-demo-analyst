@@ -3,11 +3,12 @@
  */
 import { app, net } from 'electron'
 import { spawn } from 'node:child_process'
-import { promises as fs } from 'node:fs'
+import { promises as fs, closeSync, openSync, readFileSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { cpus } from 'node:os'
 import type { DemoDetail, VoiceSegment } from '@shared/types'
 import {
+  CSGOVE_VERSION,
   ensureCsgove,
   ensureWhisperCli,
   ensureWhisperModel,
@@ -195,24 +196,45 @@ export function mapCompactSegments(
 function run(
   cmd: string,
   args: string[],
-  opts: { cwd?: string; onLine?: (line: string) => void; signal?: AbortSignal }
+  opts: { cwd?: string; onLine?: (line: string) => void; signal?: AbortSignal; logFile?: string }
 ): Promise<{ code: number | null; output: string }> {
   return new Promise((resolve, reject) => {
     // 关键：stdio 用 ignore（不用管道捕获输出）。
     // 受限环境（沙箱/无管道）下 spawn 的管道 stdio 会 EPERM 或挂起导致子进程卡死；
     // csgove 用退出码判断、whisper-cli 用 -oj 输出 json 文件，都不依赖 stdout 捕获。
+    // 需要看工具报错时改用 logFile（stdout/stderr 重定向到文件 fd），仍然不建管道。
+    let fd: number | null = null
+    let stdio: 'ignore' | ['ignore', number, number] = 'ignore'
+    if (opts.logFile) {
+      try {
+        fd = openSync(opts.logFile, 'w')
+        stdio = ['ignore', fd, fd]
+      } catch {
+        fd = null
+      }
+    }
     const child = spawn(cmd, args, {
       windowsHide: true,
       cwd: opts.cwd,
-      stdio: 'ignore',
+      stdio,
       signal: opts.signal
     })
     let output = ''
+    const done = (): void => {
+      if (fd !== null) {
+        closeSync(fd)
+        fd = null
+      }
+    }
     child.on('error', (err) => {
+      done()
       console.error('[asr] spawn failed', cmd, args, err)
       reject(err)
     })
-    child.on('exit', (code) => resolve({ code, output }))
+    child.on('exit', (code) => {
+      done()
+      resolve({ code, output })
+    })
   })
 }
 
@@ -524,14 +546,42 @@ export async function extractVoice(
     })
 
     events.progress('voice-extract', 0, 1)
+    // csgove 的报错只走 stderr（panic 栈、dll 缺失之类），而 run() 因为沙箱限制不能建管道。
+    // 用文件承接 stderr，失败时把它读回来放进错误信息，否则用户只能看到「退出码 0」。
+    const logFile = join(outDir, '.csgove.log')
     const res = await run(csgoveExe(), ['-mode', 'split-full', '-output', outDir, demo.path], {
       // csgove 从 CWD 查找 vaudio_celt.dll 等库文件
       cwd: csgoveDir(),
-      signal
+      signal,
+      logFile
     })
-    if (res.code !== 0) {
-      throw new Error(`csgove 退出码 ${res.code}: ${res.output.slice(-600)}`)
+    const logTail = (): string => {
+      try {
+        return readFileSync(logFile, 'utf8')
+          .split(/\r?\n/)
+          .filter((l) => l.trim() && !/Unable to find player's name/.test(l))
+          .slice(-8)
+          .join('\n')
+      } catch {
+        return ''
+      }
     }
+    if (res.code !== 0) {
+      throw new Error(`csgove 退出码 ${res.code}: ${logTail().slice(-600)}`)
+    }
+    // csgove 有几种「成功但没产出」的失败模式（旧版解析新 demo 会在 sendtables2 里
+    // 越界 panic，进程仍以 0 退出、输出目录为空）。这里必须区分「没语音」与「工具没跑通」，
+    // 否则用户会被误导成「这个 demo 本身不含语音」。
+    const produced = (await fs.readdir(outDir)).filter((f) => f.toLowerCase().endsWith('.wav'))
+    if (produced.length === 0) {
+      const detail = logTail()
+      throw new Error(
+        `语音提取没有产生任何音轨（csgove ${CSGOVE_VERSION}）。` +
+          '这通常是语音提取工具解析不了该 demo，或该 demo 本身不含语音数据。' +
+          (detail ? `\n工具输出：\n${detail}` : '')
+      )
+    }
+    await fs.unlink(logFile).catch(() => {})
   } else {
     events.progress('voice-extract', 1, 1)
   }
@@ -651,14 +701,15 @@ export async function transcribeLocal(
   return segs
 }
 
-/** 云端 OpenAI 兼容转写（默认 Groq whisper-large-v3-turbo，verbose_json 带时间戳） */
+/** 云端 OpenAI 兼容转写（verbose_json 带时间戳）；地址与模型由用户在设置里自填 */
 export async function transcribeCloud(
   wavPath: string,
   cfg: { baseUrl: string; apiKey: string; model: string; language: string },
   signal?: AbortSignal
 ): Promise<WhisperSeg[]> {
-  if (!cfg.apiKey) throw new Error('未配置云端 API Key（设置 → 转写引擎 → 获取免费 Key）')
-  const base = cfg.baseUrl.replace(/\/+$/, '')
+  if (!cfg.baseUrl.trim()) throw new Error('未填写 API 地址（设置 → 语音转写引擎 → 自定义 API）')
+  if (!cfg.apiKey) throw new Error('未填写 API Key（设置 → 语音转写引擎 → 自定义 API）')
+  const base = cfg.baseUrl.trim().replace(/\/+$/, '')
   // 手动构造 multipart/form-data（Node 全局 FormData 与 Electron net.fetch 不完全兼容，
   // 用 Buffer 拼接最稳）
   const boundary = `----cs2danalyst${Date.now().toString(16)}`
@@ -705,10 +756,12 @@ export async function transcribeCloud(
     const bodyText = (await res.text().catch(() => '')).slice(0, 300)
     const hint =
       res.status === 403
-        ? '（403：服务商拒绝，常见于直连被墙 —— 请确认系统代理已开启，或换用可直连的服务商如硅基流动）'
+        ? '（403：服务商拒绝，常见于地址被墙或该服务不支持此路径 —— 换个可直连的服务商试试）'
         : res.status === 401
           ? '（401：API Key 无效，请检查设置中的 Key）'
-          : ''
+          : res.status === 404
+            ? '（404：地址或模型名不对，检查 API 地址是否到 /v1、模型名是否正确）'
+            : ''
     throw new Error(`云端转写失败 HTTP ${res.status}${hint}: ${bodyText}`)
   }
   const data = (await res.json()) as { segments?: { start: number; end: number; text: string }[] }
@@ -763,7 +816,8 @@ export async function transcribeDemo(
     items = items.filter((i) => options.players!.includes(i.playerName))
   }
   if (items.length === 0) {
-    throw new Error('该 Demo 未提取到任何语音（MM 天梯 demo 不含语音）')
+    // 走到这里通常是「筛选的玩家没有音轨」，而不是整局没语音——整局没语音在 extractVoice 就抛了
+    throw new Error('所选玩家没有可用音轨，无法转写。换个玩家或去掉筛选再试。')
   }
 
   // 本地引擎模式下，先确保引擎与模型就绪（若未下载，在此广播带进度条的下载状态）
@@ -963,7 +1017,8 @@ export async function splitVoice(
     throw new Error(`语音提取失败：${err instanceof Error ? err.message : String(err)}`)
   }
   if (items.length === 0) {
-    throw new Error('该 Demo 未提取到任何语音（MM 天梯 demo 不含语音）')
+    // extractVoice 已经在「一个音轨都没产出」时抛错，走到这里说明缓存里有目录但没有可用 WAV
+    throw new Error('该 Demo 没有可用音轨，无法分割语音。')
   }
   for (let i = 0; i < items.length; i++) {
     if (signal?.aborted) break

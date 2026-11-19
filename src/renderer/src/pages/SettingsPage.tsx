@@ -679,25 +679,6 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
     queueTextPatch({ asr: nextAsr })
   }
 
-  // 推荐免费（Groq）声明弹窗
-  const [showRecModal, setShowRecModal] = useState(false)
-  const pickRecommended = () => {
-    if (draftRef.current.asr.engine === 'cloud' && draftRef.current.asr.cloudBaseUrl.includes('groq.com')) {
-      // 已选推荐：直接确认（弹窗已展示过）
-      return
-    }
-    setShowRecModal(true)
-  }
-  const confirmRecommended = () => {
-    setAsr({
-      engine: 'cloud',
-      cloudBaseUrl: 'https://api.groq.com/openai/v1',
-      cloudModel: 'whisper-large-v3-turbo'
-    })
-    setShowRecModal(false)
-    toast.push(t.t('settings.recommendedSet'))
-  }
-
   const setAi = (patch: Partial<Settings['ai']>) => {
     const nextAi: Settings['ai'] = { ...draftRef.current.ai, ...patch }
     applyDraft({ ...draftRef.current, ai: nextAi })
@@ -971,20 +952,14 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           </div>
           <div className="seg">
             <span
-              className={`seg-item ${draft.asr.engine === 'cloud' && draft.asr.cloudBaseUrl.includes('groq.com') ? 'on' : ''}`}
-              onClick={() => pickRecommended()}
-            >
-              {t.t('settings.asrRecommended')}
-            </span>
-            <span
               className={`seg-item ${draft.asr.engine === 'local' ? 'on' : ''}`}
               onClick={() => setAsr({ engine: 'local' })}
             >
               {t.t('settings.asrLocal')}
             </span>
             <span
-              className={`seg-item ${draft.asr.engine === 'cloud' && !draft.asr.cloudBaseUrl.includes('groq.com') ? 'on' : ''}`}
-              onClick={() => setAsr({ engine: 'cloud', cloudBaseUrl: '' })}
+              className={`seg-item ${draft.asr.engine === 'cloud' ? 'on' : ''}`}
+              onClick={() => setAsr({ engine: 'cloud' })}
             >
               {t.t('settings.asrCustom')}
             </span>
@@ -1039,12 +1014,38 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
           <>
             <div className="set-row">
               <div className="info">
+                <div className="t">{t.t('settings.cloudBaseUrl')}</div>
+                <div className="d">{t.t('settings.cloudBaseUrlHint')}</div>
+              </div>
+              <input
+                className="input"
+                style={{ width: 300 }}
+                placeholder="https://api.example.com/v1"
+                value={draft.asr.cloudBaseUrl}
+                onChange={(e) => setAsrText('cloudBaseUrl', e.target.value)}
+                onFocus={beginTextEdit}
+                onBlur={endTextEdit}
+              />
+            </div>
+            <div className="set-row">
+              <div className="info">
+                <div className="t">{t.t('settings.cloudModel')}</div>
+                <div className="d">{t.t('settings.keyHint')}</div>
+              </div>
+              <input
+                className="input"
+                style={{ width: 300 }}
+                placeholder="whisper-1"
+                value={draft.asr.cloudModel}
+                onChange={(e) => setAsrText('cloudModel', e.target.value)}
+                onFocus={beginTextEdit}
+                onBlur={endTextEdit}
+              />
+            </div>
+            <div className="set-row">
+              <div className="info">
                 <div className="t">{t.t('settings.cloudApiKey')}</div>
-                <div className="d">
-                  {draft.asr.cloudBaseUrl.includes('groq.com')
-                    ? t.t('settings.groqKeyHint')
-                    : t.t('settings.keyHint')}
-                </div>
+                <div className="d">{t.t('settings.cloudKeyHint')}</div>
               </div>
               <input
                 className="input"
@@ -1057,50 +1058,6 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
                 onBlur={endTextEdit}
               />
             </div>
-            {draft.asr.cloudBaseUrl.includes('groq.com') && (
-              <div className="set-row">
-                <div className="info">
-                  <Btn
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => window.api.app.openUrl('https://console.groq.com/keys')}
-                    style={{ color: 'var(--accent)', padding: 0, height: 'auto' }}
-                  >
-                    {t.t('settings.getKey')} → console.groq.com/keys
-                  </Btn>
-                </div>
-              </div>
-            )}
-            {!draft.asr.cloudBaseUrl.includes('groq.com') && (
-              <>
-                <div className="set-row">
-                  <div className="info">
-                    <div className="t">{t.t('settings.cloudBaseUrl')}</div>
-                  </div>
-                  <input
-                    className="input"
-                    style={{ width: 300 }}
-                    value={draft.asr.cloudBaseUrl}
-                    onChange={(e) => setAsrText('cloudBaseUrl', e.target.value)}
-                    onFocus={beginTextEdit}
-                    onBlur={endTextEdit}
-                  />
-                </div>
-                <div className="set-row">
-                  <div className="info">
-                    <div className="t">{t.t('settings.cloudModel')}</div>
-                  </div>
-                  <input
-                    className="input"
-                    style={{ width: 300 }}
-                    value={draft.asr.cloudModel}
-                    onChange={(e) => setAsrText('cloudModel', e.target.value)}
-                    onFocus={beginTextEdit}
-                    onBlur={endTextEdit}
-                  />
-                </div>
-              </>
-            )}
           </>
         )}
       </Panel>
@@ -1845,17 +1802,6 @@ export function SettingsPage({ settings, version }: { settings: Settings; versio
             setShowInjectConfirm(false)
             setCs2({ hudMode: 'inject' })
           }}
-        />
-      )}
-
-      {/* 推荐免费（Groq）声明弹窗 */}
-      {showRecModal && (
-        <Modal
-          title={t.t('settings.recTitle')}
-          body={t.t('settings.recBody')}
-          confirmLabel={t.t('settings.recConfirm')}
-          onClose={() => setShowRecModal(false)}
-          onConfirm={confirmRecommended}
         />
       )}
 

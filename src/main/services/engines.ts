@@ -8,7 +8,10 @@ import AdmZip from 'adm-zip'
 import { downloadWithMirrors, type DownloadProgress } from './download'
 import type { LocalWhisperModel } from '@shared/types'
 
-export const CSGOVE_VERSION = 'v3.1.6'
+// v3.1.7 修了 demoinfocs-golang 在新版 CS2 demo 上 sendtables2 解析越界（nextByte:
+// insufficient buffer）导致 split-full 一个 WAV 都产不出的问题；旧版遇到这类 demo 会
+// 静默退出码 0 + 空输出目录，用户看到的是「该 Demo 未提取到任何语音」。
+export const CSGOVE_VERSION = 'v3.1.7'
 export const WHISPER_VERSION = 'v1.9.2'
 
 export const MODEL_FILES: Record<LocalWhisperModel, string> = {
@@ -116,20 +119,49 @@ function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   return run
 }
 
+/**
+ * 引擎目录里的版本标记文件名。
+ * csgove.exe 存在不代表是对应的版本——旧版本文件同样「存在且够大」。
+ * 没有这个标记就无法把已装了旧版的用户推到新版，所以每次升级 CSGOVE_VERSION
+ * 都必须靠它来判定「该重下」。
+ */
+const VERSION_MARKER = '.version'
+
+async function readMarker(dir: string): Promise<string> {
+  try {
+    return (await fs.readFile(join(dir, VERSION_MARKER), 'utf8')).trim()
+  } catch {
+    return ''
+  }
+}
+
+async function writeMarker(dir: string, version: string): Promise<void> {
+  await fs.writeFile(join(dir, VERSION_MARKER), version, 'utf8').catch(() => {})
+}
+
 /** 确保 csgove 就绪（下载 + 解压，幂等） */
 export function ensureCsgove(onProgress?: (p: EngineEnsureProgress) => void): Promise<void> {
   return withLock('csgove', async () => {
-    if (await isValidFile(csgoveExe(), 100 * 1024)) return
+    const marker = await readMarker(csgoveDir())
+    // 版本号对不上就当作需要重装：旧版解析不了新 demo，留着只会让用户继续看到空结果
+    if (marker === CSGOVE_VERSION && (await isValidFile(csgoveExe(), 100 * 1024))) return
     const ctrl = new AbortController()
     activeControllers.set('csgove', ctrl)
     try {
+      await fs.mkdir(csgoveDir(), { recursive: true })
       const zipPath = join(csgoveDir(), 'csgove.zip')
+      // 先下载再清旧文件：下载失败时旧版仍可用，不会把用户推进「什么都没有」的状态
       await downloadWithMirrors(
         ghUrls(`akiver/csgo-voice-extractor/releases/download/${CSGOVE_VERSION}/win32-x64.zip`),
         zipPath,
         (p) => onProgress?.({ what: 'csgove', received: p.received, total: p.total }),
         ctrl.signal
       )
+      // 清掉旧版本的 exe/dll，避免新旧混装（csgove 会从 CWD 找同名 dll）
+      for (const f of await fs.readdir(csgoveDir()).catch(() => [] as string[])) {
+        if (f === VERSION_MARKER || f === 'csgove.zip') continue
+        await fs.rm(join(csgoveDir(), f), { recursive: true, force: true }).catch(() => {})
+      }
       const zip = new AdmZip(zipPath)
       zip.extractAllTo(csgoveDir(), true)
       // 把 zip 内 win32-x64/ 下的文件平铺
@@ -144,6 +176,7 @@ export function ensureCsgove(onProgress?: (p: EngineEnsureProgress) => void): Pr
         /* 已平铺 */
       }
       await fs.unlink(zipPath).catch(() => {})
+      await writeMarker(csgoveDir(), CSGOVE_VERSION)
     } finally {
       activeControllers.delete('csgove')
     }
@@ -202,10 +235,16 @@ export function ensureWhisperModel(
     activeControllers.set(lockKey, ctrl)
     try {
       const file = MODEL_FILES[model]
+      // 下载地址顺序与参数都是实测出来的结论：
+      // · huggingface.co 直连在国内基本必然连接超时（测试 20s 无响应）；下载走的是 node:https，
+      //   不经过系统代理，所以不能指望用户开代理就能好；
+      // · hf-mirror.com 不带 ?download=true 时会被限流（429）或直接 502，加上该参数才稳定 200。
+      //   实测 ggml-tiny.bin 全量 77MB / 30s / 2.5MB/s 可下完。
+      // 所以把镜像放第一位并固定带参数，官方源只作为镜像全挂时的兜底。
       await downloadWithMirrors(
         [
-          `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${file}`,
-          `https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/${file}`
+          `https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/${file}?download=true`,
+          `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${file}?download=true`
         ],
         dest,
         (p) => onProgress?.({ what: lockKey, received: p.received, total: p.total }),

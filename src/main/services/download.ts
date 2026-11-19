@@ -138,6 +138,10 @@ export async function downloadFile(
 
 /**
  * 依次尝试多个 URL（主源 + 镜像），全部失败才抛错。
+ *
+ * 会额外重试：hf-mirror 之类的镜像在短时间内请求密集会返回 429（限流窗口 300 秒），
+ * 而国内用户只有它能连（huggingface.co 直连基本必然超时）。实测同样的 URL
+ * 隔几秒再请求就恢复 200，所以失败后等一会儿再整体重来一轮，比直接报错好得多。
  */
 export async function downloadWithMirrors(
   urls: string[],
@@ -146,19 +150,28 @@ export async function downloadWithMirrors(
   signal?: AbortSignal
 ): Promise<void> {
   let lastErr: unknown = null
-  for (const url of urls) {
-    if (signal?.aborted) {
-      throw new Error('下载已取消')
+  const delays = [0, 3000, 8000] // 第 1 轮立即，之后各等 3s / 8s
+  for (let pass = 0; pass < delays.length; pass++) {
+    if (delays[pass] > 0) {
+      await new Promise((r) => setTimeout(r, delays[pass]))
     }
-    try {
-      await downloadFile(url, dest, onProgress, signal)
-      return
-    } catch (err) {
-      lastErr = err
-      if (signal?.aborted || (err instanceof Error && err.message.includes('下载已取消'))) {
-        throw err
+    for (const url of urls) {
+      if (signal?.aborted) {
+        throw new Error('下载已取消')
       }
-      console.warn(`[download] mirror failed ${url}: ${err instanceof Error ? err.message : err}`)
+      try {
+        await downloadFile(url, dest, onProgress, signal)
+        return
+      } catch (err) {
+        lastErr = err
+        if (signal?.aborted || (err instanceof Error && err.message.includes('下载已取消'))) {
+          throw err
+        }
+        console.warn(`[download] mirror failed ${url}: ${err instanceof Error ? err.message : err}`)
+      }
+    }
+    if (pass < delays.length - 1) {
+      console.warn(`[download] all mirrors failed, retry pass ${pass + 2}/${delays.length} in ${delays[pass + 1]}ms`)
     }
   }
   throw lastErr ?? new Error('download failed')
