@@ -182,43 +182,57 @@ async function extractAndVerify(
 }
 
 /**
+ * 路径通过环境变量传进脚本，而不是拼进脚本正文。
+ *
+ * 为什么：cmd.exe 读 .cmd 文件是按控制台的 OEM 代码页逐字节解释的（中文 Windows 是
+ * 936/GBK），而 Node 写文件只能写 UTF-8。于是「E:\...\文案\...」这串 UTF-8 字节
+ * 会被 GBK 解成「鏂囨」—— 一键更新跑到一个不存在的乱码目录里去了，真实安装目录
+ * 一个字节都没变，用户看到的现象就是「更新完了版本号还是旧的」。
+ *
+ * 环境变量是 CreateProcess 的原生 UTF-16 通道，中文路径不会失真；命令行走的也是
+ * 同一通道，所以脚本路径本身带中文没有问题，只有「脚本正文里的字面量」不行。
+ */
+const ENV_SRC = 'CS2DA_SRC'
+const ENV_DST = 'CS2DA_DST'
+const ENV_EXE = 'CS2DA_EXE'
+const ENV_CLEAN = 'CS2DA_CLEAN'
+const ENV_WORK = 'CS2DA_WORK'
+
+/**
  * 生成退出后执行的更新脚本（cmd + robocopy）。
  *
- * 三个要点：
- * - 等的是「同名进程全部消失」而不是单个 PID：Electron 退出时渲染/GPU 子进程
- *   可能比主进程晚一点点放手文件句柄。
+ * 四个要点：
+ * - 脚本正文只能是纯 ASCII，所有路径走环境变量（见上面的说明）。
+ * - 等的是「自己这个 PID 退出」，不是「同名进程全部消失」：按镜像名匹配会把用户
+ *   另外开着的另一份程序也算进去，那份不关就一直等（旧实现等 120 秒才强来）。
+ *   Electron 的子进程会随主进程一起退，等主 PID 就够。
  * - robocopy 的退出码 0–7 都算正常（1 表示「有文件被复制」），只有 ≥8 才是失败。
  * - 收尾要清掉临时目录：脚本自己就在这个目录里，删不掉自己，所以另起一个
  *   放在 %TEMP% 根下的 cleanup.cmd 延时删除，不阻塞重启。
  */
-function buildUpdateScript(opts: {
-  srcDir: string
-  destDir: string
-  exePath: string
-  cleanupPath: string
-}): string {
-  const { srcDir, destDir, exePath, cleanupPath } = opts
+function buildUpdateScript(ownPid: number): string {
   return [
     '@echo off',
     'setlocal',
-    `set "SRC=${srcDir}"`,
-    `set "DST=${destDir}"`,
-    `set "EXE=${exePath}"`,
+    `set "SRC=%${ENV_SRC}%"`,
+    `set "DST=%${ENV_DST}%"`,
+    `set "EXE=%${ENV_EXE}%"`,
+    `set "CLEAN=%${ENV_CLEAN}%"`,
     'set /a TRIES=0',
     ':wait',
     'set /a TRIES+=1',
     'if %TRIES% GTR 120 goto copy',
-    'tasklist /FI "IMAGENAME eq CS2 Demo Analyst.exe" 2>nul | find /I "CS2 Demo Analyst.exe" >nul',
+    `tasklist /FI "PID eq ${ownPid}" 2>nul | find /I "CS2 Demo Analyst.exe" >nul`,
     'if not errorlevel 1 (',
     '  timeout /t 1 /nobreak >nul',
     '  goto wait',
     ')',
-    // 进程都没了再等 3 秒，给文件句柄留出释放时间
+    // 自己退干净了再等 3 秒，给文件句柄留出释放时间
     'timeout /t 3 /nobreak >nul',
     ':copy',
     'robocopy "%SRC%" "%DST%" /E /NFL /NDL /NJH /NJS /R:5 /W:2 >nul',
     'start "" "%EXE%"',
-    `start "" /min "${cleanupPath}"`,
+    'start "" /min "%CLEAN%"',
     // 必须用 exit 而不是 exit /b：start 启动的脚本外层是一个 cmd /K 壳，
     // exit /b 只退出批处理，那个壳会一直挂在后台；exit 才会把它一起关掉。
     'exit 0',
@@ -227,17 +241,17 @@ function buildUpdateScript(opts: {
 }
 
 /**
- * 延时删除更新临时目录的收尾脚本。
+ * 延时删除更新临时目录的收尾脚本（正文同样只能纯 ASCII）。
  *
  * 注意不要在这里 `del "%~f0"` 自删：实测自删会让 start 拉起的那个 cmd 壳
  * 变成残留进程挂在后台（脚本没了但它还在）。脚本文件本身留给
  * pruneOldUpdateDirs() 在下次启动时清。
  */
-function buildCleanupScript(workDir: string): string {
+function buildCleanupScript(): string {
   return [
     '@echo off',
-    'timeout /t 6 /nobreak >nul',
-    `rmdir /s /q "${workDir}"`,
+    `timeout /t 6 /nobreak >nul`,
+    `rmdir /s /q "%${ENV_WORK}%"`,
     'exit 0',
     ''
   ].join('\r\n')
@@ -296,13 +310,9 @@ export async function prepareUpdate(opts: UpdateInstallOptions): Promise<UpdateI
 
     const scriptPath = join(workDir, 'apply-update.cmd')
     const cleanupPath = join(tmpdir(), `cs2-demo-analyst-cleanup-${Date.now()}.cmd`)
-    await fs.writeFile(cleanupPath, buildCleanupScript(workDir), 'utf8')
-    const script = buildUpdateScript({
-      srcDir: root,
-      destDir,
-      exePath,
-      cleanupPath
-    })
+    await fs.writeFile(cleanupPath, buildCleanupScript(), 'utf8')
+    // 脚本正文纯 ASCII，所有路径都从环境变量读（见 buildUpdateScript 的说明）
+    const script = buildUpdateScript(process.pid)
     await fs.writeFile(scriptPath, script, 'utf8')
 
     report(onProgress, 'ready', 0, 0)
@@ -311,11 +321,21 @@ export async function prepareUpdate(opts: UpdateInstallOptions): Promise<UpdateI
     // 交给 cmd 执行：detached + 忽略 stdio，并且用 start 再分一层，
     // 让脚本脱离本进程的进程树——应用退出后它仍要继续跑。
     // 用 windowsVerbatimArguments 自己拼命令行，避免临时目录含空格时被拆开。
+    // 路径一律走 env：命令行与环境块是 CreateProcess 的原生 UTF-16 通道，
+    // 中文（如 E:\...\文案\...）不会像 .cmd 正文那样被 GBK 解释成乱码。
     const child = spawn('cmd.exe', ['/c', `start "" /min "${scriptPath}"`], {
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
-      windowsVerbatimArguments: true
+      windowsVerbatimArguments: true,
+      env: {
+        ...process.env,
+        [ENV_SRC]: root,
+        [ENV_DST]: destDir,
+        [ENV_EXE]: exePath,
+        [ENV_CLEAN]: cleanupPath,
+        [ENV_WORK]: workDir
+      }
     })
     child.unref()
 
